@@ -702,7 +702,7 @@ function initOnboarding(){
 
   if(isIOS()){
     // iOSはbeforeinstallpromptが存在せず、共有シートからの手動操作しかできない
-    onboardingSub.textContent = '共有ボタンから、あと2タップで完了します。';
+    onboardingSub.textContent = '共有ボタンから、あと3タップで完了します。';
     onboardingSteps.innerHTML = `
       <div class="onboarding-step">
         <span class="onboarding-step-num">1</span>
@@ -710,7 +710,11 @@ function initOnboarding(){
       </div>
       <div class="onboarding-step">
         <span class="onboarding-step-num">2</span>
-        <span class="onboarding-step-text">メニューから<b>「ホーム画面に追加」</b>を選択</span>
+        <span class="onboarding-step-text">メニューを<b>下にスクロール</b>して<b>「ホーム画面に追加」</b>をタップ</span>
+      </div>
+      <div class="onboarding-step">
+        <span class="onboarding-step-num">3</span>
+        <span class="onboarding-step-text">右上の<b>「追加」</b>をタップして完了</span>
       </div>
     `;
     onboardingCta.style.display = 'none';

@@ -220,7 +220,8 @@
     font-family:var(--font-ui);
   }
   #install-banner.show{ display:flex; }
-  #install-banner .ib-icon{ width:36px; height:36px; border-radius:9px; background:var(--ink); flex-shrink:0; display:flex; align-items:center; justify-content:center; color:var(--ember); font-weight:900; }
+  #install-banner .ib-icon{ width:36px; height:36px; border-radius:9px; flex-shrink:0; overflow:hidden; }
+  #install-banner .ib-icon img{ width:100%; height:100%; display:block; object-fit:cover; }
   #install-banner .ib-text{ flex:1; }
   #install-banner .ib-title{ font-size:13px; font-weight:700; margin:0 0 1px; }
   #install-banner .ib-sub{ font-size:11.5px; color:var(--muted); margin:0; }
@@ -247,11 +248,10 @@
   #onboarding-overlay.show{ display:flex; }
   .onboarding-icon{
     width:88px; height:88px; border-radius:26px; margin-bottom:26px;
-    background:linear-gradient(160deg, var(--ember), var(--ember-soft));
-    display:flex; align-items:center; justify-content:center;
-    font-size:38px; font-weight:900; color:#fff;
-    box-shadow:0 14px 32px rgba(255,90,54,.4);
+    box-shadow:0 14px 32px rgba(51,214,166,.35);
+    overflow:hidden;
   }
+  .onboarding-icon img{ width:100%; height:100%; display:block; object-fit:cover; }
   .onboarding-title{ font-size:23px; font-weight:900; margin:0 0 10px; line-height:1.4; }
   .onboarding-sub{
     font-family:var(--font-ui); font-size:14px; line-height:1.7; color:rgba(255,255,255,.68);
@@ -269,6 +269,11 @@
   }
   .onboarding-step-text{ font-family:var(--font-ui); font-size:13px; line-height:1.5; color:rgba(255,255,255,.9); }
   .onboarding-step-text b{ color:#fff; }
+  .step-icon{
+    width:15px; height:15px; vertical-align:-3px; margin:0 3px 0 4px;
+    color:#fff; background:rgba(255,255,255,.16); border-radius:5px; padding:3px;
+    box-sizing:content-box;
+  }
   .onboarding-cta{
     margin-top:26px; background:var(--ember); color:#fff; font-family:var(--font-ui);
     font-weight:700; font-size:15px; padding:15px 36px; border-radius:99px;
@@ -292,7 +297,7 @@
       <button class="nav-btn" data-nav="search"><span class="nav-icon">◎</span><span class="nav-text">検索</span></button>
     </div>
     <div id="install-banner">
-      <div class="ib-icon">Z</div>
+      <div class="ib-icon"><img src="icons/icon-192.png" alt="" /></div>
       <div class="ib-text">
         <p class="ib-title">ZoneNOWをホーム画面に追加</p>
         <p class="ib-sub">アプリのようにワンタップで起動できます</p>
@@ -353,7 +358,7 @@
 
 <!-- ============ 初回オンボーディング（ホーム画面に追加） ============ -->
 <div id="onboarding-overlay">
-  <div class="onboarding-icon">Z</div>
+  <div class="onboarding-icon"><img src="icons/icon-192.png" alt="" /></div>
   <h1 class="onboarding-title">アプリとして<br>すぐに始めよう</h1>
   <p class="onboarding-sub" id="onboarding-sub">ホーム画面に追加すれば、次からはアイコンをタップするだけ。ブラウザを探す手間がゼロになります。</p>
 
@@ -702,11 +707,12 @@ function initOnboarding(){
 
   if(isIOS()){
     // iOSはbeforeinstallpromptが存在せず、共有シートからの手動操作しかできない
+    const shareIcon = `<svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>`;
     onboardingSub.textContent = '共有ボタンから、あと3タップで完了します。';
     onboardingSteps.innerHTML = `
       <div class="onboarding-step">
         <span class="onboarding-step-num">1</span>
-        <span class="onboarding-step-text">画面下の<b>共有ボタン(□↑)</b>をタップ</span>
+        <span class="onboarding-step-text">画面下の${shareIcon}<b>共有ボタン</b>をタップ</span>
       </div>
       <div class="onboarding-step">
         <span class="onboarding-step-num">2</span>

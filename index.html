@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>ZoneNOW - 勉強を始めるきっかけを</title>
+
+<!-- ▼ PWA(ホーム画面追加)のための設定 -->
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#10131A" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="ZoneNOW" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  /* ============================================================
+     デザイントークン（色・フォント・余白のルールをここに集約）
+     この値だけ変えれば、アプリ全体の雰囲気を調整できます。
+  ============================================================ */
+  :root{
+    --ink:#10131A;          /* ショート動画画面の背景色(ほぼ黒に近い紺) */
+    --indigo:#2B2E63;       /* サブの暗い面(チップ・ナビ) */
+    --indigo-soft:#3B3F86;
+    --paper:#F7F6F2;        /* 検索画面などの明るい背景 */
+    --paper-line:#E7E4DC;
+    --ink-text:#1B1D26;
+    --muted:#8B8D9B;
+    --ember:#FF5A36;        /* アクセント：やる気の火種 */
+    --ember-soft:#FF8A6B;
+    --mint:#33D6A6;         /* Zoneメーターの到達色 */
+    --white:#FFFFFF;
+    --font-display:'Zen Kaku Gothic New', sans-serif;
+    --font-ui:'Inter', 'Zen Kaku Gothic New', sans-serif;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{
+    margin:0; padding:0; height:100%; overscroll-behavior:none;
+    font-family:var(--font-display); background:var(--ink); color:var(--white);
+  }
+  button{ font-family:inherit; border:none; background:none; cursor:pointer; -webkit-user-select:none; user-select:none; }
+  ::-webkit-scrollbar{ display:none; }
+
+  #app{ position:fixed; inset:0; overflow:hidden; }
+
+  /* ============================================================
+     画面切り替え（home / search / player）
+  ============================================================ */
+  .screen{ position:absolute; inset:0; opacity:0; pointer-events:none; transition:opacity .35s ease; }
+  .screen.active{ opacity:1; pointer-events:auto; }
+
+  /* ============================================================
+     ホーム画面：ショート動画フィード
+  ============================================================ */
+  #feed{
+    height:100%; width:100%; overflow-y:scroll; scroll-snap-type:y mandatory;
+  }
+  .short-slide{
+    position:relative; height:100%; width:100%; scroll-snap-align:start; scroll-snap-stop:always;
+    background:#000; overflow:hidden;
+  }
+  .short-slide video{
+    position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+  }
+  .short-slide::after{
+    content:''; position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(0,0,0,.35) 0%, rgba(0,0,0,0) 22%, rgba(0,0,0,0) 55%, rgba(0,0,0,.75) 100%);
+    pointer-events:none;
+  }
+
+  /* Zoneメーター（シグネチャー要素）：観るほど溜まっていくやる気の可視化 */
+  .zone-meter{
+    position:absolute; top:calc(var(--safe-top) + 10px); left:14px; right:14px; height:3px;
+    background:rgba(255,255,255,.25); border-radius:99px; overflow:hidden; z-index:5;
+  }
+  .zone-meter-fill{
+    height:100%; width:0%; border-radius:99px;
+    background:linear-gradient(90deg, var(--ember), var(--mint));
+    transition:width linear;
+  }
+
+  .short-top{
+    position:absolute; top:calc(var(--safe-top) + 24px); left:16px; z-index:4;
+    display:flex; gap:6px;
+  }
+  .badge{
+    font-family:var(--font-ui); font-size:11px; font-weight:600; letter-spacing:.02em;
+    padding:5px 10px; border-radius:99px; backdrop-filter:blur(6px);
+    background:rgba(255,255,255,.14); color:#fff;
+  }
+  .badge.subject{ background:rgba(255,90,54,.85); }
+
+  .short-bottom{
+    position:absolute; left:16px; right:84px; bottom:calc(var(--safe-bottom) + 96px); z-index:4;
+  }
+  .short-title{ font-size:19px; font-weight:700; line-height:1.4; margin:0 0 6px; text-shadow:0 1px 6px rgba(0,0,0,.4); }
+  .short-creator{ font-family:var(--font-ui); font-size:13px; color:rgba(255,255,255,.8); margin:0; }
+
+  .learn-more-btn{
+    position:absolute; right:16px; bottom:calc(var(--safe-bottom) + 100px); z-index:5;
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+  }
+  .learn-more-circle{
+    width:52px; height:52px; border-radius:50%; background:var(--ember);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 6px 18px rgba(255,90,54,.45);
+    transition:transform .2s ease;
+  }
+  .learn-more-btn.pulse .learn-more-circle{ animation:pulse 1.1s ease; }
+  @keyframes pulse{ 0%{transform:scale(1);} 40%{transform:scale(1.18);} 100%{transform:scale(1);} }
+  .learn-more-label{ font-family:var(--font-ui); font-size:10px; font-weight:600; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,.5); }
+
+  .mute-btn{
+    position:absolute; top:calc(var(--safe-top) + 20px); right:16px; z-index:5;
+    width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,.14);
+    backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; color:#fff; font-size:15px;
+  }
+
+  .like-btn{
+    position:absolute; right:16px; bottom:calc(var(--safe-bottom) + 186px); z-index:5;
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+  }
+  .like-circle{
+    width:44px; height:44px; border-radius:50%; background:rgba(255,255,255,.14);
+    backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center;
+    color:#fff; font-size:20px; transition:transform .15s ease, background .15s ease, color .15s ease;
+  }
+  .like-btn.liked .like-circle{ background:rgba(255,90,54,.85); color:#fff; }
+  .like-btn.pop .like-circle{ animation:likePop .35s ease; }
+  @keyframes likePop{ 0%{transform:scale(1);} 45%{transform:scale(1.25);} 100%{transform:scale(1);} }
+  .like-label{ font-family:var(--font-ui); font-size:10px; font-weight:600; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,.5); }
+
+  /* ============================================================
+     ボトムナビ
+  ============================================================ */
+  #bottom-nav{
+    position:absolute; left:0; right:0; bottom:0; z-index:10;
+    padding:10px 28px calc(10px + var(--safe-bottom));
+    display:flex; justify-content:space-around; align-items:center;
+    background:linear-gradient(180deg, rgba(16,19,26,0) 0%, rgba(16,19,26,.55) 40%, rgba(16,19,26,.55) 100%);
+  }
+  #bottom-nav.on-paper{ background:var(--paper); border-top:1px solid var(--paper-line); }
+  .nav-btn{ display:flex; flex-direction:column; align-items:center; gap:4px; color:rgba(255,255,255,.55); }
+  .nav-btn.active{ color:var(--white); }
+  #bottom-nav.on-paper .nav-btn{ color:#B7B4AA; }
+  #bottom-nav.on-paper .nav-btn.active{ color:var(--ink-text); }
+  .nav-icon{ font-size:21px; line-height:1; }
+  .nav-text{ font-family:var(--font-ui); font-size:10px; font-weight:600; }
+
+  /* ============================================================
+     検索画面
+  ============================================================ */
+  #search-screen{ background:var(--paper); color:var(--ink-text); overflow-y:auto; padding-bottom:90px; }
+  .search-header{
+    padding:calc(var(--safe-top) + 22px) 20px 6px;
+  }
+  .search-header h1{ font-size:26px; margin:0 0 4px; font-weight:900; }
+  .search-header p{ margin:0; color:var(--muted); font-family:var(--font-ui); font-size:13px; }
+
+  .filter-group{ padding:18px 20px 4px; }
+  .filter-label{ font-family:var(--font-ui); font-size:11px; font-weight:700; letter-spacing:.06em; color:var(--muted); text-transform:uppercase; margin-bottom:10px; }
+  .chip-row{ display:flex; flex-wrap:wrap; gap:8px; }
+  .chip{
+    font-family:var(--font-ui); font-size:13px; font-weight:600; padding:9px 16px;
+    border-radius:99px; background:var(--white); border:1px solid var(--paper-line); color:var(--ink-text);
+    transition:all .18s ease;
+  }
+  .chip.active{ background:var(--ink); color:#fff; border-color:var(--ink); }
+
+  .result-count{ padding:22px 20px 10px; font-family:var(--font-ui); font-size:13px; color:var(--muted); }
+  .result-grid{
+    display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:0 20px;
+  }
+  .result-card{ text-align:left; }
+  .result-thumb{
+    position:relative; aspect-ratio:9/13; border-radius:16px; overflow:hidden; margin-bottom:8px;
+    display:flex; align-items:flex-end; padding:10px;
+  }
+  .result-thumb .badge{ position:absolute; top:8px; left:8px; }
+  .result-duration{
+    font-family:var(--font-ui); font-size:11px; font-weight:600; color:#fff;
+    background:rgba(0,0,0,.4); padding:3px 7px; border-radius:99px; backdrop-filter:blur(4px);
+  }
+  .result-title{ font-size:13.5px; font-weight:700; margin:0 0 3px; line-height:1.35; }
+  .result-meta{ font-family:var(--font-ui); font-size:11.5px; color:var(--muted); margin:0; }
+
+  .empty-state{ text-align:center; padding:70px 30px; color:var(--muted); font-family:var(--font-ui); font-size:14px; line-height:1.7; }
+
+  /* ============================================================
+     ロング動画画面
+  ============================================================ */
+  #player-screen{ background:#000; }
+  .player-header{
+    position:absolute; top:0; left:0; right:0; z-index:5; padding:calc(var(--safe-top) + 14px) 16px 30px;
+    background:linear-gradient(180deg, rgba(0,0,0,.65), rgba(0,0,0,0));
+    display:flex; align-items:center; gap:12px;
+  }
+  .back-btn{ width:34px; height:34px; border-radius:50%; background:rgba(255,255,255,.14); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; }
+  .player-header-title{ font-family:var(--font-ui); font-size:13px; font-weight:600; color:#fff; opacity:.85; }
+  #player-video{ width:100%; height:100%; object-fit:contain; background:#000; }
+  .player-info{ position:absolute; left:0; right:0; bottom:0; padding:20px 20px calc(20px + var(--safe-bottom)); background:linear-gradient(0deg, rgba(0,0,0,.75), rgba(0,0,0,0)); }
+  .player-info h2{ font-size:18px; margin:0 0 6px; }
+  .player-info p{ margin:0; font-family:var(--font-ui); font-size:12.5px; color:rgba(255,255,255,.75); }
+
+  /* ============================================================
+     PWAインストール案内バナー
+  ============================================================ */
+  #install-banner{
+    position:absolute; left:14px; right:14px; z-index:20;
+    bottom:calc(78px + var(--safe-bottom));
+    background:var(--white); color:var(--ink-text); border-radius:16px;
+    padding:13px 14px; display:none; align-items:center; gap:12px;
+    box-shadow:0 10px 30px rgba(0,0,0,.35);
+    font-family:var(--font-ui);
+  }
+  #install-banner.show{ display:flex; }
+  #install-banner .ib-icon{ width:36px; height:36px; border-radius:9px; background:var(--ink); flex-shrink:0; display:flex; align-items:center; justify-content:center; color:var(--ember); font-weight:900; }
+  #install-banner .ib-text{ flex:1; }
+  #install-banner .ib-title{ font-size:13px; font-weight:700; margin:0 0 1px; }
+  #install-banner .ib-sub{ font-size:11.5px; color:var(--muted); margin:0; }
+  #install-banner button.ib-cta{ background:var(--ink); color:#fff; font-size:12px; font-weight:700; padding:8px 12px; border-radius:99px; }
+  #install-banner button.ib-close{ color:var(--muted); font-size:18px; padding:4px; }
+
+  @media (prefers-reduced-motion: reduce){
+    .zone-meter-fill{ transition:none; }
+    .learn-more-btn.pulse .learn-more-circle{ animation:none; }
+    .like-btn.pop .like-circle{ animation:none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ============ ホーム画面（ショート動画フィード） ============ -->
+  <section id="home-screen" class="screen active">
+    <div id="feed"></div>
+    <div id="bottom-nav">
+      <button class="nav-btn active" data-nav="home"><span class="nav-icon">▶</span><span class="nav-text">ホーム</span></button>
+      <button class="nav-btn" data-nav="search"><span class="nav-icon">◎</span><span class="nav-text">検索</span></button>
+    </div>
+    <div id="install-banner">
+      <div class="ib-icon">Z</div>
+      <div class="ib-text">
+        <p class="ib-title">ZoneNOWをホーム画面に追加</p>
+        <p class="ib-sub">アプリのようにワンタップで起動できます</p>
+      </div>
+      <button class="ib-cta" id="install-btn">追加</button>
+      <button class="ib-close" id="install-close">×</button>
+    </div>
+  </section>
+
+  <!-- ============ 検索画面 ============ -->
+  <section id="search-screen" class="screen">
+    <div class="search-header">
+      <h1>探す</h1>
+      <p>学年・教科・単元から、いま必要な一本を見つける</p>
+    </div>
+
+    <div class="filter-group">
+      <div class="filter-label">学年</div>
+      <div class="chip-row" id="grade-chips"></div>
+    </div>
+    <div class="filter-group">
+      <div class="filter-label">教科</div>
+      <div class="chip-row" id="subject-chips"></div>
+    </div>
+    <div class="filter-group">
+      <div class="filter-label">単元</div>
+      <div class="chip-row" id="unit-chips"></div>
+    </div>
+    <div class="filter-group">
+      <div class="filter-label">お気に入り</div>
+      <div class="chip-row" id="favorite-chip"></div>
+    </div>
+
+    <div class="result-count" id="result-count"></div>
+    <div class="result-grid" id="result-grid"></div>
+    <div id="empty-state" class="empty-state" style="display:none;">条件に合う動画がまだありません。<br>条件を変えて探してみてください。</div>
+
+    <div id="bottom-nav-search" class="on-paper" style="position:sticky; bottom:0;">
+      <button class="nav-btn" data-nav="home"><span class="nav-icon">▶</span><span class="nav-text">ホーム</span></button>
+      <button class="nav-btn active" data-nav="search"><span class="nav-icon">◎</span><span class="nav-text">検索</span></button>
+    </div>
+  </section>
+
+  <!-- ============ ロング動画画面 ============ -->
+  <section id="player-screen" class="screen">
+    <div class="player-header">
+      <button class="back-btn" id="player-back">←</button>
+      <span class="player-header-title">本編動画</span>
+    </div>
+    <video id="player-video" playsinline controls></video>
+    <div class="player-info">
+      <h2 id="player-title"></h2>
+      <p id="player-meta"></p>
+    </div>
+  </section>
+
+</div>
+
+<script>
+/* ============================================================
+   ◆ 動画データベース ◆
+   ------------------------------------------------------------
+   ここが「動画を追加する場所」です。他のコードには一切触れず、
+   このリストに1件追加するだけで、検索・フィード両方に反映されます。
+   subject / grade は下の SUBJECTS / GRADES と対応させてください。
+   shortSrc / longSrc は今はデモ用の仮動画URLです。
+   実際のコンテンツができたら、ここのURLだけ差し替えてください。
+============================================================ */
+const GRADES = [
+  { id:'high1', label:'高校1年' },
+  { id:'high2', label:'高校2年' },
+  { id:'high3', label:'高校3年' },
+];
+const SUBJECTS = [
+  { id:'math', label:'数学' },
+  { id:'japanese', label:'国語' },
+  { id:'english', label:'英語' },
+];
+
+// デモ用の仮動画(公開サンプル素材)。本番では自社動画URLに差し替えます。
+const DEMO_SHORT = [
+  "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+  "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
+  "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+  "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+  "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
+];
+const DEMO_LONG = [
+  "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+  "https://storage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+  "https://storage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
+];
+
+const VIDEOS = [
+  { id:'m1', subject:'math', grade:'high1', unit:'二次関数', title:'二次関数の最大値を10秒でつかむ', creator:'ゾーン先生', duration:24, short:DEMO_SHORT[0], long:DEMO_LONG[0] },
+  { id:'m2', subject:'math', grade:'high1', unit:'因数分解', title:'たすき掛けが一瞬で見える裏ワザ', creator:'すうがく部 リナ', duration:19, short:DEMO_SHORT[1], long:DEMO_LONG[1] },
+  { id:'m3', subject:'math', grade:'high2', unit:'微分', title:'微分は"変化の速さ"を測るだけ', creator:'ゾーン先生', duration:31, short:DEMO_SHORT[2], long:DEMO_LONG[2] },
+  { id:'m4', subject:'math', grade:'high2', unit:'ベクトル', title:'ベクトルの内積、図で見たら一瞬', creator:'かず先輩', duration:22, short:DEMO_SHORT[3], long:DEMO_LONG[0] },
+  { id:'m5', subject:'math', grade:'high3', unit:'積分', title:'積分=面積を求めるだけと知って楽になった話', creator:'ゾーン先生', duration:28, short:DEMO_SHORT[4], long:DEMO_LONG[1] },
+
+  { id:'j1', subject:'japanese', grade:'high1', unit:'現代文読解', title:'筆者の主張を10秒で見抜く読み方', creator:'国語のミナ', duration:26, short:DEMO_SHORT[0], long:DEMO_LONG[1] },
+  { id:'j2', subject:'japanese', grade:'high1', unit:'古文文法', title:'助動詞「き」と「けり」の違い、一発理解', creator:'古文先生', duration:21, short:DEMO_SHORT[1], long:DEMO_LONG[2] },
+  { id:'j3', subject:'japanese', grade:'high2', unit:'漢文句法', title:'漢文の「使役」はこの2文字だけ覚えればいい', creator:'古文先生', duration:18, short:DEMO_SHORT[2], long:DEMO_LONG[0] },
+  { id:'j4', subject:'japanese', grade:'high3', unit:'小論文', title:'小論文が伸びない人の共通点', creator:'国語のミナ', duration:29, short:DEMO_SHORT[3], long:DEMO_LONG[1] },
+
+  { id:'e1', subject:'english', grade:'high1', unit:'文型', title:'英語の5文型、結局これだけ覚えればいい', creator:'イングリッシュTAKU', duration:23, short:DEMO_SHORT[4], long:DEMO_LONG[2] },
+  { id:'e2', subject:'english', grade:'high2', unit:'関係代名詞', title:'関係代名詞が苦手な理由、正体はこれ', creator:'イングリッシュTAKU', duration:25, short:DEMO_SHORT[0], long:DEMO_LONG[0] },
+  { id:'e3', subject:'english', grade:'high2', unit:'仮定法', title:'仮定法過去は"妄想"の話だった', creator:'えいご部 モモ', duration:20, short:DEMO_SHORT[1], long:DEMO_LONG[1] },
+  { id:'e4', subject:'english', grade:'high3', unit:'長文読解', title:'長文の最初の3行だけ読めば展開が読める', creator:'イングリッシュTAKU', duration:27, short:DEMO_SHORT[2], long:DEMO_LONG[2] },
+];
+
+function labelOf(list, id){ const f = list.find(x=>x.id===id); return f ? f.label : id; }
+
+// ---- いいね（お気に入り）: localStorageに保存して端末に残す ----
+const LIKED_KEY = 'zonenow_liked_ids';
+function getLikedIds(){
+  try{ return JSON.parse(localStorage.getItem(LIKED_KEY)) || []; }
+  catch{ return []; }
+}
+function isLiked(id){ return getLikedIds().includes(id); }
+function toggleLiked(id){
+  const liked = getLikedIds();
+  const idx = liked.indexOf(id);
+  if(idx === -1) liked.push(id); else liked.splice(idx, 1);
+  localStorage.setItem(LIKED_KEY, JSON.stringify(liked));
+  return idx === -1;
+}
+
+/* ============================================================
+   ◆ ここから下がアプリの動作ロジック ◆
+============================================================ */
+
+// ---- 画面切り替え ----
+const screens = {
+  home: document.getElementById('home-screen'),
+  search: document.getElementById('search-screen'),
+  player: document.getElementById('player-screen'),
+};
+function showScreen(name){
+  Object.values(screens).forEach(s=>s.classList.remove('active'));
+  screens[name].classList.add('active');
+  document.querySelectorAll('[data-nav]').forEach(btn=>{
+    btn.classList.toggle('active', btn.dataset.nav === name);
+  });
+  if(name !== 'player'){
+    const pv = document.getElementById('player-video');
+    pv.pause();
+  }
+  if(name !== 'home'){
+    pauseAllShorts();
+  }
+}
+document.querySelectorAll('[data-nav]').forEach(btn=>{
+  btn.addEventListener('click', ()=> showScreen(btn.dataset.nav));
+});
+
+// ---- ショート動画フィードの生成 ----
+const feedEl = document.getElementById('feed');
+let feedVideos = VIDEOS; // 検索結果からここへ差し込むことも可能な設計
+
+function renderFeed(videos){
+  feedEl.innerHTML = '';
+  videos.forEach(v=>{
+    const slide = document.createElement('div');
+    slide.className = 'short-slide';
+    slide.dataset.id = v.id;
+    slide.innerHTML = `
+      <div class="zone-meter"><div class="zone-meter-fill"></div></div>
+      <video src="${v.short}" muted loop playsinline preload="metadata"></video>
+      <button class="mute-btn">🔇</button>
+      <div class="short-top">
+        <span class="badge subject">${labelOf(SUBJECTS, v.subject)}</span>
+        <span class="badge">${labelOf(GRADES, v.grade)}</span>
+        <span class="badge">${v.unit}</span>
+      </div>
+      <div class="short-bottom">
+        <p class="short-title">${v.title}</p>
+        <p class="short-creator">@${v.creator}</p>
+      </div>
+      <button class="like-btn" data-like="${v.id}">
+        <span class="like-circle">♡</span>
+        <span class="like-label">いいね</span>
+      </button>
+      <button class="learn-more-btn" data-longof="${v.id}">
+        <span class="learn-more-circle">▶</span>
+        <span class="learn-more-label">もっと学ぶ</span>
+      </button>
+    `;
+    feedEl.appendChild(slide);
+  });
+  attachSlideEvents();
+  observeSlides();
+}
+
+function attachSlideEvents(){
+  feedEl.querySelectorAll('.short-slide').forEach(slide=>{
+    const video = slide.querySelector('video');
+    const muteBtn = slide.querySelector('.mute-btn');
+    muteBtn.addEventListener('click', ()=>{
+      video.muted = !video.muted;
+      muteBtn.textContent = video.muted ? '🔇' : '🔊';
+    });
+    const learnBtn = slide.querySelector('.learn-more-btn');
+    learnBtn.addEventListener('click', ()=>{
+      openPlayer(learnBtn.dataset.longof);
+    });
+
+    const likeBtn = slide.querySelector('.like-btn');
+    setLikeBtnState(likeBtn, isLiked(likeBtn.dataset.like));
+    likeBtn.addEventListener('click', ()=>{
+      const nowLiked = toggleLiked(likeBtn.dataset.like);
+      setLikeBtnState(likeBtn, nowLiked);
+      likeBtn.classList.remove('pop');
+      void likeBtn.offsetWidth; // アニメーションを再生させるための強制リフロー
+      likeBtn.classList.add('pop');
+    });
+  });
+}
+
+function setLikeBtnState(btn, liked){
+  btn.classList.toggle('liked', liked);
+  btn.querySelector('.like-circle').textContent = liked ? '♥' : '♡';
+}
+
+// ---- スワイプで表示されている動画だけ再生する ----
+let currentAudibleState = true; // ミュート状態をスライド間で引き継ぐ
+function observeSlides(){
+  const slides = feedEl.querySelectorAll('.short-slide');
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{
+      const video = entry.target.querySelector('video');
+      const meter = entry.target.querySelector('.zone-meter-fill');
+      const learnBtn = entry.target.querySelector('.learn-more-btn');
+      if(entry.isIntersecting && entry.intersectionRatio > 0.6){
+        video.currentTime = 0;
+        video.play().catch(()=>{});
+        video.muted = !currentAudibleState;
+        runZoneMeter(video, meter, learnBtn);
+      } else {
+        video.pause();
+        meter.style.transition = 'none';
+        meter.style.width = '0%';
+      }
+    });
+  }, { threshold:[0,0.6,1] });
+  slides.forEach(s=>io.observe(s));
+}
+
+function runZoneMeter(video, meter, learnBtn){
+  meter.style.transition = 'none';
+  meter.style.width = '0%';
+  learnBtn.classList.remove('pulse');
+  const start = ()=>{
+    const dur = video.duration && isFinite(video.duration) ? video.duration : 20;
+    requestAnimationFrame(()=>{
+      meter.style.transition = `width ${dur}s linear`;
+      meter.style.width = '100%';
+    });
+  };
+  if(video.readyState >= 1) start();
+  else video.addEventListener('loadedmetadata', start, { once:true });
+
+  video.onended = ()=>{
+    learnBtn.classList.add('pulse');
+    setTimeout(()=>learnBtn.classList.remove('pulse'), 1200);
+  };
+}
+
+function pauseAllShorts(){
+  feedEl.querySelectorAll('video').forEach(v=>v.pause());
+}
+
+renderFeed(feedVideos);
+
+// ---- 検索画面 ----
+let activeGrade = 'all';
+let activeSubject = 'all';
+let activeUnit = 'all';
+let showFavoritesOnly = false;
+
+function renderChips(){
+  const gradeWrap = document.getElementById('grade-chips');
+  const subjectWrap = document.getElementById('subject-chips');
+  const unitWrap = document.getElementById('unit-chips');
+  const favoriteWrap = document.getElementById('favorite-chip');
+
+  gradeWrap.innerHTML = chipHtml([{id:'all',label:'すべて'}, ...GRADES], activeGrade);
+  subjectWrap.innerHTML = chipHtml([{id:'all',label:'すべて'}, ...SUBJECTS], activeSubject);
+
+  const unitsForSubject = activeSubject === 'all'
+    ? [...new Set(VIDEOS.map(v=>v.unit))]
+    : [...new Set(VIDEOS.filter(v=>v.subject===activeSubject).map(v=>v.unit))];
+  const unitOptions = [{id:'all', label:'すべて'}, ...unitsForSubject.map(u=>({id:u, label:u}))];
+  unitWrap.innerHTML = chipHtml(unitOptions, activeUnit);
+  favoriteWrap.innerHTML = `<button class="chip ${showFavoritesOnly?'active':''}" id="favorite-toggle">♥ お気に入りのみ表示</button>`;
+
+  gradeWrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{ activeGrade=c.dataset.id; renderChips(); renderResults(); }));
+  subjectWrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{ activeSubject=c.dataset.id; activeUnit='all'; renderChips(); renderResults(); }));
+  unitWrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{ activeUnit=c.dataset.id; renderChips(); renderResults(); }));
+  document.getElementById('favorite-toggle').addEventListener('click', ()=>{ showFavoritesOnly=!showFavoritesOnly; renderChips(); renderResults(); });
+}
+function chipHtml(list, activeId){
+  return list.map(item=>`<button class="chip ${item.id===activeId?'active':''}" data-id="${item.id}">${item.label}</button>`).join('');
+}
+
+function filteredVideos(){
+  return VIDEOS.filter(v=>
+    (activeGrade==='all' || v.grade===activeGrade) &&
+    (activeSubject==='all' || v.subject===activeSubject) &&
+    (activeUnit==='all' || v.unit===activeUnit) &&
+    (!showFavoritesOnly || isLiked(v.id))
+  );
+}
+
+const gradientBySubject = {
+  math: 'linear-gradient(160deg, #2B2E63, #10131A)',
+  japanese: 'linear-gradient(160deg, #7A3B2E, #10131A)',
+  english: 'linear-gradient(160deg, #1E5C55, #10131A)',
+};
+
+function renderResults(){
+  const results = filteredVideos();
+  document.getElementById('result-count').textContent = `${results.length}件の動画`;
+  const grid = document.getElementById('result-grid');
+  const empty = document.getElementById('empty-state');
+  grid.style.display = results.length ? 'grid' : 'none';
+  empty.style.display = results.length ? 'none' : 'block';
+
+  grid.innerHTML = results.map(v=>`
+    <button class="result-card" data-id="${v.id}">
+      <div class="result-thumb" style="background:${gradientBySubject[v.subject]}">
+        <span class="badge">${labelOf(GRADES, v.grade)}</span>
+        <span class="result-duration">${v.duration}秒</span>
+      </div>
+      <p class="result-title">${v.title}</p>
+      <p class="result-meta">${labelOf(SUBJECTS, v.subject)} ・ ${v.unit}</p>
+    </button>
+  `).join('');
+
+  grid.querySelectorAll('.result-card').forEach(card=>{
+    card.addEventListener('click', ()=> jumpToShort(card.dataset.id));
+  });
+}
+
+function jumpToShort(id){
+  showScreen('home');
+  const target = feedEl.querySelector(`.short-slide[data-id="${id}"]`);
+  if(target) target.scrollIntoView({ behavior:'instant', block:'start' });
+}
+
+renderChips();
+renderResults();
+
+// ---- ロング動画プレイヤー ----
+function openPlayer(id){
+  const v = VIDEOS.find(x=>x.id===id);
+  if(!v) return;
+  const pv = document.getElementById('player-video');
+  pv.src = v.long;
+  document.getElementById('player-title').textContent = v.title + '(本編)';
+  document.getElementById('player-meta').textContent = `${labelOf(SUBJECTS, v.subject)} ・ ${labelOf(GRADES, v.grade)} ・ ${v.unit} ・ ${v.creator}`;
+  showScreen('player');
+  pv.play().catch(()=>{});
+}
+document.getElementById('player-back').addEventListener('click', ()=> showScreen('home'));
+
+// ---- PWA: ホーム画面追加バナー ----
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById('install-banner').classList.add('show');
+});
+document.getElementById('install-btn').addEventListener('click', async ()=>{
+  document.getElementById('install-banner').classList.remove('show');
+  if(deferredPrompt){
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+  }
+});
+document.getElementById('install-close').addEventListener('click', ()=>{
+  document.getElementById('install-banner').classList.remove('show');
+});
+
+// ---- Service Worker登録 ----
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{ /* プレビュー環境では失敗することがありますが問題ありません */ });
+  });
+}
+</script>
+</body>
+</html>

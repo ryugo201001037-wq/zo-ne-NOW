@@ -232,6 +232,52 @@
     .learn-more-btn.pulse .learn-more-circle{ animation:none; }
     .like-btn.pop .like-circle{ animation:none; }
   }
+
+  /* ============================================================
+     初回オンボーディング：開いてすぐ「ホーム画面に追加」を促す
+     （このサービスの核＝始めるまでの障壁の少なさ、を最初に体験させる）
+  ============================================================ */
+  #onboarding-overlay{
+    position:fixed; inset:0; z-index:200; display:none;
+    flex-direction:column; align-items:center; justify-content:center;
+    background:radial-gradient(120% 100% at 50% 0%, var(--indigo) 0%, var(--ink) 55%);
+    padding:40px 28px calc(40px + var(--safe-bottom));
+    text-align:center;
+  }
+  #onboarding-overlay.show{ display:flex; }
+  .onboarding-icon{
+    width:88px; height:88px; border-radius:26px; margin-bottom:26px;
+    background:linear-gradient(160deg, var(--ember), var(--ember-soft));
+    display:flex; align-items:center; justify-content:center;
+    font-size:38px; font-weight:900; color:#fff;
+    box-shadow:0 14px 32px rgba(255,90,54,.4);
+  }
+  .onboarding-title{ font-size:23px; font-weight:900; margin:0 0 10px; line-height:1.4; }
+  .onboarding-sub{
+    font-family:var(--font-ui); font-size:14px; line-height:1.7; color:rgba(255,255,255,.68);
+    margin:0 0 30px; max-width:300px;
+  }
+  .onboarding-steps{ width:100%; max-width:320px; display:flex; flex-direction:column; gap:10px; }
+  .onboarding-step{
+    display:flex; align-items:center; gap:12px; text-align:left;
+    background:rgba(255,255,255,.07); border-radius:14px; padding:13px 16px;
+  }
+  .onboarding-step-num{
+    width:22px; height:22px; border-radius:50%; flex-shrink:0;
+    background:var(--ember); color:#fff; font-family:var(--font-ui); font-size:11px; font-weight:700;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .onboarding-step-text{ font-family:var(--font-ui); font-size:13px; line-height:1.5; color:rgba(255,255,255,.9); }
+  .onboarding-step-text b{ color:#fff; }
+  .onboarding-cta{
+    margin-top:26px; background:var(--ember); color:#fff; font-family:var(--font-ui);
+    font-weight:700; font-size:15px; padding:15px 36px; border-radius:99px;
+    box-shadow:0 10px 26px rgba(255,90,54,.4); transition:transform .15s ease;
+  }
+  .onboarding-cta:active{ transform:scale(.96); }
+  .onboarding-skip{
+    margin-top:18px; font-family:var(--font-ui); font-size:13px; color:rgba(255,255,255,.45); padding:8px;
+  }
 </style>
 </head>
 <body>
@@ -303,6 +349,18 @@
     </div>
   </section>
 
+</div>
+
+<!-- ============ 初回オンボーディング（ホーム画面に追加） ============ -->
+<div id="onboarding-overlay">
+  <div class="onboarding-icon">Z</div>
+  <h1 class="onboarding-title">アプリとして<br>すぐに始めよう</h1>
+  <p class="onboarding-sub" id="onboarding-sub">ホーム画面に追加すれば、次からはアイコンをタップするだけ。ブラウザを探す手間がゼロになります。</p>
+
+  <div class="onboarding-steps" id="onboarding-steps"></div>
+
+  <button class="onboarding-cta" id="onboarding-cta">ホーム画面に追加する</button>
+  <button class="onboarding-skip" id="onboarding-skip">あとで(ブラウザのまま始める)</button>
 </div>
 
 <script>
@@ -613,13 +671,82 @@ function openPlayer(id){
 }
 document.getElementById('player-back').addEventListener('click', ()=> showScreen('home'));
 
-// ---- PWA: ホーム画面追加バナー ----
+// ---- PWA: ホーム画面追加（初回オンボーディング＋以降の控えめなバナー） ----
+const ONBOARDING_KEY = 'zonenow_onboarding_done';
 let deferredPrompt = null;
+
+function isStandalone(){
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+function isIOS(){
+  return /iphone|ipad|ipod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+function isMobile(){
+  return /android|iphone|ipad|ipod/i.test(navigator.userAgent) || isIOS();
+}
+
+const onboardingOverlay = document.getElementById('onboarding-overlay');
+const onboardingCta = document.getElementById('onboarding-cta');
+const onboardingSkip = document.getElementById('onboarding-skip');
+const onboardingSteps = document.getElementById('onboarding-steps');
+const onboardingSub = document.getElementById('onboarding-sub');
+
+function finishOnboarding(){
+  localStorage.setItem(ONBOARDING_KEY, '1');
+  onboardingOverlay.classList.remove('show');
+}
+
+function initOnboarding(){
+  if(isStandalone() || localStorage.getItem(ONBOARDING_KEY) || !isMobile()) return;
+
+  if(isIOS()){
+    // iOSはbeforeinstallpromptが存在せず、共有シートからの手動操作しかできない
+    onboardingSub.textContent = '共有ボタンから、あと2タップで完了します。';
+    onboardingSteps.innerHTML = `
+      <div class="onboarding-step">
+        <span class="onboarding-step-num">1</span>
+        <span class="onboarding-step-text">画面下の<b>共有ボタン(□↑)</b>をタップ</span>
+      </div>
+      <div class="onboarding-step">
+        <span class="onboarding-step-num">2</span>
+        <span class="onboarding-step-text">メニューから<b>「ホーム画面に追加」</b>を選択</span>
+      </div>
+    `;
+    onboardingCta.style.display = 'none';
+  } else {
+    onboardingCta.style.display = 'inline-flex';
+    onboardingCta.textContent = deferredPrompt ? 'ホーム画面に追加する' : '準備中…';
+  }
+  onboardingOverlay.classList.add('show');
+}
+
 window.addEventListener('beforeinstallprompt', (e)=>{
   e.preventDefault();
   deferredPrompt = e;
-  document.getElementById('install-banner').classList.add('show');
+  if(onboardingOverlay.classList.contains('show') && !isIOS()){
+    onboardingCta.textContent = 'ホーム画面に追加する';
+  } else if(localStorage.getItem(ONBOARDING_KEY)){
+    // オンボーディングで見送った人にだけ、控えめに再度案内する
+    document.getElementById('install-banner').classList.add('show');
+  }
 });
+
+onboardingCta.addEventListener('click', async ()=>{
+  if(!deferredPrompt){
+    onboardingCta.textContent = 'ブラウザメニューの「インストール」からどうぞ';
+    setTimeout(()=>{ onboardingCta.textContent = 'ホーム画面に追加する'; }, 2500);
+    return;
+  }
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  finishOnboarding();
+});
+onboardingSkip.addEventListener('click', finishOnboarding);
+
+initOnboarding();
+
 document.getElementById('install-btn').addEventListener('click', async ()=>{
   document.getElementById('install-banner').classList.remove('show');
   if(deferredPrompt){

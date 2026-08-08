@@ -99,18 +99,14 @@
 
   /* 画面の端に常に置いておく「勉強する」ボタン。
      割り込み画面を待たなくても、いつでも自分から学習に入れるようにするための入口。
-     左端の縦中央に置くことで、上のミュート/ログボタンや、下の初回訪問バナーと
-     絶対に重ならない位置にしている。 */
+     動画の邪魔にならないよう、ミュート/ログボタンと対になる左上の隅に、
+     同じ大きさの丸アイコンボタンとして置いている（大きなピル型だと動画に被って邪魔だったため）。 */
   .quick-study-btn{
-    position:fixed; left:14px; top:50%; transform:translateY(-50%); z-index:20;
-    display:flex; align-items:center; gap:6px;
-    padding:11px 14px; border-radius:999px;
-    background:rgba(255,90,54,.94); color:var(--white);
-    font-family:var(--font-ui); font-size:13px; font-weight:600;
-    box-shadow:0 6px 18px rgba(0,0,0,.4);
+    position:fixed; top:calc(var(--safe-top) + 14px); left:14px; z-index:20;
+    background:rgba(255,90,54,.94);
     transition:transform .15s ease;
   }
-  .quick-study-btn:active{ transform:translateY(-50%) scale(.95); }
+  .quick-study-btn:active{ transform:scale(.9); }
 
   #feed-loading{
     position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
@@ -167,9 +163,9 @@
     font-family:var(--font-ui); font-size:56px; font-weight:700; letter-spacing:.02em;
     margin-bottom:14px; font-variant-numeric:tabular-nums;
   }
-  /* タイマーの進み具合を示すバー。
+  /* タイマーの進み具合（目標時間に対してどれだけ経過したか）を示すバー。
      Zoneメーターの発想（エンバー→ミントのグラデーション）を
-     「集中の深まり」を表す演出として、タイマーの残り時間バーに転用しています。 */
+     「集中の深まり」を表す演出として転用しています。 */
   .timer-bar{
     height:6px; border-radius:99px; background:rgba(255,255,255,.1);
     overflow:hidden; margin-bottom:28px;
@@ -234,7 +230,7 @@
     </div>
 
     <!-- 画面の端に常に置いておく「勉強する」ボタン。いつでも自分から学習に入れる。 -->
-    <button id="btn-quick-study" class="quick-study-btn">📚 勉強する</button>
+    <button id="btn-quick-study" class="icon-btn quick-study-btn" aria-label="勉強を始める">📚</button>
 
     <p class="swipe-hint">↑ 上にスワイプで次の動画　/　タップで音ON・OFF</p>
   </section>
@@ -266,7 +262,7 @@
         <button class="duration-btn" data-min="25">25分</button>
       </div>
 
-      <div class="timer-display" id="timer-display">15:00</div>
+      <div class="timer-display" id="timer-display">00:00</div>
       <div class="timer-bar"><div class="timer-bar-fill" id="timer-bar-fill"></div></div>
 
       <button id="btn-timer-start" class="btn btn-primary">スタート</button>
@@ -659,10 +655,15 @@ document.getElementById("btn-keep-watching").addEventListener("click", () => {
 });
 
 /* ============================================================
-   ③ 学習タイマー
+   ③ 学習タイマー（カウントアップ方式）
+   ------------------------------------------------------------
+   「残り時間がどんどん減っていく」プレッシャーではなく、
+   「頑張った時間がどんどん増えていく」達成感を見せたいので、
+   0:00から目標時間に向かって数字が増えていく方式にしています。
+   目標（5/15/25分）に到達したら自動的に完了扱いになります。
 ============================================================ */
-let timerDurationSec = 15 * 60; // 選択中の時間（秒）
-let timerRemainingSec = timerDurationSec;
+let timerTargetSec = 15 * 60;  // 目標時間（選んだ分数、秒に変換）
+let timerElapsedSec = 0;       // ここまで経過した時間（0から増えていく）
 let timerIntervalId = null;
 
 const timerDisplay = document.getElementById("timer-display");
@@ -671,35 +672,35 @@ const durationButtons = document.querySelectorAll(".duration-btn");
 
 durationButtons.forEach((btn) => {
   btn.addEventListener("click", () => {
-    if (timerIntervalId) return; // タイマー動作中は時間を変更させない
+    if (timerIntervalId) return; // タイマー動作中は目標を変更させない
     durationButtons.forEach((b) => b.classList.remove("selected"));
     btn.classList.add("selected");
-    timerDurationSec = Number(btn.dataset.min) * 60;
-    timerRemainingSec = timerDurationSec;
+    timerTargetSec = Number(btn.dataset.min) * 60;
+    timerElapsedSec = 0;
     renderTimer();
   });
 });
 
 function renderTimer(){
-  const min = Math.floor(timerRemainingSec / 60).toString().padStart(2, "0");
-  const sec = (timerRemainingSec % 60).toString().padStart(2, "0");
+  const min = Math.floor(timerElapsedSec / 60).toString().padStart(2, "0");
+  const sec = (timerElapsedSec % 60).toString().padStart(2, "0");
   timerDisplay.textContent = `${min}:${sec}`;
 
-  const progress = 1 - timerRemainingSec / timerDurationSec;
-  timerBarFill.style.width = (progress * 100) + "%";
+  const progress = timerElapsedSec / timerTargetSec;
+  timerBarFill.style.width = (Math.min(progress, 1) * 100) + "%";
 }
 
 document.getElementById("btn-timer-start").addEventListener("click", () => {
   if (timerIntervalId) return; // すでに動いていたら何もしない
   timerIntervalId = setInterval(() => {
-    timerRemainingSec--;
+    timerElapsedSec++;
     renderTimer();
-    if (timerRemainingSec <= 0){
+    if (timerElapsedSec >= timerTargetSec){
       clearInterval(timerIntervalId);
       timerIntervalId = null;
 
-      // 完走した分だけ、今日の勉強時間として記録する
-      addStudyTime(timerDurationSec);
+      // 目標時間ぶん、今日の勉強時間として記録する
+      addStudyTime(timerTargetSec);
       document.getElementById("done-today-time").textContent =
         "今日の合計勉強時間: " + formatStudyDuration(getTodayStudySeconds());
 
@@ -711,7 +712,7 @@ document.getElementById("btn-timer-start").addEventListener("click", () => {
 document.getElementById("btn-timer-reset").addEventListener("click", () => {
   clearInterval(timerIntervalId);
   timerIntervalId = null;
-  timerRemainingSec = timerDurationSec;
+  timerElapsedSec = 0;
   renderTimer();
 });
 
@@ -730,7 +731,7 @@ document.getElementById("btn-done-home").addEventListener("click", () => {
 function resumeFeedFromTimer(){
   clearInterval(timerIntervalId);
   timerIntervalId = null;
-  timerRemainingSec = timerDurationSec;
+  timerElapsedSec = 0;
   renderTimer();
   showScreen("screen-feed");
 

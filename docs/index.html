@@ -171,9 +171,20 @@
     z-index:50; background:var(--card); border-radius:16px; padding:16px 18px;
     display:flex; align-items:center; gap:12px;
     box-shadow:0 8px 30px rgba(0,0,0,.4);
-    transform:translateY(120%); transition:transform .35s ease;
+    /* transform（見た目の移動）だけだと、バナーの高さによっては
+       画面の下にわずかに見切れて残ってしまうことがあった。
+       opacityとvisibilityも一緒に切り替えることで、確実に消えるようにしている。 */
+    transform:translateY(120%);
+    opacity:0;
+    visibility:hidden;
+    transition:transform .35s ease, opacity .35s ease, visibility 0s linear .35s;
   }
-  #pwa-banner.visible{ transform:translateY(0); }
+  #pwa-banner.visible{
+    transform:translateY(0);
+    opacity:1;
+    visibility:visible;
+    transition:transform .35s ease, opacity .35s ease, visibility 0s linear 0s;
+  }
   #pwa-banner p{
     margin:0; font-size:13px; line-height:1.6; color:var(--white); font-family:var(--font-ui);
     flex:1;

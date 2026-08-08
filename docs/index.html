@@ -150,30 +150,11 @@
   #screen-prompt{ background:rgba(16,19,26,.94); backdrop-filter:blur(10px); }
 
   /* ============================================================
-     学習タイマー画面
+     学習タイマー画面（ストップウォッチ）
   ============================================================ */
-  .duration-select{ display:flex; gap:10px; margin-bottom:26px; }
-  .duration-btn{
-    flex:1; padding:14px 0; border-radius:12px; background:rgba(255,255,255,.06);
-    color:var(--white); font-family:var(--font-ui); font-size:15px; font-weight:600;
-  }
-  .duration-btn.selected{ background:var(--ember); }
-
   .timer-display{
     font-family:var(--font-ui); font-size:56px; font-weight:700; letter-spacing:.02em;
-    margin-bottom:14px; font-variant-numeric:tabular-nums;
-  }
-  /* タイマーの進み具合（目標時間に対してどれだけ経過したか）を示すバー。
-     Zoneメーターの発想（エンバー→ミントのグラデーション）を
-     「集中の深まり」を表す演出として転用しています。 */
-  .timer-bar{
-    height:6px; border-radius:99px; background:rgba(255,255,255,.1);
-    overflow:hidden; margin-bottom:28px;
-  }
-  .timer-bar-fill{
-    height:100%; width:0%; border-radius:99px;
-    background:linear-gradient(90deg, var(--ember), var(--mint));
-    transition:width 1s linear;
+    margin-bottom:28px; font-variant-numeric:tabular-nums;
   }
 
   /* ============================================================
@@ -249,24 +230,16 @@
   </section>
 
   <!-- ============================================================
-       ③ 学習タイマー画面
+       ③ 学習タイマー画面（ストップウォッチ：0から数えるだけのシンプル方式）
   ============================================================ -->
   <section id="screen-timer" class="screen">
     <div class="card">
       <h1>学習タイマー</h1>
-      <p class="sub">時間を選んでスタートしましょう</p>
-
-      <div class="duration-select">
-        <button class="duration-btn" data-min="5">5分</button>
-        <button class="duration-btn selected" data-min="15">15分</button>
-        <button class="duration-btn" data-min="25">25分</button>
-      </div>
+      <p class="sub" id="timer-sub">スタートを押して勉強を始めましょう</p>
 
       <div class="timer-display" id="timer-display">00:00</div>
-      <div class="timer-bar"><div class="timer-bar-fill" id="timer-bar-fill"></div></div>
 
-      <button id="btn-timer-start" class="btn btn-primary">スタート</button>
-      <button id="btn-timer-reset" class="btn btn-ghost">リセット</button>
+      <button id="btn-timer-toggle" class="btn btn-primary">スタート</button>
       <button id="btn-timer-back" class="btn btn-text">動画に戻る</button>
     </div>
   </section>
@@ -406,12 +379,26 @@ const players = { a: null, b: null }; // 2台のプレイヤー
 let activeKey = "a";     // 今、表に出ているのはどちらか
 let videoIds = [];       // 再生リストに入っている動画IDの並び
 let currentIndex = 0;    // 今何本目を再生しているか
+let standbyIndex = null; // 裏側のプレイヤーに、次はどの動画を仕込んであるか
+let videoHistory = [];   // 表示した動画のインデックス履歴（下スワイプで戻れるようにするため）
 let watchedCount = 0;    // ここまでに視聴を終えた（または送り飛ばした）動画の本数
 let isMuted = true;
 let cameFromPrompt = false; // タイマー画面に「啓発プロンプト経由」で来たかどうか
 
 function otherKey(key){ return key === "a" ? "b" : "a"; }
 function getActivePlayer(){ return players[activeKey]; }
+
+// 動画一覧の中から、指定したインデックス以外をランダムに1つ選ぶ
+// （「完全ランダム」だが、直前と同じ動画が連続で出るのだけは避ける）
+function pickRandomIndex(excludeIndex){
+  if (videoIds.length === 0) return 0;
+  if (videoIds.length === 1) return 0;
+  let idx;
+  do {
+    idx = Math.floor(Math.random() * videoIds.length);
+  } while (idx === excludeIndex);
+  return idx;
+}
 
 function onYouTubeIframeAPIReady(){
   players.a = new YT.Player("yt-player-a", {
@@ -439,9 +426,16 @@ function onYouTubeIframeAPIReady(){
 function onPrimaryPlayerReady(){
   document.getElementById("feed-loading").classList.add("hidden");
 
-  // 再生リストの中身（動画IDの並び）と、今何本目かを取得する
+  // 再生リストの中身（動画IDの並び）を取得する
   videoIds = players.a.getPlaylist() || [];
   currentIndex = players.a.getPlaylistIndex() || 0;
+
+  // 最初の1本も含めて完全ランダムにするため、ここで見る動画を選び直す
+  if (videoIds.length > 1){
+    currentIndex = pickRandomIndex(-1); // -1は「除外する動画がない」という意味
+    players.a.loadVideoById(videoIds[currentIndex]);
+  }
+
   activeKey = "a";
   applyMuteState();
 
@@ -459,12 +453,12 @@ function onPrimaryPlayerReady(){
   });
 }
 
-// 裏側のプレイヤーに、次に見る動画をこっそり読み込んでおく（再生はしない＝cue）
+// 裏側のプレイヤーに、次に見る動画（ランダムに選んだもの）をこっそり読み込んでおく（再生はしない＝cue）
 function preloadStandbyVideo(){
   const standby = players[otherKey(activeKey)];
   if (!standby || typeof standby.cueVideoById !== "function" || videoIds.length === 0) return;
-  const nextIndex = (currentIndex + 1) % videoIds.length;
-  standby.cueVideoById(videoIds[nextIndex]);
+  standbyIndex = pickRandomIndex(currentIndex);
+  standby.cueVideoById(videoIds[standbyIndex]);
 }
 
 function onPlayerError(){
@@ -516,12 +510,15 @@ function showPromptScreen(){
   showScreen("screen-prompt");
 }
 
-// 裏で先読みしておいた動画に、表と裏を入れ替えながら切り替える（＝スムーズな次送り）
+// 裏で先読みしておいた「ランダムな次の動画」に、表と裏を入れ替えながら切り替える
 function advanceToStandby(){
-  if (videoIds.length < 2 || !players.b){
-    // 先読みの仕組みがまだ使えない場合は、普通の次送りにフォールバック
+  if (videoIds.length < 2 || !players.b || standbyIndex === null){
+    // 動画が1本しかない等、先読みの仕組みが使えない場合は最初から再生し直す
     const active = getActivePlayer();
-    if (active && typeof active.nextVideo === "function") active.nextVideo();
+    if (active && typeof active.seekTo === "function"){
+      active.seekTo(0);
+      active.playVideo();
+    }
     return;
   }
 
@@ -529,19 +526,22 @@ function advanceToStandby(){
   const oldPlayer = players[oldKey];
   if (oldPlayer && typeof oldPlayer.pauseVideo === "function") oldPlayer.pauseVideo();
 
-  // 表と裏を入れ替える
+  // 今見ていた動画を履歴に残しておく（下スワイプで戻れるように）
+  videoHistory.push(currentIndex);
+
+  // 表と裏を入れ替える。裏に用意しておいたランダムな動画が新しい「表」になる。
   activeKey = otherKey(oldKey);
-  currentIndex = (currentIndex + 1) % videoIds.length;
+  currentIndex = standbyIndex;
 
   applyMuteState();
   const newActive = getActivePlayer();
   if (newActive && typeof newActive.playVideo === "function") newActive.playVideo();
   swapPlayerVisibility();
 
-  // 裏に回った方（さっきまで表だった方）に、次の“次”の動画を仕込んでおく
-  const followUpIndex = (currentIndex + 1) % videoIds.length;
-  if (oldPlayer && typeof oldPlayer.cueVideoById === "function" && videoIds[followUpIndex]){
-    oldPlayer.cueVideoById(videoIds[followUpIndex]);
+  // 裏に回った方（さっきまで表だった方）に、また新しくランダムな動画を仕込んでおく
+  standbyIndex = pickRandomIndex(currentIndex);
+  if (oldPlayer && typeof oldPlayer.cueVideoById === "function" && videoIds[standbyIndex]){
+    oldPlayer.cueVideoById(videoIds[standbyIndex]);
   }
 }
 
@@ -550,20 +550,20 @@ function swapPlayerVisibility(){
   document.getElementById("yt-player-wrap-b").classList.toggle("active-player", activeKey === "b");
 }
 
-// 下スワイプ＝前の動画に戻る（これは「見終えた」扱いにはしないので、プロンプト判定はしない）
+// 下スワイプ＝直前まで見ていた動画に戻る（履歴を1つ遡る）。
+// ランダム再生なので「前の動画」という概念はないが、履歴を覚えておくことで
+// 「今見たばかりの動画にもう一度戻る」操作だけは自然にできるようにしている。
+// これは「見終えた」扱いにはしないので、プロンプト判定はしない。
 function goToPreviousVideo(){
-  if (videoIds.length === 0){
-    const active = getActivePlayer();
-    if (active && typeof active.previousVideo === "function") active.previousVideo();
-    return;
-  }
-  currentIndex = (currentIndex - 1 + videoIds.length) % videoIds.length;
+  if (videoHistory.length === 0) return; // 戻れる履歴がない（見始めたばかり）
+
+  currentIndex = videoHistory.pop();
   const active = getActivePlayer();
   if (active && typeof active.loadVideoById === "function"){
     active.loadVideoById(videoIds[currentIndex]);
     applyMuteState();
   }
-  preloadStandbyVideo(); // 裏側の先読み内容も、新しい「次」の動画に更新しておく
+  preloadStandbyVideo(); // 裏側には、また新しいランダムな候補を仕込み直す
 }
 
 function applyMuteState(){
@@ -655,66 +655,66 @@ document.getElementById("btn-keep-watching").addEventListener("click", () => {
 });
 
 /* ============================================================
-   ③ 学習タイマー（カウントアップ方式）
+   ③ 学習タイマー（ただのストップウォッチ）
    ------------------------------------------------------------
-   「残り時間がどんどん減っていく」プレッシャーではなく、
-   「頑張った時間がどんどん増えていく」達成感を見せたいので、
-   0:00から目標時間に向かって数字が増えていく方式にしています。
-   目標（5/15/25分）に到達したら自動的に完了扱いになります。
+   目標時間などは決めず、スタートを押した瞬間から0:00で数え始め、
+   ストップを押すまでひたすら数字が増え続けるだけのシンプルな方式。
+   ストップを押した時点までの時間が、今日の勉強時間として記録されます。
 ============================================================ */
-let timerTargetSec = 15 * 60;  // 目標時間（選んだ分数、秒に変換）
-let timerElapsedSec = 0;       // ここまで経過した時間（0から増えていく）
+let stopwatchSec = 0;      // ここまで経過した時間（0から増えていく）
 let timerIntervalId = null;
+let timerRunning = false;
 
 const timerDisplay = document.getElementById("timer-display");
-const timerBarFill = document.getElementById("timer-bar-fill");
-const durationButtons = document.querySelectorAll(".duration-btn");
-
-durationButtons.forEach((btn) => {
-  btn.addEventListener("click", () => {
-    if (timerIntervalId) return; // タイマー動作中は目標を変更させない
-    durationButtons.forEach((b) => b.classList.remove("selected"));
-    btn.classList.add("selected");
-    timerTargetSec = Number(btn.dataset.min) * 60;
-    timerElapsedSec = 0;
-    renderTimer();
-  });
-});
+const timerSub = document.getElementById("timer-sub");
+const timerToggleBtn = document.getElementById("btn-timer-toggle");
+const timerBackBtn = document.getElementById("btn-timer-back");
 
 function renderTimer(){
-  const min = Math.floor(timerElapsedSec / 60).toString().padStart(2, "0");
-  const sec = (timerElapsedSec % 60).toString().padStart(2, "0");
+  const min = Math.floor(stopwatchSec / 60).toString().padStart(2, "0");
+  const sec = (stopwatchSec % 60).toString().padStart(2, "0");
   timerDisplay.textContent = `${min}:${sec}`;
-
-  const progress = timerElapsedSec / timerTargetSec;
-  timerBarFill.style.width = (Math.min(progress, 1) * 100) + "%";
 }
 
-document.getElementById("btn-timer-start").addEventListener("click", () => {
-  if (timerIntervalId) return; // すでに動いていたら何もしない
-  timerIntervalId = setInterval(() => {
-    timerElapsedSec++;
-    renderTimer();
-    if (timerElapsedSec >= timerTargetSec){
-      clearInterval(timerIntervalId);
-      timerIntervalId = null;
-
-      // 目標時間ぶん、今日の勉強時間として記録する
-      addStudyTime(timerTargetSec);
-      document.getElementById("done-today-time").textContent =
-        "今日の合計勉強時間: " + formatStudyDuration(getTodayStudySeconds());
-
-      showScreen("screen-done");
-    }
-  }, 1000);
+timerToggleBtn.addEventListener("click", () => {
+  if (!timerRunning){
+    startStopwatch();
+  } else {
+    stopStopwatch();
+  }
 });
 
-document.getElementById("btn-timer-reset").addEventListener("click", () => {
+function startStopwatch(){
+  timerRunning = true;
+  timerToggleBtn.textContent = "ストップ";
+  timerSub.textContent = "がんばって！終わったらストップを押してね";
+  // 勉強中は「動画に戻る」で寄り道できないようにする（ほかの機能は不要、との方針のため）
+  timerBackBtn.style.display = "none";
+
+  timerIntervalId = setInterval(() => {
+    stopwatchSec++;
+    renderTimer();
+  }, 1000);
+}
+
+function stopStopwatch(){
   clearInterval(timerIntervalId);
   timerIntervalId = null;
-  timerElapsedSec = 0;
+  timerRunning = false;
+
+  // ストップまでに経過した時間を、今日の勉強時間として記録する
+  addStudyTime(stopwatchSec);
+  document.getElementById("done-today-time").textContent =
+    "今日の合計勉強時間: " + formatStudyDuration(getTodayStudySeconds());
+
+  stopwatchSec = 0;
   renderTimer();
-});
+  timerToggleBtn.textContent = "スタート";
+  timerSub.textContent = "スタートを押して勉強を始めましょう";
+  timerBackBtn.style.display = "";
+
+  showScreen("screen-done");
+}
 
 document.getElementById("btn-timer-back").addEventListener("click", () => {
   resumeFeedFromTimer();
@@ -731,8 +731,12 @@ document.getElementById("btn-done-home").addEventListener("click", () => {
 function resumeFeedFromTimer(){
   clearInterval(timerIntervalId);
   timerIntervalId = null;
-  timerElapsedSec = 0;
+  timerRunning = false;
+  stopwatchSec = 0;
   renderTimer();
+  timerToggleBtn.textContent = "スタート";
+  timerSub.textContent = "スタートを押して勉強を始めましょう";
+  timerBackBtn.style.display = "";
   showScreen("screen-feed");
 
   if (cameFromPrompt){

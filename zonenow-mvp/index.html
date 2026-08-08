@@ -37,7 +37,8 @@
 
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html,body{
-    margin:0; padding:0; height:100%; overscroll-behavior:none;
+    margin:0; padding:0; overscroll-behavior:none;
+    height:100%; height:100dvh; /* dvhに対応するブラウザでは、アドレスバーの出没に強い高さ指定になる */
     font-family:var(--font-display); background:var(--bg); color:var(--white);
   }
   button{ font-family:inherit; border:none; background:none; cursor:pointer; -webkit-user-select:none; user-select:none; }
@@ -60,12 +61,18 @@
   ============================================================ */
   #screen-feed{ background:#000; display:block; }
 
-  #yt-player-wrap{
+  /* 動画プレイヤーを2台（A・B）重ねて置いておく仕組み。
+     詳しい理由はJS側のコメント（「二重の受け皿」）を参照。
+     今表に出ている方だけ opacity:1 になる。 */
+  .player-wrap{
     position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-    background:#000;
+    background:#000; opacity:0; z-index:0; transition:opacity .12s linear;
   }
-  /* YouTube IFrame Player API が、この中に <iframe> を差し込みます */
-  #yt-player{ width:100%; height:100%; }
+  .player-wrap.active-player{ opacity:1; z-index:1; }
+  /* YouTube Shortsと同じ感覚で、画面いっぱい(端から端まで)に動画を表示する。
+     動画ごとの縦横比の違い（16:9 / 9:16 など）は、YouTube側のプレイヤーが
+     自動でレターボックス（余白の黒帯）を付けて調整してくれる。 */
+  .player-wrap iframe{ width:100%; height:100%; border:0; }
 
   /* スワイプ・タップを検知するための透明な層。
      YouTubeのiframeは別サイト（外部）の部品なので、
@@ -85,15 +92,30 @@
   }
 
   .swipe-hint{
-    position:absolute; left:0; right:0; bottom:calc(var(--safe-bottom) + 22px);
+    position:absolute; left:0; right:0; bottom:calc(var(--safe-bottom) + 18px);
     text-align:center; font-family:var(--font-ui); font-size:12px; color:var(--muted);
     z-index:8; pointer-events:none; letter-spacing:.02em;
   }
 
+  /* 画面の端に常に置いておく「勉強する」ボタン。
+     割り込み画面を待たなくても、いつでも自分から学習に入れるようにするための入口。
+     左端の縦中央に置くことで、上のミュート/ログボタンや、下の初回訪問バナーと
+     絶対に重ならない位置にしている。 */
+  .quick-study-btn{
+    position:fixed; left:14px; top:50%; transform:translateY(-50%); z-index:20;
+    display:flex; align-items:center; gap:6px;
+    padding:11px 14px; border-radius:999px;
+    background:rgba(255,90,54,.94); color:var(--white);
+    font-family:var(--font-ui); font-size:13px; font-weight:600;
+    box-shadow:0 6px 18px rgba(0,0,0,.4);
+    transition:transform .15s ease;
+  }
+  .quick-study-btn:active{ transform:translateY(-50%) scale(.95); }
+
   #feed-loading{
     position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
     flex-direction:column; gap:12px; color:var(--muted); font-family:var(--font-ui);
-    font-size:14px; z-index:6; text-align:center; padding:0 32px;
+    font-size:14px; z-index:6; text-align:center; padding:0 32px; background:#000;
   }
   #feed-loading.hidden{ display:none; }
 
@@ -111,8 +133,9 @@
     margin:0 0 10px; font-size:22px; font-weight:700; line-height:1.4;
   }
   .card .sub{
-    margin:0 0 28px; font-size:14px; color:var(--muted); line-height:1.7;
+    margin:0 0 10px; font-size:14px; color:var(--muted); line-height:1.7;
   }
+  .card .sub:last-of-type{ margin-bottom:28px; }
   .emoji{ font-size:40px; margin:0 0 14px; }
 
   .btn{
@@ -161,6 +184,7 @@
      完了画面
   ============================================================ */
   #screen-done .emoji{ font-size:46px; }
+  #done-today-time{ color:var(--mint); font-family:var(--font-ui); font-weight:600; }
 
   /* ============================================================
      初回訪問時のみ表示する「ホーム画面に追加」バナー
@@ -181,10 +205,6 @@
     flex-shrink:0; width:34px; height:34px; border-radius:50%;
     background:rgba(255,255,255,.1); color:var(--white); font-size:16px;
   }
-
-  /* ============================================================
-     検証ログ用のごく簡易な表示（右上のボタンからalertで見る想定なのでCSSは最小限）
-  ============================================================ */
 </style>
 </head>
 <body>
@@ -195,9 +215,14 @@
        ① フィード画面：全画面のショート動画スワイプ
   ============================================================ -->
   <section id="screen-feed" class="screen active">
-    <div id="yt-player-wrap">
-      <div id="yt-player"></div>
+    <!-- 動画プレイヤーを2台重ねて置く。表に出ている方（active-player）だけ見える。 -->
+    <div id="yt-player-wrap-a" class="player-wrap active-player">
+      <div id="yt-player-a"></div>
     </div>
+    <div id="yt-player-wrap-b" class="player-wrap">
+      <div id="yt-player-b"></div>
+    </div>
+
     <div id="feed-loading">動画を読み込んでいます…</div>
 
     <!-- スワイプ・タップ検知用の透明レイヤー -->
@@ -208,11 +233,14 @@
       <button id="btn-log" class="icon-btn" aria-label="検証ログを見る">📊</button>
     </div>
 
+    <!-- 画面の端に常に置いておく「勉強する」ボタン。いつでも自分から学習に入れる。 -->
+    <button id="btn-quick-study" class="quick-study-btn">📚 勉強する</button>
+
     <p class="swipe-hint">↑ 上にスワイプで次の動画　/　タップで音ON・OFF</p>
   </section>
 
   <!-- ============================================================
-       ② 啓発プロンプト画面（一定確率で割り込み表示）
+       ② 啓発プロンプト画面（一定本数ごとに割り込み表示）
   ============================================================ -->
   <section id="screen-prompt" class="screen">
     <div class="card">
@@ -255,6 +283,7 @@
       <p class="emoji">🎉</p>
       <h1>おつかれさまでした</h1>
       <p class="sub">今日も一歩、前進しましたね。</p>
+      <p class="sub" id="done-today-time"></p>
       <button id="btn-done-home" class="btn btn-primary">ホームに戻る</button>
     </div>
   </section>
@@ -273,17 +302,21 @@
 /* ============================================================
    ⚙️ 設定エリア（検証中はここの数値だけ触ればOK）
    ------------------------------------------------------------
-   PLAYLIST_ID        : 使いたいYouTube再生リストのID。
-                         再生リストのURLの「list=」の後ろの文字列です。
-                         例）https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxx
-                                                                  ↑ここ
-   PROMPT_PROBABILITY : 啓発プロンプト（割り込み画面）を出す確率。0.35 なら35%。
-   MIN_VIDEOS_BEFORE_PROMPT : 何本目の動画からプロンプトの抽選を始めるか。
+   PLAYLIST_ID                : 使いたいYouTube再生リストのID。
+                                 再生リストのURLの「list=」の後ろの文字列です。
+                                 例）https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxx
+                                                                          ↑ここ
+   FIRST_PROMPT_AFTER         : 最初に啓発プロンプトを出すタイミング（何本目の動画の後か）
+   PROMPT_INTERVAL_AFTER_FIRST: 2回目以降、何本ごとにプロンプトを出すか
 ============================================================ */
 const CONFIG = {
-  PLAYLIST_ID: "PLxxxxxxxxxxxxxxxx", // ⚠️ 自分の再生リストIDに置き換えてください
-  PROMPT_PROBABILITY: 0.35,
-  MIN_VIDEOS_BEFORE_PROMPT: 2
+  // ⚠️ 教えてもらったURLの list= の値をそのまま設定しています。
+  //    通常の再生リストIDはもう少し長い文字列（30文字前後）のことが多いので、
+  //    もし動画が読み込めない場合はYouTubeアプリの「共有」→リンクをコピーで
+  //    フルのURLを取り直し、list= の後ろの文字列に置き換えてください。
+  PLAYLIST_ID: "PLToIvTt0MLnw",
+  FIRST_PROMPT_AFTER: 20,        // 20本見たら最初のプロンプト
+  PROMPT_INTERVAL_AFTER_FIRST: 10 // その後は10本ごとにプロンプト
 };
 
 /* ============================================================
@@ -295,8 +328,53 @@ function showScreen(id){
 }
 
 /* ============================================================
+   1日の勉強時間の記録
+   ------------------------------------------------------------
+   localStorageに「日付ごとの合計勉強秒数」を保存しておく、簡易的な記録機能。
+   ページを閉じても、翌日以降もブラウザに残り続けます。
+============================================================ */
+const STUDY_LOG_KEY = "zonenow_mvp_study_log";
+
+function getTodayKey(){
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function loadStudyLog(){
+  try {
+    return JSON.parse(localStorage.getItem(STUDY_LOG_KEY)) || {};
+  } catch (e){
+    return {}; // 保存データが壊れていた場合は空として扱う
+  }
+}
+
+function addStudyTime(seconds){
+  const log = loadStudyLog();
+  const key = getTodayKey();
+  log[key] = (log[key] || 0) + seconds;
+  localStorage.setItem(STUDY_LOG_KEY, JSON.stringify(log));
+}
+
+function getTodayStudySeconds(){
+  const log = loadStudyLog();
+  return log[getTodayKey()] || 0;
+}
+
+function formatStudyDuration(totalSeconds){
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0) return `${hours}時間${minutes}分`;
+  return `${minutes}分`;
+}
+
+/* ============================================================
    検証ログ（かんたんな計測）
-   ページを再読み込みすると0に戻る、簡易的なカウンターです。
+   表示回数などはページを再読み込みすると0に戻る簡易カウンター。
+   勉強時間の記録だけはlocalStorageに残るので、再読み込みしても消えません。
 ============================================================ */
 const verificationLog = {
   promptShownCount: 0, // 啓発プロンプトを表示した回数
@@ -307,8 +385,9 @@ document.getElementById("btn-log").addEventListener("click", () => {
   alert(
     "【検証ログ】\n" +
     "啓発プロンプトの表示回数: " + verificationLog.promptShownCount + "回\n" +
-    "「はい、始める」を押した回数: " + verificationLog.yesClickCount + "回\n\n" +
-    "※このログはページを再読み込みするとリセットされます。"
+    "「はい、始める」を押した回数: " + verificationLog.yesClickCount + "回\n" +
+    "今日の合計勉強時間: " + formatStudyDuration(getTodayStudySeconds()) + "\n\n" +
+    "※表示回数・クリック回数はページ再読み込みでリセットされます（勉強時間の記録は残ります）。"
   );
 });
 
@@ -317,14 +396,29 @@ document.getElementById("btn-log").addEventListener("click", () => {
    ------------------------------------------------------------
    YouTube側が用意しているスクリプト（下の<script>タグ）を読み込むと、
    自動的に「onYouTubeIframeAPIReady」という名前の関数が呼ばれます。
-   ここでプレイヤー（動画再生機）を作ります。
+
+   ★動画をスムーズに切り替えるための工夫（二重の受け皿）★
+   プレイヤーを1台だけで使うと、次の動画に切り替えるたびに
+   「読み込み待ち」が発生してカクつきます。
+   そこで、プレイヤーを2台(A・B)用意しておき、
+   　・今見えている方（表）を再生
+   　・もう片方（裏）には、次に見る動画をあらかじめこっそり読み込んでおく
+   という「先読み」をしておくことで、スワイプした瞬間には
+   もう準備が終わっている状態を作り、切り替えを滑らかにしています。
 ============================================================ */
-let player = null;
-let watchedCount = 0;     // ここまでに視聴を終えた（または送り飛ばした）動画の本数
+const players = { a: null, b: null }; // 2台のプレイヤー
+let activeKey = "a";     // 今、表に出ているのはどちらか
+let videoIds = [];       // 再生リストに入っている動画IDの並び
+let currentIndex = 0;    // 今何本目を再生しているか
+let watchedCount = 0;    // ここまでに視聴を終えた（または送り飛ばした）動画の本数
 let isMuted = true;
+let cameFromPrompt = false; // タイマー画面に「啓発プロンプト経由」で来たかどうか
+
+function otherKey(key){ return key === "a" ? "b" : "a"; }
+function getActivePlayer(){ return players[activeKey]; }
 
 function onYouTubeIframeAPIReady(){
-  player = new YT.Player("yt-player", {
+  players.a = new YT.Player("yt-player-a", {
     playerVars: {
       listType: "playlist",
       list: CONFIG.PLAYLIST_ID,
@@ -339,16 +433,42 @@ function onYouTubeIframeAPIReady(){
       iv_load_policy: 3
     },
     events: {
-      onReady: onPlayerReady,
+      onReady: onPrimaryPlayerReady,
       onStateChange: onPlayerStateChange,
       onError: onPlayerError
     }
   });
 }
 
-function onPlayerReady(){
+function onPrimaryPlayerReady(){
   document.getElementById("feed-loading").classList.add("hidden");
-  fitPlayerSize();
+
+  // 再生リストの中身（動画IDの並び）と、今何本目かを取得する
+  videoIds = players.a.getPlaylist() || [];
+  currentIndex = players.a.getPlaylistIndex() || 0;
+  activeKey = "a";
+  applyMuteState();
+
+  // 裏側担当のプレイヤーBを用意する（先読み専用）
+  players.b = new YT.Player("yt-player-b", {
+    playerVars: {
+      mute: 1, controls: 0, disablekb: 1, fs: 0,
+      playsinline: 1, rel: 0, modestbranding: 1, iv_load_policy: 3
+    },
+    events: {
+      onReady: preloadStandbyVideo,
+      onStateChange: onPlayerStateChange,
+      onError: onPlayerError
+    }
+  });
+}
+
+// 裏側のプレイヤーに、次に見る動画をこっそり読み込んでおく（再生はしない＝cue）
+function preloadStandbyVideo(){
+  const standby = players[otherKey(activeKey)];
+  if (!standby || typeof standby.cueVideoById !== "function" || videoIds.length === 0) return;
+  const nextIndex = (currentIndex + 1) % videoIds.length;
+  standby.cueVideoById(videoIds[nextIndex]);
 }
 
 function onPlayerError(){
@@ -359,6 +479,10 @@ function onPlayerError(){
 
 // プレイヤーの状態が変わるたびに呼ばれる（再生中・一時停止・終了、など）
 function onPlayerStateChange(event){
+  // 今表に出ているプレイヤー以外（＝裏で先読み中のプレイヤー）の変化は無視する
+  const firedKey = (event.target === players.a) ? "a" : "b";
+  if (firedKey !== activeKey) return;
+
   if (event.data === YT.PlayerState.ENDED){
     handleVideoAdvance();
   }
@@ -374,20 +498,83 @@ function onPlayerStateChange(event){
 function handleVideoAdvance(){
   watchedCount++;
 
-  const shouldRollDice = watchedCount >= CONFIG.MIN_VIDEOS_BEFORE_PROMPT;
-  const dice = Math.random(); // 0以上1未満のランダムな数
-
-  if (shouldRollDice && dice < CONFIG.PROMPT_PROBABILITY){
+  if (shouldShowPrompt(watchedCount)){
     showPromptScreen();
   } else {
-    player.nextVideo();
+    advanceToStandby();
   }
 }
 
+// 「今、啓発プロンプトを出すべきタイミングか」を判定する
+// 例）FIRST_PROMPT_AFTER=20, INTERVAL=10 なら → 20本目、30本目、40本目…で表示
+function shouldShowPrompt(count){
+  if (count < CONFIG.FIRST_PROMPT_AFTER) return false;
+  if (count === CONFIG.FIRST_PROMPT_AFTER) return true;
+  return (count - CONFIG.FIRST_PROMPT_AFTER) % CONFIG.PROMPT_INTERVAL_AFTER_FIRST === 0;
+}
+
 function showPromptScreen(){
-  if (player && typeof player.pauseVideo === "function") player.pauseVideo();
+  const active = getActivePlayer();
+  if (active && typeof active.pauseVideo === "function") active.pauseVideo();
   verificationLog.promptShownCount++;
   showScreen("screen-prompt");
+}
+
+// 裏で先読みしておいた動画に、表と裏を入れ替えながら切り替える（＝スムーズな次送り）
+function advanceToStandby(){
+  if (videoIds.length < 2 || !players.b){
+    // 先読みの仕組みがまだ使えない場合は、普通の次送りにフォールバック
+    const active = getActivePlayer();
+    if (active && typeof active.nextVideo === "function") active.nextVideo();
+    return;
+  }
+
+  const oldKey = activeKey;
+  const oldPlayer = players[oldKey];
+  if (oldPlayer && typeof oldPlayer.pauseVideo === "function") oldPlayer.pauseVideo();
+
+  // 表と裏を入れ替える
+  activeKey = otherKey(oldKey);
+  currentIndex = (currentIndex + 1) % videoIds.length;
+
+  applyMuteState();
+  const newActive = getActivePlayer();
+  if (newActive && typeof newActive.playVideo === "function") newActive.playVideo();
+  swapPlayerVisibility();
+
+  // 裏に回った方（さっきまで表だった方）に、次の“次”の動画を仕込んでおく
+  const followUpIndex = (currentIndex + 1) % videoIds.length;
+  if (oldPlayer && typeof oldPlayer.cueVideoById === "function" && videoIds[followUpIndex]){
+    oldPlayer.cueVideoById(videoIds[followUpIndex]);
+  }
+}
+
+function swapPlayerVisibility(){
+  document.getElementById("yt-player-wrap-a").classList.toggle("active-player", activeKey === "a");
+  document.getElementById("yt-player-wrap-b").classList.toggle("active-player", activeKey === "b");
+}
+
+// 下スワイプ＝前の動画に戻る（これは「見終えた」扱いにはしないので、プロンプト判定はしない）
+function goToPreviousVideo(){
+  if (videoIds.length === 0){
+    const active = getActivePlayer();
+    if (active && typeof active.previousVideo === "function") active.previousVideo();
+    return;
+  }
+  currentIndex = (currentIndex - 1 + videoIds.length) % videoIds.length;
+  const active = getActivePlayer();
+  if (active && typeof active.loadVideoById === "function"){
+    active.loadVideoById(videoIds[currentIndex]);
+    applyMuteState();
+  }
+  preloadStandbyVideo(); // 裏側の先読み内容も、新しい「次」の動画に更新しておく
+}
+
+function applyMuteState(){
+  const p = getActivePlayer();
+  if (!p) return;
+  if (isMuted && typeof p.mute === "function") p.mute();
+  else if (!isMuted && typeof p.unMute === "function") p.unMute();
 }
 
 /* ============================================================
@@ -409,7 +596,7 @@ swipeLayer.addEventListener("touchstart", (e) => {
 }, { passive: true });
 
 swipeLayer.addEventListener("touchend", (e) => {
-  if (!player) return;
+  if (!getActivePlayer()) return;
   const touchEndY = e.changedTouches[0].clientY;
   const touchEndX = e.changedTouches[0].clientX;
   const deltaY = touchEndY - touchStartY;
@@ -425,8 +612,8 @@ swipeLayer.addEventListener("touchend", (e) => {
       // 上スワイプ → 次の動画へ
       handleVideoAdvance();
     } else {
-      // 下スワイプ → 前の動画へ（これは「見終えた」扱いにはしない）
-      player.previousVideo();
+      // 下スワイプ → 前の動画へ
+      goToPreviousVideo();
     }
   } else if (Math.abs(deltaY) < TAP_THRESHOLD && Math.abs(deltaX) < TAP_THRESHOLD && elapsed < 300){
     // 軽いタップ → ミュートのON/OFF切り替え
@@ -438,55 +625,37 @@ swipeLayer.addEventListener("touchend", (e) => {
 document.getElementById("btn-mute").addEventListener("click", toggleMute);
 
 function toggleMute(){
-  if (!player) return;
-  if (isMuted){
-    player.unMute();
-    document.getElementById("btn-mute").textContent = "🔊";
-  } else {
-    player.mute();
-    document.getElementById("btn-mute").textContent = "🔇";
-  }
+  if (!getActivePlayer()) return;
   isMuted = !isMuted;
+  applyMuteState();
+  document.getElementById("btn-mute").textContent = isMuted ? "🔇" : "🔊";
 }
 
-// 画面の縦横比に合わせて、プレイヤーの表示サイズを整える
-// （16:9の動画を、画面内にできるだけ大きく・欠けずに収める計算）
-function fitPlayerSize(){
-  const wrap = document.getElementById("yt-player-wrap");
-  const w = wrap.clientWidth;
-  const h = wrap.clientHeight;
-  const iframe = wrap.querySelector("iframe");
-  if (!iframe) return;
-
-  const videoRatio = 16 / 9;
-  const screenRatio = w / h;
-
-  let targetW, targetH;
-  if (screenRatio > videoRatio){
-    // 画面の方が横長 → 高さいっぱいに合わせる
-    targetH = h;
-    targetW = h * videoRatio;
-  } else {
-    // 画面の方が縦長（スマホでよくあるケース） → 幅いっぱいに合わせる
-    targetW = w;
-    targetH = w / videoRatio;
-  }
-  iframe.style.width = targetW + "px";
-  iframe.style.height = targetH + "px";
-}
-window.addEventListener("resize", fitPlayerSize);
+/* ============================================================
+   画面の端に常に置いてある「勉強する」ボタン
+   ------------------------------------------------------------
+   啓発プロンプトを待たなくても、自分の意思でいつでも学習に入れる入口。
+   （見ていた動画は終わっていないので、戻ってきたら続きから再生する）
+============================================================ */
+document.getElementById("btn-quick-study").addEventListener("click", () => {
+  const active = getActivePlayer();
+  if (active && typeof active.pauseVideo === "function") active.pauseVideo();
+  cameFromPrompt = false;
+  showScreen("screen-timer");
+});
 
 /* ============================================================
    ② 啓発プロンプト画面のボタン操作
 ============================================================ */
 document.getElementById("btn-start-study").addEventListener("click", () => {
   verificationLog.yesClickCount++;
+  cameFromPrompt = true; // 動画は見終わっているので、戻るときは次の動画から再開する
   showScreen("screen-timer");
 });
 
 document.getElementById("btn-keep-watching").addEventListener("click", () => {
+  advanceToStandby();
   showScreen("screen-feed");
-  if (player && typeof player.nextVideo === "function") player.nextVideo();
 });
 
 /* ============================================================
@@ -528,6 +697,12 @@ document.getElementById("btn-timer-start").addEventListener("click", () => {
     if (timerRemainingSec <= 0){
       clearInterval(timerIntervalId);
       timerIntervalId = null;
+
+      // 完走した分だけ、今日の勉強時間として記録する
+      addStudyTime(timerDurationSec);
+      document.getElementById("done-today-time").textContent =
+        "今日の合計勉強時間: " + formatStudyDuration(getTodayStudySeconds());
+
       showScreen("screen-done");
     }
   }, 1000);
@@ -541,20 +716,34 @@ document.getElementById("btn-timer-reset").addEventListener("click", () => {
 });
 
 document.getElementById("btn-timer-back").addEventListener("click", () => {
-  showScreen("screen-feed");
+  resumeFeedFromTimer();
 });
 
 /* ============================================================
    ④ 完了画面 → ホームへ戻る
 ============================================================ */
 document.getElementById("btn-done-home").addEventListener("click", () => {
+  resumeFeedFromTimer();
+});
+
+// タイマー画面／完了画面から、フィード画面に戻るときの共通処理
+function resumeFeedFromTimer(){
   clearInterval(timerIntervalId);
   timerIntervalId = null;
   timerRemainingSec = timerDurationSec;
   renderTimer();
   showScreen("screen-feed");
-  if (player && typeof player.playVideo === "function") player.playVideo();
-});
+
+  if (cameFromPrompt){
+    // 啓発プロンプト経由で来た場合、その動画はもう見終わっているので次の動画に進む
+    advanceToStandby();
+  } else {
+    // 「勉強するボタン」から直接来た場合、見ていた動画の続きを再生する
+    const active = getActivePlayer();
+    if (active && typeof active.playVideo === "function") active.playVideo();
+  }
+  cameFromPrompt = false;
+}
 
 /* ============================================================
    ⑤ 初回訪問時だけ「ホーム画面に追加」バナーを出す

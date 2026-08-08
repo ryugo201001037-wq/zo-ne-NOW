@@ -766,8 +766,22 @@ function resumeFeedFromTimer(){
    ------------------------------------------------------------
    localStorageは、ブラウザに小さなデータを保存しておける仕組みです。
    一度「訪問済み」と記録しておけば、次回以降はバナーを出しません。
+
+   ★注意：ホーム画面に追加したあとのアプリは、ブラウザの普通のタブとは
+   localStorageが別扱いになることがある（特にiPhone）。そのため
+   「訪問済みかどうか」の記録だけに頼ると、追加した後のアプリ側では
+   記録が引き継がれず、バナーが再び出てしまうことがあった。
+   そこで、そもそも今すでにホーム画面から起動しているアプリなら
+   （＝追加はもう済んでいるはずなので）、記録を見るまでもなく
+   バナー自体を絶対に出さないようにしている。
 ============================================================ */
 (function setupFirstVisitBanner(){
+  const isRunningAsInstalledApp =
+    window.matchMedia("(display-mode: standalone)").matches || // Android等
+    window.navigator.standalone === true;                       // iPhoneのSafari
+
+  if (isRunningAsInstalledApp) return; // すでに追加済みのアプリなら何もしない
+
   const STORAGE_KEY = "zonenow_mvp_visited";
   const alreadyVisited = localStorage.getItem(STORAGE_KEY);
 

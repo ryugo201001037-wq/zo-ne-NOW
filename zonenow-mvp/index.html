@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<title>ZoneNOW Swipe MVP</title>
+
+<!-- ▼ PWA（スマホの「ホーム画面に追加」でアプリのように使える仕組み）のための設定 -->
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#10131A" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="ZoneNOW" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  /* ============================================================
+     デザイントークン（色・フォント・余白のルールをここに集約）
+     この値だけ変えれば、アプリ全体の雰囲気を調整できます。
+  ============================================================ */
+  :root{
+    --bg:#10131A;           /* ほぼ黒に近いネイビー（背景色） */
+    --card:#1A1E29;         /* カードなど、背景より少し明るい面 */
+    --white:#FFFFFF;
+    --muted:#9497A6;        /* 補足テキストの薄いグレー */
+    --ember:#FF5A36;        /* アクセントカラー（やる気の火種） */
+    --ember-soft:#FF8A6B;
+    --mint:#33D6A6;         /* Zoneメーター的な要素に使うミント */
+    --font-display:'Zen Kaku Gothic New', sans-serif; /* 見出し・本文用 */
+    --font-ui:'Inter', 'Zen Kaku Gothic New', sans-serif; /* 数字・UIラベル用 */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{
+    margin:0; padding:0; height:100%; overscroll-behavior:none;
+    font-family:var(--font-display); background:var(--bg); color:var(--white);
+  }
+  button{ font-family:inherit; border:none; background:none; cursor:pointer; -webkit-user-select:none; user-select:none; }
+
+  #app{ position:fixed; inset:0; overflow:hidden; }
+
+  /* ============================================================
+     画面切り替えの共通ルール
+     「.screen」を持つ要素は全て重ねて置いておき、
+     「.active」がついたものだけを表示する、というシンプルな仕組み。
+  ============================================================ */
+  .screen{
+    position:absolute; inset:0; opacity:0; pointer-events:none;
+    transition:opacity .3s ease; display:flex; align-items:center; justify-content:center;
+  }
+  .screen.active{ opacity:1; pointer-events:auto; }
+
+  /* ============================================================
+     フィード画面（全画面のショート動画スワイプ）
+  ============================================================ */
+  #screen-feed{ background:#000; display:block; }
+
+  #yt-player-wrap{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    background:#000;
+  }
+  /* YouTube IFrame Player API が、この中に <iframe> を差し込みます */
+  #yt-player{ width:100%; height:100%; }
+
+  /* スワイプ・タップを検知するための透明な層。
+     YouTubeのiframeは別サイト（外部）の部品なので、
+     その上に自分の透明な板を重ねてジェスチャーを受け取ります。 */
+  #swipe-layer{
+    position:absolute; inset:0; z-index:5; touch-action:none;
+  }
+
+  .top-controls{
+    position:absolute; top:calc(var(--safe-top) + 14px); right:14px; z-index:10;
+    display:flex; gap:10px;
+  }
+  .icon-btn{
+    width:42px; height:42px; border-radius:50%;
+    background:rgba(16,19,26,.55); backdrop-filter:blur(6px);
+    display:flex; align-items:center; justify-content:center; font-size:18px;
+  }
+
+  .swipe-hint{
+    position:absolute; left:0; right:0; bottom:calc(var(--safe-bottom) + 22px);
+    text-align:center; font-family:var(--font-ui); font-size:12px; color:var(--muted);
+    z-index:8; pointer-events:none; letter-spacing:.02em;
+  }
+
+  #feed-loading{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    flex-direction:column; gap:12px; color:var(--muted); font-family:var(--font-ui);
+    font-size:14px; z-index:6; text-align:center; padding:0 32px;
+  }
+  #feed-loading.hidden{ display:none; }
+
+  /* ============================================================
+     カード共通スタイル（啓発プロンプト／タイマー／完了画面）
+  ============================================================ */
+  .card{
+    width:min(420px, 86vw);
+    background:var(--card);
+    border-radius:24px;
+    padding:36px 28px calc(28px + var(--safe-bottom));
+    text-align:center;
+  }
+  .card h1{
+    margin:0 0 10px; font-size:22px; font-weight:700; line-height:1.4;
+  }
+  .card .sub{
+    margin:0 0 28px; font-size:14px; color:var(--muted); line-height:1.7;
+  }
+  .emoji{ font-size:40px; margin:0 0 14px; }
+
+  .btn{
+    display:block; width:100%; padding:16px; border-radius:14px;
+    font-family:var(--font-ui); font-size:16px; font-weight:600;
+    margin-bottom:12px; transition:transform .15s ease, opacity .15s ease;
+  }
+  .btn:active{ transform:scale(.97); }
+  .btn-primary{ background:var(--ember); color:var(--white); }
+  .btn-ghost{ background:rgba(255,255,255,.08); color:var(--white); }
+  .btn-text{ background:none; color:var(--muted); font-size:13px; padding:8px; margin-bottom:0; }
+
+  /* ============================================================
+     啓発プロンプト画面（割り込み画面）
+  ============================================================ */
+  #screen-prompt{ background:rgba(16,19,26,.94); backdrop-filter:blur(10px); }
+
+  /* ============================================================
+     学習タイマー画面
+  ============================================================ */
+  .duration-select{ display:flex; gap:10px; margin-bottom:26px; }
+  .duration-btn{
+    flex:1; padding:14px 0; border-radius:12px; background:rgba(255,255,255,.06);
+    color:var(--white); font-family:var(--font-ui); font-size:15px; font-weight:600;
+  }
+  .duration-btn.selected{ background:var(--ember); }
+
+  .timer-display{
+    font-family:var(--font-ui); font-size:56px; font-weight:700; letter-spacing:.02em;
+    margin-bottom:14px; font-variant-numeric:tabular-nums;
+  }
+  /* タイマーの進み具合を示すバー。
+     Zoneメーターの発想（エンバー→ミントのグラデーション）を
+     「集中の深まり」を表す演出として、タイマーの残り時間バーに転用しています。 */
+  .timer-bar{
+    height:6px; border-radius:99px; background:rgba(255,255,255,.1);
+    overflow:hidden; margin-bottom:28px;
+  }
+  .timer-bar-fill{
+    height:100%; width:0%; border-radius:99px;
+    background:linear-gradient(90deg, var(--ember), var(--mint));
+    transition:width 1s linear;
+  }
+
+  /* ============================================================
+     完了画面
+  ============================================================ */
+  #screen-done .emoji{ font-size:46px; }
+
+  /* ============================================================
+     初回訪問時のみ表示する「ホーム画面に追加」バナー
+  ============================================================ */
+  #pwa-banner{
+    position:fixed; left:14px; right:14px; bottom:calc(var(--safe-bottom) + 14px);
+    z-index:50; background:var(--card); border-radius:16px; padding:16px 18px;
+    display:flex; align-items:center; gap:12px;
+    box-shadow:0 8px 30px rgba(0,0,0,.4);
+    transform:translateY(120%); transition:transform .35s ease;
+  }
+  #pwa-banner.visible{ transform:translateY(0); }
+  #pwa-banner p{
+    margin:0; font-size:13px; line-height:1.6; color:var(--white); font-family:var(--font-ui);
+    flex:1;
+  }
+  #pwa-banner button{
+    flex-shrink:0; width:34px; height:34px; border-radius:50%;
+    background:rgba(255,255,255,.1); color:var(--white); font-size:16px;
+  }
+
+  /* ============================================================
+     検証ログ用のごく簡易な表示（右上のボタンからalertで見る想定なのでCSSは最小限）
+  ============================================================ */
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ============================================================
+       ① フィード画面：全画面のショート動画スワイプ
+  ============================================================ -->
+  <section id="screen-feed" class="screen active">
+    <div id="yt-player-wrap">
+      <div id="yt-player"></div>
+    </div>
+    <div id="feed-loading">動画を読み込んでいます…</div>
+
+    <!-- スワイプ・タップ検知用の透明レイヤー -->
+    <div id="swipe-layer"></div>
+
+    <div class="top-controls">
+      <button id="btn-mute" class="icon-btn" aria-label="ミュート切り替え">🔇</button>
+      <button id="btn-log" class="icon-btn" aria-label="検証ログを見る">📊</button>
+    </div>
+
+    <p class="swipe-hint">↑ 上にスワイプで次の動画　/　タップで音ON・OFF</p>
+  </section>
+
+  <!-- ============================================================
+       ② 啓発プロンプト画面（一定確率で割り込み表示）
+  ============================================================ -->
+  <section id="screen-prompt" class="screen">
+    <div class="card">
+      <p class="emoji">🔥</p>
+      <h1>そろそろ勉強しませんか？</h1>
+      <p class="sub">動画を見る手を止めて、少しだけ机に向かってみましょう。</p>
+      <button id="btn-start-study" class="btn btn-primary">はい、始める</button>
+      <button id="btn-keep-watching" class="btn btn-ghost">まだ動画を見る</button>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       ③ 学習タイマー画面
+  ============================================================ -->
+  <section id="screen-timer" class="screen">
+    <div class="card">
+      <h1>学習タイマー</h1>
+      <p class="sub">時間を選んでスタートしましょう</p>
+
+      <div class="duration-select">
+        <button class="duration-btn" data-min="5">5分</button>
+        <button class="duration-btn selected" data-min="15">15分</button>
+        <button class="duration-btn" data-min="25">25分</button>
+      </div>
+
+      <div class="timer-display" id="timer-display">15:00</div>
+      <div class="timer-bar"><div class="timer-bar-fill" id="timer-bar-fill"></div></div>
+
+      <button id="btn-timer-start" class="btn btn-primary">スタート</button>
+      <button id="btn-timer-reset" class="btn btn-ghost">リセット</button>
+      <button id="btn-timer-back" class="btn btn-text">動画に戻る</button>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       ④ 完了画面
+  ============================================================ -->
+  <section id="screen-done" class="screen">
+    <div class="card">
+      <p class="emoji">🎉</p>
+      <h1>おつかれさまでした</h1>
+      <p class="sub">今日も一歩、前進しましたね。</p>
+      <button id="btn-done-home" class="btn btn-primary">ホームに戻る</button>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       ⑤ 初回訪問時だけ出す「ホーム画面に追加」バナー
+  ============================================================ -->
+  <div id="pwa-banner">
+    <p id="pwa-banner-text"></p>
+    <button id="btn-banner-close" aria-label="閉じる">✕</button>
+  </div>
+
+</div>
+
+<script>
+/* ============================================================
+   ⚙️ 設定エリア（検証中はここの数値だけ触ればOK）
+   ------------------------------------------------------------
+   PLAYLIST_ID        : 使いたいYouTube再生リストのID。
+                         再生リストのURLの「list=」の後ろの文字列です。
+                         例）https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxx
+                                                                  ↑ここ
+   PROMPT_PROBABILITY : 啓発プロンプト（割り込み画面）を出す確率。0.35 なら35%。
+   MIN_VIDEOS_BEFORE_PROMPT : 何本目の動画からプロンプトの抽選を始めるか。
+============================================================ */
+const CONFIG = {
+  PLAYLIST_ID: "PLxxxxxxxxxxxxxxxx", // ⚠️ 自分の再生リストIDに置き換えてください
+  PROMPT_PROBABILITY: 0.35,
+  MIN_VIDEOS_BEFORE_PROMPT: 2
+};
+
+/* ============================================================
+   画面切り替えの小さなヘルパー
+============================================================ */
+function showScreen(id){
+  document.querySelectorAll(".screen").forEach((el) => el.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+
+/* ============================================================
+   検証ログ（かんたんな計測）
+   ページを再読み込みすると0に戻る、簡易的なカウンターです。
+============================================================ */
+const verificationLog = {
+  promptShownCount: 0, // 啓発プロンプトを表示した回数
+  yesClickCount: 0     // 「はい、始める」を押した回数
+};
+
+document.getElementById("btn-log").addEventListener("click", () => {
+  alert(
+    "【検証ログ】\n" +
+    "啓発プロンプトの表示回数: " + verificationLog.promptShownCount + "回\n" +
+    "「はい、始める」を押した回数: " + verificationLog.yesClickCount + "回\n\n" +
+    "※このログはページを再読み込みするとリセットされます。"
+  );
+});
+
+/* ============================================================
+   ① YouTube IFrame Player API まわり
+   ------------------------------------------------------------
+   YouTube側が用意しているスクリプト（下の<script>タグ）を読み込むと、
+   自動的に「onYouTubeIframeAPIReady」という名前の関数が呼ばれます。
+   ここでプレイヤー（動画再生機）を作ります。
+============================================================ */
+let player = null;
+let watchedCount = 0;     // ここまでに視聴を終えた（または送り飛ばした）動画の本数
+let isMuted = true;
+
+function onYouTubeIframeAPIReady(){
+  player = new YT.Player("yt-player", {
+    playerVars: {
+      listType: "playlist",
+      list: CONFIG.PLAYLIST_ID,
+      autoplay: 1,
+      mute: 1,          // ブラウザの自動再生ポリシー上、最初はミュート必須
+      controls: 0,       // YouTube標準のコントロールは消し、自前のUIだけにする
+      disablekb: 1,
+      fs: 0,
+      playsinline: 1,    // iPhoneでも画面いっぱいの自動再生を許可する設定
+      rel: 0,
+      modestbranding: 1,
+      iv_load_policy: 3
+    },
+    events: {
+      onReady: onPlayerReady,
+      onStateChange: onPlayerStateChange,
+      onError: onPlayerError
+    }
+  });
+}
+
+function onPlayerReady(){
+  document.getElementById("feed-loading").classList.add("hidden");
+  fitPlayerSize();
+}
+
+function onPlayerError(){
+  document.getElementById("feed-loading").classList.remove("hidden");
+  document.getElementById("feed-loading").textContent =
+    "動画を読み込めませんでした。CONFIG.PLAYLIST_ID が正しい再生リストIDになっているか確認してください。";
+}
+
+// プレイヤーの状態が変わるたびに呼ばれる（再生中・一時停止・終了、など）
+function onPlayerStateChange(event){
+  if (event.data === YT.PlayerState.ENDED){
+    handleVideoAdvance();
+  }
+}
+
+/* ============================================================
+   動画が1本終わった／送られたときの共通処理
+   ------------------------------------------------------------
+   「動画の自然終了」と「上スワイプでの送り」を同じ扱いにしています。
+   （どちらも「その動画は見終えた」とみなすのが、
+     もっともシンプルに仮説検証を進められると判断したためです）
+============================================================ */
+function handleVideoAdvance(){
+  watchedCount++;
+
+  const shouldRollDice = watchedCount >= CONFIG.MIN_VIDEOS_BEFORE_PROMPT;
+  const dice = Math.random(); // 0以上1未満のランダムな数
+
+  if (shouldRollDice && dice < CONFIG.PROMPT_PROBABILITY){
+    showPromptScreen();
+  } else {
+    player.nextVideo();
+  }
+}
+
+function showPromptScreen(){
+  if (player && typeof player.pauseVideo === "function") player.pauseVideo();
+  verificationLog.promptShownCount++;
+  showScreen("screen-prompt");
+}
+
+/* ============================================================
+   フィード画面のジェスチャー操作（スワイプ・タップ）
+   ------------------------------------------------------------
+   YouTubeのiframeは外部サイトの部品なので、直接タッチイベントを
+   取れません。そこで透明な板（#swipe-layer）を上に重ねて、
+   そこでタッチの動きを判定しています。
+============================================================ */
+const swipeLayer = document.getElementById("swipe-layer");
+let touchStartY = 0;
+let touchStartX = 0;
+let touchStartTime = 0;
+
+swipeLayer.addEventListener("touchstart", (e) => {
+  touchStartY = e.touches[0].clientY;
+  touchStartX = e.touches[0].clientX;
+  touchStartTime = Date.now();
+}, { passive: true });
+
+swipeLayer.addEventListener("touchend", (e) => {
+  if (!player) return;
+  const touchEndY = e.changedTouches[0].clientY;
+  const touchEndX = e.changedTouches[0].clientX;
+  const deltaY = touchEndY - touchStartY;
+  const deltaX = touchEndX - touchStartX;
+  const elapsed = Date.now() - touchStartTime;
+
+  const isMostlyVertical = Math.abs(deltaY) > Math.abs(deltaX);
+  const SWIPE_THRESHOLD = 60; // これ以上動いたら「スワイプ」とみなす距離(px)
+  const TAP_THRESHOLD = 12;   // これ以下の移動なら「タップ」とみなす距離(px)
+
+  if (isMostlyVertical && Math.abs(deltaY) > SWIPE_THRESHOLD){
+    if (deltaY < 0){
+      // 上スワイプ → 次の動画へ
+      handleVideoAdvance();
+    } else {
+      // 下スワイプ → 前の動画へ（これは「見終えた」扱いにはしない）
+      player.previousVideo();
+    }
+  } else if (Math.abs(deltaY) < TAP_THRESHOLD && Math.abs(deltaX) < TAP_THRESHOLD && elapsed < 300){
+    // 軽いタップ → ミュートのON/OFF切り替え
+    toggleMute();
+  }
+}, { passive: true });
+
+// マウス操作（PCでの動作確認用）にもかんたんに対応
+document.getElementById("btn-mute").addEventListener("click", toggleMute);
+
+function toggleMute(){
+  if (!player) return;
+  if (isMuted){
+    player.unMute();
+    document.getElementById("btn-mute").textContent = "🔊";
+  } else {
+    player.mute();
+    document.getElementById("btn-mute").textContent = "🔇";
+  }
+  isMuted = !isMuted;
+}
+
+// 画面の縦横比に合わせて、プレイヤーの表示サイズを整える
+// （16:9の動画を、画面内にできるだけ大きく・欠けずに収める計算）
+function fitPlayerSize(){
+  const wrap = document.getElementById("yt-player-wrap");
+  const w = wrap.clientWidth;
+  const h = wrap.clientHeight;
+  const iframe = wrap.querySelector("iframe");
+  if (!iframe) return;
+
+  const videoRatio = 16 / 9;
+  const screenRatio = w / h;
+
+  let targetW, targetH;
+  if (screenRatio > videoRatio){
+    // 画面の方が横長 → 高さいっぱいに合わせる
+    targetH = h;
+    targetW = h * videoRatio;
+  } else {
+    // 画面の方が縦長（スマホでよくあるケース） → 幅いっぱいに合わせる
+    targetW = w;
+    targetH = w / videoRatio;
+  }
+  iframe.style.width = targetW + "px";
+  iframe.style.height = targetH + "px";
+}
+window.addEventListener("resize", fitPlayerSize);
+
+/* ============================================================
+   ② 啓発プロンプト画面のボタン操作
+============================================================ */
+document.getElementById("btn-start-study").addEventListener("click", () => {
+  verificationLog.yesClickCount++;
+  showScreen("screen-timer");
+});
+
+document.getElementById("btn-keep-watching").addEventListener("click", () => {
+  showScreen("screen-feed");
+  if (player && typeof player.nextVideo === "function") player.nextVideo();
+});
+
+/* ============================================================
+   ③ 学習タイマー
+============================================================ */
+let timerDurationSec = 15 * 60; // 選択中の時間（秒）
+let timerRemainingSec = timerDurationSec;
+let timerIntervalId = null;
+
+const timerDisplay = document.getElementById("timer-display");
+const timerBarFill = document.getElementById("timer-bar-fill");
+const durationButtons = document.querySelectorAll(".duration-btn");
+
+durationButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    if (timerIntervalId) return; // タイマー動作中は時間を変更させない
+    durationButtons.forEach((b) => b.classList.remove("selected"));
+    btn.classList.add("selected");
+    timerDurationSec = Number(btn.dataset.min) * 60;
+    timerRemainingSec = timerDurationSec;
+    renderTimer();
+  });
+});
+
+function renderTimer(){
+  const min = Math.floor(timerRemainingSec / 60).toString().padStart(2, "0");
+  const sec = (timerRemainingSec % 60).toString().padStart(2, "0");
+  timerDisplay.textContent = `${min}:${sec}`;
+
+  const progress = 1 - timerRemainingSec / timerDurationSec;
+  timerBarFill.style.width = (progress * 100) + "%";
+}
+
+document.getElementById("btn-timer-start").addEventListener("click", () => {
+  if (timerIntervalId) return; // すでに動いていたら何もしない
+  timerIntervalId = setInterval(() => {
+    timerRemainingSec--;
+    renderTimer();
+    if (timerRemainingSec <= 0){
+      clearInterval(timerIntervalId);
+      timerIntervalId = null;
+      showScreen("screen-done");
+    }
+  }, 1000);
+});
+
+document.getElementById("btn-timer-reset").addEventListener("click", () => {
+  clearInterval(timerIntervalId);
+  timerIntervalId = null;
+  timerRemainingSec = timerDurationSec;
+  renderTimer();
+});
+
+document.getElementById("btn-timer-back").addEventListener("click", () => {
+  showScreen("screen-feed");
+});
+
+/* ============================================================
+   ④ 完了画面 → ホームへ戻る
+============================================================ */
+document.getElementById("btn-done-home").addEventListener("click", () => {
+  clearInterval(timerIntervalId);
+  timerIntervalId = null;
+  timerRemainingSec = timerDurationSec;
+  renderTimer();
+  showScreen("screen-feed");
+  if (player && typeof player.playVideo === "function") player.playVideo();
+});
+
+/* ============================================================
+   ⑤ 初回訪問時だけ「ホーム画面に追加」バナーを出す
+   ------------------------------------------------------------
+   localStorageは、ブラウザに小さなデータを保存しておける仕組みです。
+   一度「訪問済み」と記録しておけば、次回以降はバナーを出しません。
+============================================================ */
+(function setupFirstVisitBanner(){
+  const STORAGE_KEY = "zonenow_mvp_visited";
+  const alreadyVisited = localStorage.getItem(STORAGE_KEY);
+
+  if (alreadyVisited) return; // 2回目以降は何もしない
+
+  // 端末に応じて、案内文を少しだけ変える
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const message = isIOS
+    ? "ホーム画面に追加すると、アプリのようにすぐ開けます。共有ボタン（□に↑）→「ホーム画面に追加」を選んでください。"
+    : "ホーム画面に追加すると、アプリのようにすぐ開けます。メニュー（⋮）→「ホーム画面に追加」または「インストール」を選んでください。";
+
+  document.getElementById("pwa-banner-text").textContent = message;
+
+  // 少し遅らせて表示（開いた瞬間に動画へ集中してもらうため）
+  setTimeout(() => {
+    document.getElementById("pwa-banner").classList.add("visible");
+  }, 1500);
+
+  // 「初めて開いた」という記録は、この時点でもう残しておく
+  // （バナーを閉じなくても、次回以降は表示されないようにするため）
+  localStorage.setItem(STORAGE_KEY, "true");
+})();
+
+document.getElementById("btn-banner-close").addEventListener("click", () => {
+  document.getElementById("pwa-banner").classList.remove("visible");
+});
+
+/* ============================================================
+   ⑥ Service Workerの登録（PWA対応に必須）
+============================================================ */
+if ("serviceWorker" in navigator){
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch((err) => {
+      console.error("Service Workerの登録に失敗しました", err);
+    });
+  });
+}
+</script>
+
+<!-- YouTube IFrame Player APIの本体を読み込む -->
+<script src="https://www.youtube.com/iframe_api"></script>
+
+</body>
+</html>

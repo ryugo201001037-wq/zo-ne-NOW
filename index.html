@@ -139,17 +139,17 @@
   /* ============================================================
      ボトムナビ
   ============================================================ */
-  #bottom-nav{
+  .bottom-nav{
     position:absolute; left:0; right:0; bottom:0; z-index:10;
     padding:10px 28px calc(10px + var(--safe-bottom));
     display:flex; justify-content:space-around; align-items:center;
     background:linear-gradient(180deg, rgba(16,19,26,0) 0%, rgba(16,19,26,.55) 40%, rgba(16,19,26,.55) 100%);
   }
-  #bottom-nav.on-paper{ background:var(--paper); border-top:1px solid var(--paper-line); }
+  .bottom-nav.on-paper{ background:var(--paper); border-top:1px solid var(--paper-line); }
   .nav-btn{ display:flex; flex-direction:column; align-items:center; gap:4px; color:rgba(255,255,255,.55); }
   .nav-btn.active{ color:var(--white); }
-  #bottom-nav.on-paper .nav-btn{ color:#B7B4AA; }
-  #bottom-nav.on-paper .nav-btn.active{ color:var(--ink-text); }
+  .bottom-nav.on-paper .nav-btn{ color:#B7B4AA; }
+  .bottom-nav.on-paper .nav-btn.active{ color:var(--ink-text); }
   .nav-icon{ font-size:21px; line-height:1; }
   .nav-text{ font-family:var(--font-ui); font-size:10px; font-weight:600; }
 
@@ -203,8 +203,8 @@
   }
   .back-btn{ width:34px; height:34px; border-radius:50%; background:rgba(255,255,255,.14); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; }
   .player-header-title{ font-family:var(--font-ui); font-size:13px; font-weight:600; color:#fff; opacity:.85; }
-  #player-video{ width:100%; height:100%; object-fit:contain; background:#000; }
-  .player-info{ position:absolute; left:0; right:0; bottom:0; padding:20px 20px calc(20px + var(--safe-bottom)); background:linear-gradient(0deg, rgba(0,0,0,.75), rgba(0,0,0,0)); }
+  #player-video{ width:100%; height:calc(100% - 64px - var(--safe-bottom)); object-fit:contain; background:#000; }
+  .player-info{ position:absolute; left:0; right:0; bottom:0; padding:20px 20px calc(130px + var(--safe-bottom)); background:linear-gradient(0deg, rgba(0,0,0,.75), rgba(0,0,0,0)); }
   .player-info h2{ font-size:18px; margin:0 0 6px; }
   .player-info p{ margin:0; font-family:var(--font-ui); font-size:12.5px; color:rgba(255,255,255,.75); }
 
@@ -292,7 +292,7 @@
   <!-- ============ ホーム画面（ショート動画フィード） ============ -->
   <section id="home-screen" class="screen active">
     <div id="feed"></div>
-    <div id="bottom-nav">
+    <div class="bottom-nav">
       <button class="nav-btn active" data-nav="home"><span class="nav-icon">▶</span><span class="nav-text">ホーム</span></button>
       <button class="nav-btn" data-nav="search"><span class="nav-icon">◎</span><span class="nav-text">検索</span></button>
     </div>
@@ -335,7 +335,7 @@
     <div class="result-grid" id="result-grid"></div>
     <div id="empty-state" class="empty-state" style="display:none;">条件に合う動画がまだありません。<br>条件を変えて探してみてください。</div>
 
-    <div id="bottom-nav-search" class="on-paper" style="position:sticky; bottom:0;">
+    <div class="bottom-nav on-paper" style="position:sticky; bottom:0;">
       <button class="nav-btn" data-nav="home"><span class="nav-icon">▶</span><span class="nav-text">ホーム</span></button>
       <button class="nav-btn active" data-nav="search"><span class="nav-icon">◎</span><span class="nav-text">検索</span></button>
     </div>
@@ -351,6 +351,10 @@
     <div class="player-info">
       <h2 id="player-title"></h2>
       <p id="player-meta"></p>
+    </div>
+    <div class="bottom-nav">
+      <button class="nav-btn" data-nav="home"><span class="nav-icon">▶</span><span class="nav-text">ホーム</span></button>
+      <button class="nav-btn" data-nav="search"><span class="nav-icon">◎</span><span class="nav-text">検索</span></button>
     </div>
   </section>
 
@@ -409,16 +413,40 @@ const VIDEOS = [
   { id:'m3', subject:'math', grade:'high2', unit:'微分', title:'微分は"変化の速さ"を測るだけ', creator:'ゾーン先生', duration:31, short:DEMO_SHORT[2], long:DEMO_LONG[2] },
   { id:'m4', subject:'math', grade:'high2', unit:'ベクトル', title:'ベクトルの内積、図で見たら一瞬', creator:'かず先輩', duration:22, short:DEMO_SHORT[3], long:DEMO_LONG[0] },
   { id:'m5', subject:'math', grade:'high3', unit:'積分', title:'積分=面積を求めるだけと知って楽になった話', creator:'ゾーン先生', duration:28, short:DEMO_SHORT[4], long:DEMO_LONG[1] },
+  { id:'m6', subject:'math', grade:'high2', unit:'三角関数', title:'sin cos tanは"比"でしかない', creator:'かず先輩', duration:22, short:DEMO_SHORT[0], long:DEMO_LONG[2] },
+  { id:'m7', subject:'math', grade:'high2', unit:'数列', title:'等比数列の和、公式より先に仕組みを見る', creator:'すうがく部 リナ', duration:26, short:DEMO_SHORT[1], long:DEMO_LONG[0] },
+  { id:'m8', subject:'math', grade:'high2', unit:'場合の数・確率', title:'"順列"と"組合せ"を一発で見分ける方法', creator:'ゾーン先生', duration:20, short:DEMO_SHORT[2], long:DEMO_LONG[1] },
+  { id:'m9', subject:'math', grade:'high1', unit:'図形と方程式', title:'点と直線の距離公式、丸暗記しなくていい', creator:'かず先輩', duration:24, short:DEMO_SHORT[3], long:DEMO_LONG[2] },
+  { id:'m10', subject:'math', grade:'high1', unit:'二次不等式', title:'二次不等式はグラフを描けば秒で解ける', creator:'すうがく部 リナ', duration:19, short:DEMO_SHORT[4], long:DEMO_LONG[0] },
+  { id:'m11', subject:'math', grade:'high2', unit:'指数関数', title:'指数法則、この3つだけ覚えれば戦える', creator:'ゾーン先生', duration:21, short:DEMO_SHORT[0], long:DEMO_LONG[1] },
+  { id:'m12', subject:'math', grade:'high2', unit:'対数関数', title:'logが苦手な人がハマる勘違いTOP1', creator:'かず先輩', duration:25, short:DEMO_SHORT[1], long:DEMO_LONG[2] },
+  { id:'m13', subject:'math', grade:'high3', unit:'複素数平面', title:'複素数平面は"回転"だと思うと一気に分かる', creator:'ゾーン先生', duration:30, short:DEMO_SHORT[2], long:DEMO_LONG[0] },
+  { id:'m14', subject:'math', grade:'high3', unit:'極限', title:'極限の"はさみうちの原理"を10秒で', creator:'すうがく部 リナ', duration:23, short:DEMO_SHORT[3], long:DEMO_LONG[1] },
+  { id:'m15', subject:'math', grade:'high1', unit:'因数分解', title:'因数分解が速い人がやってる逆算思考', creator:'かず先輩', duration:18, short:DEMO_SHORT[4], long:DEMO_LONG[2] },
 
   { id:'j1', subject:'japanese', grade:'high1', unit:'現代文読解', title:'筆者の主張を10秒で見抜く読み方', creator:'国語のミナ', duration:26, short:DEMO_SHORT[0], long:DEMO_LONG[1] },
   { id:'j2', subject:'japanese', grade:'high1', unit:'古文文法', title:'助動詞「き」と「けり」の違い、一発理解', creator:'古文先生', duration:21, short:DEMO_SHORT[1], long:DEMO_LONG[2] },
   { id:'j3', subject:'japanese', grade:'high2', unit:'漢文句法', title:'漢文の「使役」はこの2文字だけ覚えればいい', creator:'古文先生', duration:18, short:DEMO_SHORT[2], long:DEMO_LONG[0] },
   { id:'j4', subject:'japanese', grade:'high3', unit:'小論文', title:'小論文が伸びない人の共通点', creator:'国語のミナ', duration:29, short:DEMO_SHORT[3], long:DEMO_LONG[1] },
+  { id:'j5', subject:'japanese', grade:'high1', unit:'漢字', title:'書けなくても読めればいい漢字の見分け方', creator:'国語のミナ', duration:16, short:DEMO_SHORT[4], long:DEMO_LONG[2] },
+  { id:'j6', subject:'japanese', grade:'high2', unit:'敬語', title:'尊敬語と謙譲語、一生迷わなくなる覚え方', creator:'国語のミナ', duration:22, short:DEMO_SHORT[0], long:DEMO_LONG[0] },
+  { id:'j7', subject:'japanese', grade:'high2', unit:'現代文(小説)', title:'小説問題は"心情の変化"だけ追えばいい', creator:'国語のミナ', duration:27, short:DEMO_SHORT[1], long:DEMO_LONG[1] },
+  { id:'j8', subject:'japanese', grade:'high1', unit:'古文単語', title:'「をかし」と「あはれ」の違い、一発で分かる', creator:'古文先生', duration:20, short:DEMO_SHORT[2], long:DEMO_LONG[2] },
+  { id:'j9', subject:'japanese', grade:'high2', unit:'古文助詞', title:'"係り結び"は要はこの3パターンだけ', creator:'古文先生', duration:24, short:DEMO_SHORT[3], long:DEMO_LONG[0] },
+  { id:'j10', subject:'japanese', grade:'high3', unit:'漢文句法', title:'漢文「反語」を見抜く一番簡単な合図', creator:'古文先生', duration:19, short:DEMO_SHORT[4], long:DEMO_LONG[1] },
+  { id:'j11', subject:'japanese', grade:'high3', unit:'現代文読解', title:'評論文の"対比構造"を秒で見つける方法', creator:'国語のミナ', duration:28, short:DEMO_SHORT[0], long:DEMO_LONG[2] },
 
   { id:'e1', subject:'english', grade:'high1', unit:'文型', title:'英語の5文型、結局これだけ覚えればいい', creator:'イングリッシュTAKU', duration:23, short:DEMO_SHORT[4], long:DEMO_LONG[2] },
   { id:'e2', subject:'english', grade:'high2', unit:'関係代名詞', title:'関係代名詞が苦手な理由、正体はこれ', creator:'イングリッシュTAKU', duration:25, short:DEMO_SHORT[0], long:DEMO_LONG[0] },
   { id:'e3', subject:'english', grade:'high2', unit:'仮定法', title:'仮定法過去は"妄想"の話だった', creator:'えいご部 モモ', duration:20, short:DEMO_SHORT[1], long:DEMO_LONG[1] },
   { id:'e4', subject:'english', grade:'high3', unit:'長文読解', title:'長文の最初の3行だけ読めば展開が読める', creator:'イングリッシュTAKU', duration:27, short:DEMO_SHORT[2], long:DEMO_LONG[2] },
+  { id:'e5', subject:'english', grade:'high1', unit:'時制', title:'現在完了と過去形、たった1つの違い', creator:'えいご部 モモ', duration:18, short:DEMO_SHORT[3], long:DEMO_LONG[0] },
+  { id:'e6', subject:'english', grade:'high1', unit:'不定詞', title:'to不定詞の3用法、見分け方はここだけ', creator:'イングリッシュTAKU', duration:21, short:DEMO_SHORT[4], long:DEMO_LONG[1] },
+  { id:'e7', subject:'english', grade:'high2', unit:'分詞構文', title:'分詞構文は"接続詞の省略"と気づけば楽勝', creator:'えいご部 モモ', duration:26, short:DEMO_SHORT[0], long:DEMO_LONG[2] },
+  { id:'e8', subject:'english', grade:'high2', unit:'受動態', title:'受動態への書き換え、公式より手順を覚える', creator:'イングリッシュTAKU', duration:19, short:DEMO_SHORT[1], long:DEMO_LONG[0] },
+  { id:'e9', subject:'english', grade:'high1', unit:'比較表現', title:'比較級・最上級、この語順パターンだけ覚える', creator:'えいご部 モモ', duration:17, short:DEMO_SHORT[2], long:DEMO_LONG[1] },
+  { id:'e10', subject:'english', grade:'high3', unit:'英作文', title:'自由英作文が書けない人の共通点', creator:'イングリッシュTAKU', duration:29, short:DEMO_SHORT[3], long:DEMO_LONG[2] },
+  { id:'e11', subject:'english', grade:'high3', unit:'仮定法', title:'仮定法過去完了は"過去への後悔"だった', creator:'えいご部 モモ', duration:24, short:DEMO_SHORT[4], long:DEMO_LONG[0] },
 ];
 
 function labelOf(list, id){ const f = list.find(x=>x.id===id); return f ? f.label : id; }
@@ -468,7 +496,15 @@ document.querySelectorAll('[data-nav]').forEach(btn=>{
 
 // ---- ショート動画フィードの生成 ----
 const feedEl = document.getElementById('feed');
-let feedVideos = VIDEOS; // 検索結果からここへ差し込むことも可能な設計
+function shuffle(arr){
+  const a = [...arr];
+  for(let i = a.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+let feedVideos = shuffle(VIDEOS); // サイト内の全動画からランダムな順で次々表示
 
 function renderFeed(videos){
   feedEl.innerHTML = '';

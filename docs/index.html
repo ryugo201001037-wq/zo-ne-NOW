@@ -198,9 +198,27 @@
     flex-shrink:0; width:34px; height:34px; border-radius:50%;
     background:rgba(255,255,255,.1); color:var(--white); font-size:16px;
   }
+
+  /* ============================================================
+     ★一時的なデバッグログ★
+     音声ON操作まわりの不具合の原因調査のためだけに置いています。
+     原因が分かって直ったら、この表示ごと削除します。
+  ============================================================ */
+  #debug-log{
+    position:fixed; left:0; right:0; top:0; z-index:999;
+    max-height:150px; overflow-y:auto;
+    background:rgba(0,0,0,.85); color:#4dff88;
+    font-family:'Inter', monospace; font-size:10px; line-height:1.5;
+    padding:calc(6px + var(--safe-top)) 8px 6px;
+    white-space:pre-wrap; word-break:break-all;
+    pointer-events:none; /* タップの邪魔をしないように */
+  }
 </style>
 </head>
 <body>
+
+<!-- ★一時的なデバッグログ表示（原因調査用。直ったら削除します） -->
+<div id="debug-log"></div>
 
 <div id="app">
 
@@ -302,6 +320,27 @@ const CONFIG = {
   FIRST_PROMPT_AFTER: 15,        // 15本見たら最初のプロンプト
   PROMPT_INTERVAL_AFTER_FIRST: 10 // その後は10本ごとにプロンプト
 };
+
+/* ============================================================
+   ★一時的なデバッグログ★
+   音声ON操作まわりの不具合の原因調査のためだけの仕組みです。
+   画面の一番上に、直近の出来事を新しい順ではなく古い順に表示します。
+   原因が分かって直ったら、この仕組みごと削除します。
+============================================================ */
+const debugLogEl = document.getElementById("debug-log");
+const debugLines = [];
+const PLAYER_STATE_NAMES = { "-1": "UNSTARTED", "0": "ENDED", "1": "PLAYING", "2": "PAUSED", "3": "BUFFERING", "5": "CUED" };
+
+function debugLog(message){
+  const now = new Date();
+  const time = String(now.getMinutes()).padStart(2, "0") + ":" + String(now.getSeconds()).padStart(2, "0") + "." + String(now.getMilliseconds()).padStart(3, "0");
+  debugLines.push(time + " " + message);
+  while (debugLines.length > 25) debugLines.shift();
+  if (debugLogEl){
+    debugLogEl.textContent = debugLines.join("\n");
+    debugLogEl.scrollTop = debugLogEl.scrollHeight;
+  }
+}
 
 /* ============================================================
    画面切り替えの小さなヘルパー
@@ -473,7 +512,8 @@ function preloadStandbyVideo(){
   standby.cueVideoById(videoIds[standbyIndex]);
 }
 
-function onPlayerError(){
+function onPlayerError(event){
+  debugLog("onPlayerError! code=" + (event && event.data));
   document.getElementById("feed-loading").classList.remove("hidden");
   document.getElementById("feed-loading").textContent =
     "動画を読み込めませんでした。CONFIG.PLAYLIST_ID が正しい再生リストIDになっているか確認してください。";
@@ -481,8 +521,10 @@ function onPlayerError(){
 
 // プレイヤーの状態が変わるたびに呼ばれる（再生中・一時停止・終了、など）
 function onPlayerStateChange(event){
-  // 今表に出ているプレイヤー以外（＝裏で先読み中のプレイヤー）の変化は無視する
   const firedKey = (event.target === players.a) ? "a" : "b";
+  debugLog("state[" + firedKey + "]=" + (PLAYER_STATE_NAMES[String(event.data)] || event.data) + (firedKey === activeKey ? " (表)" : " (裏)"));
+
+  // 今表に出ているプレイヤー以外（＝裏で先読み中のプレイヤー）の変化は無視する
   if (firedKey !== activeKey) return;
 
   if (event.data === YT.PlayerState.PLAYING){
@@ -529,6 +571,7 @@ function showPromptScreen(){
 
 // 裏で先読みしておいた「ランダムな次の動画」に、表と裏を入れ替えながら切り替える
 function advanceToStandby(){
+  debugLog("advanceToStandby() isMuted=" + isMuted);
   if (videoIds.length < 2 || !players.b || standbyIndex === null){
     // 動画が1本しかない等、先読みの仕組みが使えない場合は最初から再生し直す
     const active = getActivePlayer();
@@ -576,7 +619,9 @@ function watchPlaybackRecovery(player){
       if (player !== getActivePlayer()) return; // その間にさらにスワイプしていたら何もしない
       if (typeof player.getPlayerState !== "function") return;
       const state = player.getPlayerState();
+      debugLog("watchdog(+" + delay + "ms) state=" + (PLAYER_STATE_NAMES[String(state)] || state));
       if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.CUED){
+        debugLog("watchdog: 再生し直します");
         player.playVideo();
       }
     }, delay);
@@ -593,6 +638,7 @@ function swapPlayerVisibility(){
 // 「今見たばかりの動画にもう一度戻る」操作だけは自然にできるようにしている。
 // これは「見終えた」扱いにはしないので、プロンプト判定はしない。
 function goToPreviousVideo(){
+  debugLog("goToPreviousVideo()");
   if (videoHistory.length === 0) return; // 戻れる履歴がない（見始めたばかり）
 
   currentIndex = videoHistory.pop();
@@ -609,9 +655,11 @@ function applyMuteState(){
   const p = getActivePlayer();
   if (!p) return;
   if (isMuted){
+    debugLog("applyMuteState: mute()");
     if (typeof p.mute === "function") p.mute();
     return;
   }
+  debugLog("applyMuteState: unMute()+playVideo()");
   if (typeof p.unMute === "function") p.unMute();
   // ミュート解除は「音ありで再生する」という扱いになるため、ブラウザ側の
   // 自動再生ポリシーの判断で、再生が一時停止されてしまうことがある。
@@ -654,13 +702,16 @@ swipeLayer.addEventListener("touchend", (e) => {
   if (isMostlyVertical && Math.abs(deltaY) > SWIPE_THRESHOLD){
     if (deltaY < 0){
       // 上スワイプ → 次の動画へ
+      debugLog("上スワイプ検知");
       handleVideoAdvance();
     } else {
       // 下スワイプ → 前の動画へ
+      debugLog("下スワイプ検知");
       goToPreviousVideo();
     }
   } else if (Math.abs(deltaY) < TAP_THRESHOLD && Math.abs(deltaX) < TAP_THRESHOLD && elapsed < 300){
     // 軽いタップ → ミュートのON/OFF切り替え
+    debugLog("タップ検知(ミュート切替)");
     toggleMute();
   }
 }, { passive: true });
@@ -671,6 +722,7 @@ document.getElementById("btn-mute").addEventListener("click", toggleMute);
 function toggleMute(){
   if (!getActivePlayer()) return;
   isMuted = !isMuted;
+  debugLog("toggleMute tapped -> isMuted=" + isMuted);
   applyMuteState(); // ミュート解除時の一時停止対策も、この中で一括して行っている
   document.getElementById("btn-mute").textContent = isMuted ? "🔇" : "🔊";
 }
@@ -695,6 +747,7 @@ function primeAudioPlayback(){
   // プレイヤーがまだ準備できていなければ、次に指が触れたときにもう一度試す
   if (!p || typeof p.unMute !== "function" || typeof p.mute !== "function") return;
 
+  debugLog("primeAudioPlayback 実行");
   p.unMute();
   if (typeof p.playVideo === "function") p.playVideo();
   p.mute(); // すぐにミュートへ戻す（ユーザーが意図せず音が鳴らないように）

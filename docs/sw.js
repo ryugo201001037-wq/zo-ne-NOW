@@ -8,9 +8,8 @@
 // ============================================================
 
 // ⚠️ バージョン番号（v1, v2...）。ここを変えると、古いキャッシュを
-//    全部捨てて作り直させることができる（今回、下のfetch処理を直したので
-//    一度だけv2に上げて、古いキャッシュを掃除している）。
-const CACHE_NAME = "zonenow-mvp-cache-v2";
+//    全部捨てて作り直させることができる。
+const CACHE_NAME = "zonenow-mvp-cache-v3";
 
 // あらかじめ保存しておく「アプリの土台」となるファイル一覧
 const CORE_FILES = [
@@ -59,8 +58,13 @@ self.addEventListener("fetch", (event) => {
   // 最新の内容に更新されるようになる（＝古い見た目のまま固まらない）。
   const isAppShell = event.request.mode === "navigate" || url.pathname.endsWith("index.html");
   if (isAppShell){
+    // { cache: "no-store" } がポイント。これを付けないと、Service Workerとしては
+    // 「ネットに取りに行っている」つもりでも、ブラウザ自身が持っている
+    // もっと低いレベルのHTTPキャッシュ（GitHub Pagesが「10分くらいはキャッシュしてよい」
+    // と指示している分）に引っかかって、結局まだ古い内容が返ってきてしまうことがあった。
+    // no-storeを指定することで、本当に毎回ネットから新しく取り直すようになる。
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request, { cache: "no-store" })
         .then((response) => {
           const responseCopy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseCopy));

@@ -470,10 +470,24 @@ function preloadStandbyVideo(){
   standby.cueVideoById(videoIds[standbyIndex]);
 }
 
-function onPlayerError(){
-  document.getElementById("feed-loading").classList.remove("hidden");
-  document.getElementById("feed-loading").textContent =
-    "動画を読み込めませんでした。CONFIG.PLAYLIST_ID が正しい再生リストIDになっているか確認してください。";
+// 動画の再生でエラーが起きたときの処理。
+// 「再生リストそのものが読み込めない」のと「リスト内の1本が非公開・削除済み
+// などで再生できない」は分けて扱う。後者は珍しくないので、画面を止めずに
+// 静かに他の動画へ切り替える（毎回エラー画面を出すと使い勝手が悪いため）。
+function onPlayerError(event){
+  if (videoIds.length === 0){
+    document.getElementById("feed-loading").classList.remove("hidden");
+    document.getElementById("feed-loading").textContent =
+      "動画を読み込めませんでした。少し待ってから、もう一度開き直してみてください。";
+    return;
+  }
+
+  const firedKey = (event && event.target === players.a) ? "a" : "b";
+  if (firedKey === activeKey){
+    advanceToStandby(); // 今見ようとしていた動画がダメだったので、次へ進む
+  } else {
+    preloadStandbyVideo(); // 裏で先読みしていた動画がダメだったので、別の候補に仕込み直す
+  }
 }
 
 // プレイヤーの状態が変わるたびに呼ばれる（再生中・一時停止・終了、など）

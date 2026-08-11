@@ -16,6 +16,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
+<!-- 動画のラグを少しでも減らすため、YouTube側のドメインに事前接続しておく -->
+<link rel="preconnect" href="https://www.youtube.com">
+<link rel="preconnect" href="https://i.ytimg.com">
+<link rel="preconnect" href="https://s.ytimg.com">
+
 <style>
   /* ============================================================
      デザイントークン（色・フォント・余白のルールをここに集約）
@@ -99,7 +104,7 @@
 
   /* 画面の端に常に置いておく「勉強する」ボタン。
      割り込み画面を待たなくても、いつでも自分から学習に入れるようにするための入口。
-     動画の邪魔にならないよう、ミュート/ログボタンと対になる左上の隅に、
+     動画の邪魔にならないよう、ミュートボタンと対になる左上の隅に、
      同じ大きさの丸アイコンボタンとして置いている（大きなピル型だと動画に被って邪魔だったため）。 */
   .quick-study-btn{
     position:fixed; top:calc(var(--safe-top) + 14px); left:14px; z-index:20;
@@ -218,7 +223,6 @@
 
     <div class="top-controls">
       <button id="btn-mute" class="icon-btn" aria-label="ミュート切り替え">🔇</button>
-      <button id="btn-log" class="icon-btn" aria-label="検証ログを見る">📊</button>
     </div>
 
     <!-- 画面の端に常に置いておく「勉強する」ボタン。いつでも自分から学習に入れる。 -->
@@ -295,7 +299,7 @@ const CONFIG = {
   //    もし動画が読み込めない場合はYouTubeアプリの「共有」→リンクをコピーで
   //    フルのURLを取り直し、list= の後ろの文字列に置き換えてください。
   PLAYLIST_ID: "PLToIvTt0MLnw",
-  FIRST_PROMPT_AFTER: 20,        // 20本見たら最初のプロンプト
+  FIRST_PROMPT_AFTER: 15,        // 15本見たら最初のプロンプト
   PROMPT_INTERVAL_AFTER_FIRST: 10 // その後は10本ごとにプロンプト
 };
 
@@ -352,26 +356,6 @@ function formatStudyDuration(totalSeconds){
 }
 
 /* ============================================================
-   検証ログ（かんたんな計測）
-   表示回数などはページを再読み込みすると0に戻る簡易カウンター。
-   勉強時間の記録だけはlocalStorageに残るので、再読み込みしても消えません。
-============================================================ */
-const verificationLog = {
-  promptShownCount: 0, // 啓発プロンプトを表示した回数
-  yesClickCount: 0     // 「はい、始める」を押した回数
-};
-
-document.getElementById("btn-log").addEventListener("click", () => {
-  alert(
-    "【検証ログ】\n" +
-    "啓発プロンプトの表示回数: " + verificationLog.promptShownCount + "回\n" +
-    "「はい、始める」を押した回数: " + verificationLog.yesClickCount + "回\n" +
-    "今日の合計勉強時間: " + formatStudyDuration(getTodayStudySeconds()) + "\n\n" +
-    "※表示回数・クリック回数はページ再読み込みでリセットされます（勉強時間の記録は残ります）。"
-  );
-});
-
-/* ============================================================
    ① YouTube IFrame Player API まわり
    ------------------------------------------------------------
    YouTube側が用意しているスクリプト（下の<script>タグ）を読み込むと、
@@ -385,6 +369,11 @@ document.getElementById("btn-log").addEventListener("click", () => {
    　・もう片方（裏）には、次に見る動画をあらかじめこっそり読み込んでおく
    という「先読み」をしておくことで、スワイプした瞬間には
    もう準備が終わっている状態を作り、切り替えを滑らかにしています。
+
+   先読みの実装は、あえて「実際に再生を始めてからすぐ一時停止する」
+   （loadVideoById→pauseVideo）方式にしています。軽い予約だけの
+   cueVideoByIdよりも、こちらの方が動画データを実際に読み込んでおく量が
+   多く、いざ表に出したときの再生開始がより速く・滑らかになるためです。
 ============================================================ */
 const players = { a: null, b: null }; // 2台のプレイヤー
 let activeKey = "a";     // 今、表に出ているのはどちらか
@@ -424,7 +413,8 @@ function onYouTubeIframeAPIReady(){
       playsinline: 1,    // iPhoneでも画面いっぱいの自動再生を許可する設定
       rel: 0,
       modestbranding: 1,
-      iv_load_policy: 3
+      iv_load_policy: 3,
+      cc_load_policy: 0  // 字幕は自動で出さない（動画自体に焼き込まれた字幕までは消せません）
     },
     events: {
       onReady: onPrimaryPlayerReady,
@@ -454,7 +444,7 @@ function onPrimaryPlayerReady(){
   players.b = new YT.Player("yt-player-b", {
     playerVars: {
       mute: 1, controls: 0, disablekb: 1, fs: 0,
-      playsinline: 1, rel: 0, modestbranding: 1, iv_load_policy: 3
+      playsinline: 1, rel: 0, modestbranding: 1, iv_load_policy: 3, cc_load_policy: 0
     },
     events: {
       onReady: preloadStandbyVideo,
@@ -464,12 +454,15 @@ function onPrimaryPlayerReady(){
   });
 }
 
-// 裏側のプレイヤーに、次に見る動画（ランダムに選んだもの）をこっそり読み込んでおく（再生はしない＝cue）
+// 裏側のプレイヤーに、次に見る動画（ランダムに選んだもの）をこっそり読み込んでおく。
+// loadVideoByIdで実際に読み込み始め、再生状態になった瞬間をonPlayerStateChangeで
+// キャッチしてすぐ一時停止することで、「見た目には動いていないが、中身はしっかり
+// バッファリングされている」状態を作っている（詳しくは上のコメント参照）。
 function preloadStandbyVideo(){
   const standby = players[otherKey(activeKey)];
-  if (!standby || typeof standby.cueVideoById !== "function" || videoIds.length === 0) return;
+  if (!standby || typeof standby.loadVideoById !== "function" || videoIds.length === 0) return;
   standbyIndex = pickRandomIndex(currentIndex);
-  standby.cueVideoById(videoIds[standbyIndex]);
+  standby.loadVideoById(videoIds[standbyIndex]);
 }
 
 function onPlayerError(){
@@ -480,9 +473,16 @@ function onPlayerError(){
 
 // プレイヤーの状態が変わるたびに呼ばれる（再生中・一時停止・終了、など）
 function onPlayerStateChange(event){
-  // 今表に出ているプレイヤー以外（＝裏で先読み中のプレイヤー）の変化は無視する
   const firedKey = (event.target === players.a) ? "a" : "b";
-  if (firedKey !== activeKey) return;
+
+  if (firedKey !== activeKey){
+    // 裏側（先読み中）のプレイヤーが再生し始めた瞬間だけキャッチして、
+    // すぐ一時停止する（＝読み込みだけ進めて、表には出さない）
+    if (event.data === YT.PlayerState.PLAYING){
+      event.target.pauseVideo();
+    }
+    return;
+  }
 
   if (event.data === YT.PlayerState.ENDED){
     handleVideoAdvance();
@@ -517,7 +517,6 @@ function shouldShowPrompt(count){
 function showPromptScreen(){
   const active = getActivePlayer();
   if (active && typeof active.pauseVideo === "function") active.pauseVideo();
-  verificationLog.promptShownCount++;
   showScreen("screen-prompt");
 }
 
@@ -551,8 +550,8 @@ function advanceToStandby(){
 
   // 裏に回った方（さっきまで表だった方）に、また新しくランダムな動画を仕込んでおく
   standbyIndex = pickRandomIndex(currentIndex);
-  if (oldPlayer && typeof oldPlayer.cueVideoById === "function" && videoIds[standbyIndex]){
-    oldPlayer.cueVideoById(videoIds[standbyIndex]);
+  if (oldPlayer && typeof oldPlayer.loadVideoById === "function" && videoIds[standbyIndex]){
+    oldPlayer.loadVideoById(videoIds[standbyIndex]);
   }
 }
 
@@ -655,7 +654,6 @@ document.getElementById("btn-quick-study").addEventListener("click", () => {
    ② 啓発プロンプト画面のボタン操作
 ============================================================ */
 document.getElementById("btn-start-study").addEventListener("click", () => {
-  verificationLog.yesClickCount++;
   cameFromPrompt = true; // 動画は見終わっているので、戻るときは次の動画から再開する
   showScreen("screen-timer");
 });
@@ -671,8 +669,19 @@ document.getElementById("btn-keep-watching").addEventListener("click", () => {
    目標時間などは決めず、スタートを押した瞬間から0:00で数え始め、
    ストップを押すまでひたすら数字が増え続けるだけのシンプルな方式。
    ストップを押した時点までの時間が、今日の勉強時間として記録されます。
+
+   ★画面が裏に回っても正しく動くようにする工夫★
+   スマホでロック画面にしたり、他のアプリに切り替えたりすると、
+   ブラウザは電池を節約するためにsetIntervalの動きを遅らせたり
+   止めたりすることがあります（「1秒ごとに+1する」だけの数え方だと、
+   裏に回っている間ずっと止まったままになってしまう）。
+   そこで「1秒ごとに+1」ではなく、「スタートを押した実際の時刻」を
+   覚えておき、そこから現在時刻までの差を毎回計算し直す方式にしています。
+   これなら裏に回っていた時間も含めて、画面に戻った瞬間に正しい数字へ
+   ちゃんと追いつきます。
 ============================================================ */
-let stopwatchSec = 0;      // ここまで経過した時間（0から増えていく）
+let stopwatchSec = 0;         // 画面に表示している経過時間（秒）
+let stopwatchStartedAt = null; // スタートを押した瞬間の時刻（Date.now()の値）
 let timerIntervalId = null;
 let timerRunning = false;
 
@@ -687,6 +696,18 @@ function renderTimer(){
   timerDisplay.textContent = `${min}:${sec}`;
 }
 
+// 「スタートした実際の時刻」と「今」の差から、経過秒数を計算し直す
+function updateStopwatchFromClock(){
+  if (!timerRunning || stopwatchStartedAt === null) return;
+  stopwatchSec = Math.floor((Date.now() - stopwatchStartedAt) / 1000);
+  renderTimer();
+}
+
+// 画面が裏から表に戻ってきた瞬間に、経過時間のズレをすぐ正しく直す
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) updateStopwatchFromClock();
+});
+
 timerToggleBtn.addEventListener("click", () => {
   if (!timerRunning){
     startStopwatch();
@@ -697,18 +718,17 @@ timerToggleBtn.addEventListener("click", () => {
 
 function startStopwatch(){
   timerRunning = true;
+  stopwatchStartedAt = Date.now();
   timerToggleBtn.textContent = "ストップ";
   timerSub.textContent = "がんばって！終わったらストップを押してね";
   // 勉強中は「動画に戻る」で寄り道できないようにする（ほかの機能は不要、との方針のため）
   timerBackBtn.style.display = "none";
 
-  timerIntervalId = setInterval(() => {
-    stopwatchSec++;
-    renderTimer();
-  }, 1000);
+  timerIntervalId = setInterval(updateStopwatchFromClock, 1000);
 }
 
 function stopStopwatch(){
+  updateStopwatchFromClock(); // 止める直前の正確な経過時間を確定させる
   clearInterval(timerIntervalId);
   timerIntervalId = null;
   timerRunning = false;
@@ -719,6 +739,7 @@ function stopStopwatch(){
     "今日の合計勉強時間: " + formatStudyDuration(getTodayStudySeconds());
 
   stopwatchSec = 0;
+  stopwatchStartedAt = null;
   renderTimer();
   timerToggleBtn.textContent = "スタート";
   timerSub.textContent = "スタートを押して勉強を始めましょう";
@@ -744,6 +765,7 @@ function resumeFeedFromTimer(){
   timerIntervalId = null;
   timerRunning = false;
   stopwatchSec = 0;
+  stopwatchStartedAt = null;
   renderTimer();
   timerToggleBtn.textContent = "スタート";
   timerSub.textContent = "スタートを押して勉強を始めましょう";

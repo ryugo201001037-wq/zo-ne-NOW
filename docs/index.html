@@ -585,8 +585,17 @@ function goToPreviousVideo(){
 function applyMuteState(){
   const p = getActivePlayer();
   if (!p) return;
-  if (isMuted && typeof p.mute === "function") p.mute();
-  else if (!isMuted && typeof p.unMute === "function") p.unMute();
+  if (isMuted){
+    if (typeof p.mute === "function") p.mute();
+    return;
+  }
+  if (typeof p.unMute === "function") p.unMute();
+  // ミュート解除は「音ありで再生する」という扱いになるため、ブラウザ側の
+  // 自動再生ポリシーの判断で、再生が一時停止されてしまうことがある。
+  // （ミュートボタンをタップした直後や、スワイプ後に反映するときの両方で起こりうる）
+  // そこで、ミュート解除のたびに念のため再生も促しておく
+  // （すでに再生中なら何も起きない、安全な操作）。
+  if (typeof p.playVideo === "function") p.playVideo();
 }
 
 /* ============================================================
@@ -639,7 +648,7 @@ document.getElementById("btn-mute").addEventListener("click", toggleMute);
 function toggleMute(){
   if (!getActivePlayer()) return;
   isMuted = !isMuted;
-  applyMuteState();
+  applyMuteState(); // ミュート解除時の一時停止対策も、この中で一括して行っている
   document.getElementById("btn-mute").textContent = isMuted ? "🔇" : "🔊";
 }
 

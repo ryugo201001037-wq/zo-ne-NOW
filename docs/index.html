@@ -536,6 +536,7 @@ function shouldShowPrompt(count){
 function showPromptScreen(){
   const active = getActivePlayer();
   if (active && typeof active.pauseVideo === "function") active.pauseVideo();
+  cancelPendingPlaybackRecovery(); // この一時停止は意図的なものなので、見張り役に復旧させない
   showScreen("screen-prompt");
 }
 
@@ -583,11 +584,28 @@ function advanceToStandby(){
 // BUFFERING中（順調に読み込み中）はまだ何もせず、本当に止まっている
 // （UNSTARTED/PAUSED/CUEDのまま動かない）ときだけ手を出す。
 // 1回だけだと復帰しないケースもありうるため、間隔を空けて数回試す。
+//
+// ★予約が「賞味期限切れ」で誤発火しないようにする仕組み★
+// この予約(setTimeout)は数秒後に発火するが、その間に
+// ・もっと新しいスワイプが起きていたら → 今回の予約はもう古いので何もしない
+// ・タイマー画面など、フィード画面から離れていたら → 今の一時停止は意図的なので何もしない
+// のどちらかであれば、動画を勝手に読み込み直したり再生したりしないようにする。
+// （これを怠ると、スワイプ直後にタイマーを始めた場合などに、
+//   古い予約だけが後から律儀に発火して勝手に音声が流れ出す不具合になる）
+let playbackRecoveryToken = 0;
+function cancelPendingPlaybackRecovery(){
+  playbackRecoveryToken++;
+}
+
 function watchPlaybackRecovery(player){
   if (!player) return;
+  playbackRecoveryToken++;
+  const myToken = playbackRecoveryToken;
   const stuckStates = [YT.PlayerState.UNSTARTED, YT.PlayerState.PAUSED, YT.PlayerState.CUED];
   [1000, 2200, 3600].forEach((delay) => {
     setTimeout(() => {
+      if (myToken !== playbackRecoveryToken) return; // もっと新しいスワイプ等で予約が上書きされていたら何もしない
+      if (!document.getElementById("screen-feed").classList.contains("active")) return; // フィード画面にいなければ何もしない
       if (player !== getActivePlayer()) return; // その間にさらにスワイプしていたら何もしない
       if (typeof player.getPlayerState !== "function") return;
       const state = player.getPlayerState();
@@ -705,6 +723,7 @@ function toggleMute(){
 document.getElementById("btn-quick-study").addEventListener("click", () => {
   const active = getActivePlayer();
   if (active && typeof active.pauseVideo === "function") active.pauseVideo();
+  cancelPendingPlaybackRecovery(); // この一時停止は意図的なものなので、見張り役に復旧させない
   cameFromPrompt = false;
   showScreen("screen-timer");
 });

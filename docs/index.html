@@ -303,10 +303,14 @@
 /* ============================================================
    ⚙️ 設定エリア（検証中はここの数値だけ触ればOK）
    ------------------------------------------------------------
-   PLAYLIST_ID                : 使いたいYouTube再生リストのID。
+   PLAYLIST_IDS               : 使いたいYouTube再生リストのIDを配列で指定します。
                                  再生リストのURLの「list=」の後ろの文字列です。
                                  例）https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxx
                                                                           ↑ここ
+                                 1つの再生リストは動画200本くらいまでしか読み込めない
+                                 ことがあるため、リストを2つに分けておくと、その分
+                                 多くの動画を候補に混ぜられます。2つ目を使わないなら
+                                 空文字("")のままでOKです。
    FIRST_PROMPT_AFTER         : 最初に啓発プロンプトを出すタイミング（何本目の動画の後か）
    PROMPT_INTERVAL_AFTER_FIRST: 2回目以降、何本ごとにプロンプトを出すか
 ============================================================ */
@@ -315,7 +319,10 @@ const CONFIG = {
   //    通常の再生リストIDはもう少し長い文字列（30文字前後）のことが多いので、
   //    もし動画が読み込めない場合はYouTubeアプリの「共有」→リンクをコピーで
   //    フルのURLを取り直し、list= の後ろの文字列に置き換えてください。
-  PLAYLIST_ID: "PLToIvTt0MLnw",
+  PLAYLIST_IDS: [
+    "PLToIvTt0MLnw",
+    ""  // 2つ目の再生リストIDがあればここに入れてください（なければ空のままでOK）
+  ],
   FIRST_PROMPT_AFTER: 15,        // 15本見たら最初のプロンプト
   PROMPT_INTERVAL_AFTER_FIRST: 10 // その後は10本ごとにプロンプト
 };
@@ -430,7 +437,7 @@ function onYouTubeIframeAPIReady(){
   players.a = new YT.Player("yt-player-a", {
     playerVars: {
       listType: "playlist",
-      list: CONFIG.PLAYLIST_ID,
+      list: CONFIG.PLAYLIST_IDS[0],
       autoplay: 1,
       mute: 1,          // ブラウザの自動再生ポリシー上、最初はミュート必須
       controls: 0,       // YouTube標準のコントロールは消し、自前のUIだけにする
@@ -450,10 +457,15 @@ function onYouTubeIframeAPIReady(){
   });
 }
 
+// 同じ動画IDが2つの再生リストに重複して入っていても、候補としては1本にまとめる
+function mergeVideoIds(listA, listB){
+  return Array.from(new Set(listA.concat(listB)));
+}
+
 function onPrimaryPlayerReady(){
   document.getElementById("feed-loading").classList.add("hidden");
 
-  // 再生リストの中身（動画IDの並び）を取得する
+  // 1つ目の再生リストの中身（動画IDの並び）を取得する
   videoIds = players.a.getPlaylist() || [];
   currentIndex = players.a.getPlaylistIndex() || 0;
 
@@ -466,18 +478,37 @@ function onPrimaryPlayerReady(){
   activeKey = "a";
   applyMuteState();
 
-  // 裏側担当のプレイヤーBを用意する（先読み専用）
+  // 裏側担当のプレイヤーBを用意する。
+  // 2つ目の再生リストが設定されていれば、まずそれをこっそり読み込んで動画一覧に
+  // 混ぜ込んでから（見た目の再生はもう始まっているので体感の待ち時間はない）、
+  // 通常の「先読み専用」の役目に切り替える。
+  const secondPlaylistId = (CONFIG.PLAYLIST_IDS[1] || "").trim();
   players.b = new YT.Player("yt-player-b", {
-    playerVars: {
-      mute: 1, controls: 0, disablekb: 1, fs: 0,
-      playsinline: 1, rel: 0, modestbranding: 1, iv_load_policy: 3, cc_load_policy: 0
-    },
+    playerVars: secondPlaylistId
+      ? {
+          listType: "playlist", list: secondPlaylistId,
+          mute: 1, controls: 0, disablekb: 1, fs: 0,
+          playsinline: 1, rel: 0, modestbranding: 1, iv_load_policy: 3, cc_load_policy: 0
+        }
+      : {
+          mute: 1, controls: 0, disablekb: 1, fs: 0,
+          playsinline: 1, rel: 0, modestbranding: 1, iv_load_policy: 3, cc_load_policy: 0
+        },
     events: {
-      onReady: preloadStandbyVideo,
+      onReady: secondPlaylistId ? onSecondPlaylistReady : preloadStandbyVideo,
       onStateChange: onPlayerStateChange,
       onError: onPlayerError
     }
   });
+}
+
+// 2つ目の再生リストの動画IDを、候補の一覧に混ぜ込んでから、
+// プレイヤーBを本来の「先読み専用」の役目に戻す
+function onSecondPlaylistReady(){
+  const extraVideoIds = players.b.getPlaylist() || [];
+  videoIds = mergeVideoIds(videoIds, extraVideoIds);
+  if (typeof players.b.stopVideo === "function") players.b.stopVideo(); // 2つ目のリストの自動再生を止めておく
+  preloadStandbyVideo();
 }
 
 // 裏側のプレイヤーに、次に見る動画（ランダムに選んだもの）をこっそり読み込んでおく（再生はしない＝cue）

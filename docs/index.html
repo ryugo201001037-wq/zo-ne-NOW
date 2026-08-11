@@ -377,12 +377,14 @@ function formatStudyDuration(totalSeconds){
    安定して確実に動くこちらの方式に戻しています。
 
    ★音ONのときだけ再生が止まってしまう不具合への対策★
-   「一時停止中の動画に対して、ミュート解除と再生開始を同時に行う」と、
-   ブラウザの自動再生ポリシーに引っかかり、再生が一瞬始まった直後に
-   強制的に止められてしまうことがありました（音がONのときだけ起きる
-   のはこれが原因）。そこで、「まず再生が実際に始まったのを確認して
-   から、音の有無を反映する」という順番に変更しています
-   （下のonPlayerStateChange内を参照）。
+   ミュート解除の反映を「実際に再生が始まってから」に遅らせてみたところ、
+   逆にスワイプ直後に固まってしまう不具合が出ました（おそらく、ユーザーの
+   タップ操作から時間差ができたことで、ブラウザから見て「操作に伴わない
+   音声再生」と判定されてしまったため）。そこで、ミュート状態の反映は
+   スワイプ操作と同じタイミングで同期的に行うよう戻しています。
+   それでも万が一止まってしまった場合の保険として、スワイプの少し後に
+   本当に再生できているか確認し、止まっていたら再生し直す
+   watchPlaybackRecovery() も併用しています。
 ============================================================ */
 const players = { a: null, b: null }; // 2台のプレイヤー
 let activeKey = "a";     // 今、表に出ているのはどちらか
@@ -447,7 +449,7 @@ function onPrimaryPlayerReady(){
   }
 
   activeKey = "a";
-  // ミュート状態は、実際に再生が始まった瞬間（onPlayerStateChange内）で反映する
+  applyMuteState();
 
   // 裏側担当のプレイヤーBを用意する（先読み専用）
   players.b = new YT.Player("yt-player-b", {
@@ -484,9 +486,8 @@ function onPlayerStateChange(event){
   if (firedKey !== activeKey) return;
 
   if (event.data === YT.PlayerState.PLAYING){
-    // 実際に再生が始まったこのタイミングで、初めてミュート状態を反映する。
-    // （一時停止中の動画にミュート解除と再生を同時に行うと、ブラウザの
-    //   自動再生ポリシーに引っかかって再生が強制的に止まることがあるため）
+    // 念のため、実際に再生が始まったタイミングでもミュート状態を反映しておく
+    // （スワイプ操作時に一度反映しているが、二重にかけても害はないための保険）
     applyMuteState();
   }
 
@@ -549,16 +550,37 @@ function advanceToStandby(){
   activeKey = otherKey(oldKey);
   currentIndex = standbyIndex;
 
-  // ミュート状態は、実際に再生が始まった瞬間（onPlayerStateChange内）で反映する
+  // スワイプ操作(タップ)と同じタイミングでミュート状態を反映してから再生する。
+  // （ミュート解除の反映を後回しにすると、ブラウザから見て「操作に伴わない
+  //   音声再生」と判定されて止められることがあったため、必ず同期的に行う）
+  applyMuteState();
   const newActive = getActivePlayer();
   if (newActive && typeof newActive.playVideo === "function") newActive.playVideo();
   swapPlayerVisibility();
+  watchPlaybackRecovery(newActive);
 
   // 裏に回った方（さっきまで表だった方）に、また新しくランダムな動画を仕込んでおく
   standbyIndex = pickRandomIndex(currentIndex);
   if (oldPlayer && typeof oldPlayer.cueVideoById === "function" && videoIds[standbyIndex]){
     oldPlayer.cueVideoById(videoIds[standbyIndex]);
   }
+}
+
+// 保険：スワイプ後、何らかの理由で再生が一時停止のまま固まってしまっていないかを
+// 少し後で確認し、もし止まっていたらもう一度再生を促す（原因を問わない安全策）。
+// 1回だけだと復帰しないケースもありうるため、間隔を空けて数回試す。
+function watchPlaybackRecovery(player){
+  if (!player) return;
+  [500, 1200, 2200].forEach((delay) => {
+    setTimeout(() => {
+      if (player !== getActivePlayer()) return; // その間にさらにスワイプしていたら何もしない
+      if (typeof player.getPlayerState !== "function") return;
+      const state = player.getPlayerState();
+      if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.CUED){
+        player.playVideo();
+      }
+    }, delay);
+  });
 }
 
 function swapPlayerVisibility(){
@@ -577,7 +599,8 @@ function goToPreviousVideo(){
   const active = getActivePlayer();
   if (active && typeof active.loadVideoById === "function"){
     active.loadVideoById(videoIds[currentIndex]);
-    // ミュート状態は、実際に再生が始まった瞬間（onPlayerStateChange内）で反映する
+    applyMuteState();
+    watchPlaybackRecovery(active);
   }
   preloadStandbyVideo(); // 裏側には、また新しいランダムな候補を仕込み直す
 }

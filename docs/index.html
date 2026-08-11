@@ -370,10 +370,19 @@ function formatStudyDuration(totalSeconds){
    という「先読み」をしておくことで、スワイプした瞬間には
    もう準備が終わっている状態を作り、切り替えを滑らかにしています。
 
-   先読みの実装は、あえて「実際に再生を始めてからすぐ一時停止する」
-   （loadVideoById→pauseVideo）方式にしています。軽い予約だけの
-   cueVideoByIdよりも、こちらの方が動画データを実際に読み込んでおく量が
-   多く、いざ表に出したときの再生開始がより速く・滑らかになるためです。
+   先読みには cueVideoById を使っています（YouTube公式が「再生はせず
+   準備だけしておく」ために用意している安全な方法）。一度、もっと
+   がっつり先読みできる方法を試したのですが、タイミングによっては
+   スワイプ直後の動画が誤って一時停止されてしまう不具合が出たため、
+   安定して確実に動くこちらの方式に戻しています。
+
+   ★音ONのときだけ再生が止まってしまう不具合への対策★
+   「一時停止中の動画に対して、ミュート解除と再生開始を同時に行う」と、
+   ブラウザの自動再生ポリシーに引っかかり、再生が一瞬始まった直後に
+   強制的に止められてしまうことがありました（音がONのときだけ起きる
+   のはこれが原因）。そこで、「まず再生が実際に始まったのを確認して
+   から、音の有無を反映する」という順番に変更しています
+   （下のonPlayerStateChange内を参照）。
 ============================================================ */
 const players = { a: null, b: null }; // 2台のプレイヤー
 let activeKey = "a";     // 今、表に出ているのはどちらか
@@ -438,7 +447,7 @@ function onPrimaryPlayerReady(){
   }
 
   activeKey = "a";
-  applyMuteState();
+  // ミュート状態は、実際に再生が始まった瞬間（onPlayerStateChange内）で反映する
 
   // 裏側担当のプレイヤーBを用意する（先読み専用）
   players.b = new YT.Player("yt-player-b", {
@@ -454,15 +463,12 @@ function onPrimaryPlayerReady(){
   });
 }
 
-// 裏側のプレイヤーに、次に見る動画（ランダムに選んだもの）をこっそり読み込んでおく。
-// loadVideoByIdで実際に読み込み始め、再生状態になった瞬間をonPlayerStateChangeで
-// キャッチしてすぐ一時停止することで、「見た目には動いていないが、中身はしっかり
-// バッファリングされている」状態を作っている（詳しくは上のコメント参照）。
+// 裏側のプレイヤーに、次に見る動画（ランダムに選んだもの）をこっそり読み込んでおく（再生はしない＝cue）
 function preloadStandbyVideo(){
   const standby = players[otherKey(activeKey)];
-  if (!standby || typeof standby.loadVideoById !== "function" || videoIds.length === 0) return;
+  if (!standby || typeof standby.cueVideoById !== "function" || videoIds.length === 0) return;
   standbyIndex = pickRandomIndex(currentIndex);
-  standby.loadVideoById(videoIds[standbyIndex]);
+  standby.cueVideoById(videoIds[standbyIndex]);
 }
 
 function onPlayerError(){
@@ -473,15 +479,15 @@ function onPlayerError(){
 
 // プレイヤーの状態が変わるたびに呼ばれる（再生中・一時停止・終了、など）
 function onPlayerStateChange(event){
+  // 今表に出ているプレイヤー以外（＝裏で先読み中のプレイヤー）の変化は無視する
   const firedKey = (event.target === players.a) ? "a" : "b";
+  if (firedKey !== activeKey) return;
 
-  if (firedKey !== activeKey){
-    // 裏側（先読み中）のプレイヤーが再生し始めた瞬間だけキャッチして、
-    // すぐ一時停止する（＝読み込みだけ進めて、表には出さない）
-    if (event.data === YT.PlayerState.PLAYING){
-      event.target.pauseVideo();
-    }
-    return;
+  if (event.data === YT.PlayerState.PLAYING){
+    // 実際に再生が始まったこのタイミングで、初めてミュート状態を反映する。
+    // （一時停止中の動画にミュート解除と再生を同時に行うと、ブラウザの
+    //   自動再生ポリシーに引っかかって再生が強制的に止まることがあるため）
+    applyMuteState();
   }
 
   if (event.data === YT.PlayerState.ENDED){
@@ -543,15 +549,15 @@ function advanceToStandby(){
   activeKey = otherKey(oldKey);
   currentIndex = standbyIndex;
 
-  applyMuteState();
+  // ミュート状態は、実際に再生が始まった瞬間（onPlayerStateChange内）で反映する
   const newActive = getActivePlayer();
   if (newActive && typeof newActive.playVideo === "function") newActive.playVideo();
   swapPlayerVisibility();
 
   // 裏に回った方（さっきまで表だった方）に、また新しくランダムな動画を仕込んでおく
   standbyIndex = pickRandomIndex(currentIndex);
-  if (oldPlayer && typeof oldPlayer.loadVideoById === "function" && videoIds[standbyIndex]){
-    oldPlayer.loadVideoById(videoIds[standbyIndex]);
+  if (oldPlayer && typeof oldPlayer.cueVideoById === "function" && videoIds[standbyIndex]){
+    oldPlayer.cueVideoById(videoIds[standbyIndex]);
   }
 }
 
@@ -571,7 +577,7 @@ function goToPreviousVideo(){
   const active = getActivePlayer();
   if (active && typeof active.loadVideoById === "function"){
     active.loadVideoById(videoIds[currentIndex]);
-    applyMuteState();
+    // ミュート状態は、実際に再生が始まった瞬間（onPlayerStateChange内）で反映する
   }
   preloadStandbyVideo(); // 裏側には、また新しいランダムな候補を仕込み直す
 }

@@ -7,7 +7,10 @@
 // 難しいオフライン再生などは行いません（YouTube動画はネットが必須のため）。
 // ============================================================
 
-const CACHE_NAME = "zonenow-mvp-cache-v1";
+// ⚠️ バージョン番号（v1, v2...）。ここを変えると、古いキャッシュを
+//    全部捨てて作り直させることができる（今回、下のfetch処理を直したので
+//    一度だけv2に上げて、古いキャッシュを掃除している）。
+const CACHE_NAME = "zonenow-mvp-cache-v2";
 
 // あらかじめ保存しておく「アプリの土台」となるファイル一覧
 const CORE_FILES = [
@@ -38,7 +41,7 @@ self.addEventListener("activate", (event) => {
 });
 
 // リクエストが発生したとき：
-// 自分のサイト（同じオリジン）のファイルだけキャッシュを確認し、
+// 自分のサイト（同じオリジン）のファイルだけを見て、
 // YouTube側の動画・APIリクエストなど外部通信には一切手を出さない。
 // （下手にキャッシュすると動画が再生できなくなるため）
 self.addEventListener("fetch", (event) => {
@@ -49,6 +52,27 @@ self.addEventListener("fetch", (event) => {
     return; // 何もしない＝ブラウザが普段通りネットに取りに行く
   }
 
+  // index.html（アプリ本体）は「まずネットから最新版を取りに行き、
+  // オフラインの時だけキャッシュを使う」方式にする。
+  // これにより、コードを更新するたびにキャッシュのバージョン番号を
+  // 手動で上げなくても、次にネットに繋がった状態で開けば自動的に
+  // 最新の内容に更新されるようになる（＝古い見た目のまま固まらない）。
+  const isAppShell = event.request.mode === "navigate" || url.pathname.endsWith("index.html");
+  if (isAppShell){
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const responseCopy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseCopy));
+          return response;
+        })
+        .catch(() => caches.match(event.request)) // オフラインの時だけ、保存しておいた版を使う
+    );
+    return;
+  }
+
+  // それ以外（manifest.jsonやアイコンなど、めったに変わらないファイル）は
+  // 今まで通りキャッシュ優先で、素早く・オフラインでも表示できるようにする。
   event.respondWith(
     caches.match(event.request).then((cached) => cached || fetch(event.request))
   );

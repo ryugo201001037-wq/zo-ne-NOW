@@ -198,27 +198,9 @@
     flex-shrink:0; width:34px; height:34px; border-radius:50%;
     background:rgba(255,255,255,.1); color:var(--white); font-size:16px;
   }
-
-  /* ============================================================
-     ★一時的なデバッグログ★
-     音声ON操作まわりの不具合の原因調査のためだけに置いています。
-     原因が分かって直ったら、この表示ごと削除します。
-  ============================================================ */
-  #debug-log{
-    position:fixed; left:0; right:0; top:0; z-index:999;
-    max-height:150px; overflow-y:auto;
-    background:rgba(0,0,0,.85); color:#4dff88;
-    font-family:'Inter', monospace; font-size:10px; line-height:1.5;
-    padding:calc(6px + var(--safe-top)) 8px 6px;
-    white-space:pre-wrap; word-break:break-all;
-    pointer-events:none; /* タップの邪魔をしないように */
-  }
 </style>
 </head>
 <body>
-
-<!-- ★一時的なデバッグログ表示（原因調査用。直ったら削除します） -->
-<div id="debug-log"></div>
 
 <div id="app">
 
@@ -322,32 +304,6 @@ const CONFIG = {
 };
 
 /* ============================================================
-   ★一時的なデバッグログ★
-   音声ON操作まわりの不具合の原因調査のためだけの仕組みです。
-   画面の一番上に、直近の出来事を新しい順ではなく古い順に表示します。
-   原因が分かって直ったら、この仕組みごと削除します。
-============================================================ */
-const debugLogEl = document.getElementById("debug-log");
-const debugLines = [];
-const PLAYER_STATE_NAMES = { "-1": "UNSTARTED", "0": "ENDED", "1": "PLAYING", "2": "PAUSED", "3": "BUFFERING", "5": "CUED" };
-
-function debugLog(message){
-  const now = new Date();
-  const time = String(now.getMinutes()).padStart(2, "0") + ":" + String(now.getSeconds()).padStart(2, "0") + "." + String(now.getMilliseconds()).padStart(3, "0");
-  debugLines.push(time + " " + message);
-  while (debugLines.length > 25) debugLines.shift();
-  if (debugLogEl){
-    debugLogEl.textContent = debugLines.join("\n");
-    debugLogEl.scrollTop = debugLogEl.scrollHeight;
-  }
-}
-
-// 「今、本当に最新版を見られているか」を一目で確認できるように、
-// 起動した瞬間に一番上へ目印を出す（ここの日付が変わっていなければ、
-// まだ古いキャッシュを見ている、と判断できる）
-debugLog("=== ZoneNOW debug build 2026-08-11-3 起動 ===");
-
-/* ============================================================
    画面切り替えの小さなヘルパー
 ============================================================ */
 function showScreen(id){
@@ -415,25 +371,17 @@ function formatStudyDuration(totalSeconds){
    もう準備が終わっている状態を作り、切り替えを滑らかにしています。
 
    先読みには cueVideoById を使っています（YouTube公式が「再生はせず
-   準備だけしておく」ために用意している安全な方法）。一度、もっと
-   がっつり先読みできる方法を試したのですが、タイミングによっては
-   スワイプ直後の動画が誤って一時停止されてしまう不具合が出たため、
-   安定して確実に動くこちらの方式に戻しています。
+   準備だけしておく」ために用意している安全な方法）。
 
-   ★音ONでスワイプすると固まる不具合について（原因判明・修正済み）★
-   実機のデバッグログで原因が判明しました。ブラウザの許可うんぬんの話ではなく、
-   単純に「動画の再生を開始する指示(playVideo())」を、同じタイミングで
-   2回連続して送ってしまっていたのが原因でした（ミュート解除の対策を
-   applyMuteState()の中に足したときに、advanceToStandby()側の既存の
-   playVideo()呼び出しを消し忘れていました）。
-   YouTubeのプレイヤーはplayVideo()を短時間に2回受け取ると、読み込み状態
-   （UNSTARTED）に巻き戻ったまま止まってしまうことがあるようです。
-   今は「再生の指示は1か所・1回だけ」になるように整理しています。
-   （applyMuteState()はミュートの切り替えだけを行い、再生の指示は
-   呼び出し元でそれぞれ1回だけ行う設計にしました）
-   念のため、それでも万が一固まってしまった場合の保険として、
+   ★再生の指示(playVideo())は、1回の切り替えにつき必ず1回だけ★
+   同じタイミングでplayVideo()を2回送ると、YouTube側のプレイヤーが
+   混乱して読み込み状態（UNSTARTED）に巻き戻ったまま止まってしまう
+   ことが実機の検証でわかりました。そのため、ミュートのON/OFFを行う
+   applyMuteState()は再生の指示を一切出さず、「再生してね」という
+   指示は呼び出し元でそれぞれ1回だけ行う、という役割分担にしています。
+   万が一それでも再生が止まってしまった場合の保険として、
    スワイプの少し後に本当に再生できているか確認し、止まっていたら
-   再生し直すwatchPlaybackRecovery() も引き続き併用しています。
+   動画を読み込み直すwatchPlaybackRecovery() も併用しています。
 ============================================================ */
 const players = { a: null, b: null }; // 2台のプレイヤー
 let activeKey = "a";     // 今、表に出ているのはどちらか
@@ -522,8 +470,7 @@ function preloadStandbyVideo(){
   standby.cueVideoById(videoIds[standbyIndex]);
 }
 
-function onPlayerError(event){
-  debugLog("onPlayerError! code=" + (event && event.data));
+function onPlayerError(){
   document.getElementById("feed-loading").classList.remove("hidden");
   document.getElementById("feed-loading").textContent =
     "動画を読み込めませんでした。CONFIG.PLAYLIST_ID が正しい再生リストIDになっているか確認してください。";
@@ -532,7 +479,6 @@ function onPlayerError(event){
 // プレイヤーの状態が変わるたびに呼ばれる（再生中・一時停止・終了、など）
 function onPlayerStateChange(event){
   const firedKey = (event.target === players.a) ? "a" : "b";
-  debugLog("state[" + firedKey + "]=" + (PLAYER_STATE_NAMES[String(event.data)] || event.data) + (firedKey === activeKey ? " (表)" : " (裏)"));
 
   // 今表に出ているプレイヤー以外（＝裏で先読み中のプレイヤー）の変化は無視する
   if (firedKey !== activeKey) return;
@@ -581,7 +527,6 @@ function showPromptScreen(){
 
 // 裏で先読みしておいた「ランダムな次の動画」に、表と裏を入れ替えながら切り替える
 function advanceToStandby(){
-  debugLog("advanceToStandby() isMuted=" + isMuted);
   if (videoIds.length < 2 || !players.b || standbyIndex === null){
     // 動画が1本しかない等、先読みの仕組みが使えない場合は最初から再生し直す
     const active = getActivePlayer();
@@ -619,21 +564,21 @@ function advanceToStandby(){
 
 // 保険：スワイプ後、何らかの理由で再生されないまま固まってしまっていないかを
 // 少し後で確認し、止まっていたら「その動画をもう一度最初から読み込み直す」
-// （原因を問わない安全策）。
-// 実機での検証で、単にplayVideo()をもう一度送るだけでは復活しないケースが
-// あるとわかったため、loadVideoById()でしっかり読み込み直す方式にしている。
+// （原因を問わない安全策。単にplayVideo()をもう一度送るだけでは復活しない
+// ケースがあったため、loadVideoById()でしっかり読み込み直す方式にしている）。
+// BUFFERING中（順調に読み込み中）はまだ何もせず、本当に止まっている
+// （UNSTARTED/PAUSED/CUEDのまま動かない）ときだけ手を出す。
 // 1回だけだと復帰しないケースもありうるため、間隔を空けて数回試す。
 function watchPlaybackRecovery(player){
   if (!player) return;
-  [800, 1800, 3000].forEach((delay) => {
+  const stuckStates = [YT.PlayerState.UNSTARTED, YT.PlayerState.PAUSED, YT.PlayerState.CUED];
+  [1000, 2200, 3600].forEach((delay) => {
     setTimeout(() => {
       if (player !== getActivePlayer()) return; // その間にさらにスワイプしていたら何もしない
       if (typeof player.getPlayerState !== "function") return;
       const state = player.getPlayerState();
-      debugLog("watchdog(+" + delay + "ms) state=" + (PLAYER_STATE_NAMES[String(state)] || state));
-      if (state === YT.PlayerState.PLAYING) return; // 順調に再生できていれば何もしない
+      if (stuckStates.indexOf(state) === -1) return; // 再生中・読み込み中なら何もしない
 
-      debugLog("watchdog: loadVideoByIdで読み込み直します");
       if (typeof player.loadVideoById === "function" && videoIds[currentIndex]){
         player.loadVideoById(videoIds[currentIndex]);
         applyMuteState();
@@ -654,7 +599,6 @@ function swapPlayerVisibility(){
 // 「今見たばかりの動画にもう一度戻る」操作だけは自然にできるようにしている。
 // これは「見終えた」扱いにはしないので、プロンプト判定はしない。
 function goToPreviousVideo(){
-  debugLog("goToPreviousVideo()");
   if (videoHistory.length === 0) return; // 戻れる履歴がない（見始めたばかり）
 
   currentIndex = videoHistory.pop();
@@ -667,20 +611,15 @@ function goToPreviousVideo(){
   preloadStandbyVideo(); // 裏側には、また新しいランダムな候補を仕込み直す
 }
 
+// ★重要：この関数はミュートのON/OFFだけを行い、再生の指示(playVideo())は
+// 一切出さない。再生の指示は、必要な場所で1回だけ行うのが正しい
+// （2回同時に送るとYouTube側のプレイヤーが混乱して固まることがある）。
 function applyMuteState(){
-  // ★重要：この関数はミュートのON/OFFだけを行い、playVideo()は呼ばない。
-  // 以前、ここでもplayVideo()を呼んでいたところ、呼び出し元(advanceToStandby等)
-  // でも別途playVideo()を呼んでいたため「同じタイミングでplayVideo()が2回」
-  // 送られてしまい、YouTube側のプレイヤーが混乱して読み込み状態のまま
-  // 固まってしまう不具合の原因になっていた（デバッグログで判明）。
-  // 再生の指示は、必要な場所で1回だけ行うのが正しい。
   const p = getActivePlayer();
   if (!p) return;
   if (isMuted){
-    debugLog("applyMuteState: mute()");
     if (typeof p.mute === "function") p.mute();
   } else {
-    debugLog("applyMuteState: unMute()");
     if (typeof p.unMute === "function") p.unMute();
   }
 }
@@ -718,16 +657,13 @@ swipeLayer.addEventListener("touchend", (e) => {
   if (isMostlyVertical && Math.abs(deltaY) > SWIPE_THRESHOLD){
     if (deltaY < 0){
       // 上スワイプ → 次の動画へ
-      debugLog("上スワイプ検知");
       handleVideoAdvance();
     } else {
       // 下スワイプ → 前の動画へ
-      debugLog("下スワイプ検知");
       goToPreviousVideo();
     }
   } else if (Math.abs(deltaY) < TAP_THRESHOLD && Math.abs(deltaX) < TAP_THRESHOLD && elapsed < 300){
     // 軽いタップ → ミュートのON/OFF切り替え
-    debugLog("タップ検知(ミュート切替)");
     toggleMute();
   }
 }, { passive: true });
@@ -739,45 +675,12 @@ function toggleMute(){
   const p = getActivePlayer();
   if (!p) return;
   isMuted = !isMuted;
-  debugLog("toggleMute tapped -> isMuted=" + isMuted);
   applyMuteState();
   // ミュート解除ボタン単体のタップでは（スワイプのように他の再生指示と
   // 重ならないので）念のため一度だけ再生も促しておく（安全な保険）
   if (!isMuted && typeof p.playVideo === "function") p.playVideo();
   document.getElementById("btn-mute").textContent = isMuted ? "🔇" : "🔊";
 }
-
-/* ============================================================
-   「初回の音声ON操作だけ固まる」対策（音声再生許可の“先取り”）
-   ------------------------------------------------------------
-   多くのブラウザでは、「このページで音を出してもいい」という許可は、
-   ページ内でユーザーの指が最初に触れた、まさにその瞬間に初めて確定します。
-   ところが、その"許可が下りる瞬間"と、私たちのコードが送る最初の
-   ミュート解除の指示が同時に起きると、指示の方が一瞬早くて空振りし、
-   動画が止まって見えることがありました（2回目以降は許可が済んでいる
-   ので問題なく動く、という報告と一致します）。
-
-   そこで、ユーザーが実際にミュートボタンを押すよりも前に――
-   ページ内で最初に指が触れた瞬間、気づかれないように一瞬だけ
-   「ミュート解除→ミュート」を行っておき、許可だけ先に済ませておきます。
-   これにより、本番のミュート解除操作が来る頃にはもう許可済みになっています。
-============================================================ */
-function primeAudioPlayback(){
-  const p = getActivePlayer();
-  // プレイヤーがまだ準備できていなければ、次に指が触れたときにもう一度試す
-  if (!p || typeof p.unMute !== "function" || typeof p.mute !== "function") return;
-
-  debugLog("primeAudioPlayback 実行");
-  p.unMute();
-  if (typeof p.playVideo === "function") p.playVideo();
-  p.mute(); // すぐにミュートへ戻す（ユーザーが意図せず音が鳴らないように）
-
-  // 一度成功したら、もう仕込みは不要なので監視をやめる
-  document.removeEventListener("touchstart", primeAudioPlayback);
-  document.removeEventListener("mousedown", primeAudioPlayback);
-}
-document.addEventListener("touchstart", primeAudioPlayback, { passive: true });
-document.addEventListener("mousedown", primeAudioPlayback);
 
 /* ============================================================
    画面の端に常に置いてある「勉強する」ボタン

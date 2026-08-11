@@ -420,15 +420,20 @@ function formatStudyDuration(totalSeconds){
    スワイプ直後の動画が誤って一時停止されてしまう不具合が出たため、
    安定して確実に動くこちらの方式に戻しています。
 
-   ★音ONのときだけ再生が止まってしまう不具合への対策★
-   ミュート解除の反映を「実際に再生が始まってから」に遅らせてみたところ、
-   逆にスワイプ直後に固まってしまう不具合が出ました（おそらく、ユーザーの
-   タップ操作から時間差ができたことで、ブラウザから見て「操作に伴わない
-   音声再生」と判定されてしまったため）。そこで、ミュート状態の反映は
-   スワイプ操作と同じタイミングで同期的に行うよう戻しています。
-   それでも万が一止まってしまった場合の保険として、スワイプの少し後に
-   本当に再生できているか確認し、止まっていたら再生し直す
-   watchPlaybackRecovery() も併用しています。
+   ★音ONでスワイプすると固まる不具合について（原因判明・修正済み）★
+   実機のデバッグログで原因が判明しました。ブラウザの許可うんぬんの話ではなく、
+   単純に「動画の再生を開始する指示(playVideo())」を、同じタイミングで
+   2回連続して送ってしまっていたのが原因でした（ミュート解除の対策を
+   applyMuteState()の中に足したときに、advanceToStandby()側の既存の
+   playVideo()呼び出しを消し忘れていました）。
+   YouTubeのプレイヤーはplayVideo()を短時間に2回受け取ると、読み込み状態
+   （UNSTARTED）に巻き戻ったまま止まってしまうことがあるようです。
+   今は「再生の指示は1か所・1回だけ」になるように整理しています。
+   （applyMuteState()はミュートの切り替えだけを行い、再生の指示は
+   呼び出し元でそれぞれ1回だけ行う設計にしました）
+   念のため、それでも万が一固まってしまった場合の保険として、
+   スワイプの少し後に本当に再生できているか確認し、止まっていたら
+   再生し直すwatchPlaybackRecovery() も引き続き併用しています。
 ============================================================ */
 const players = { a: null, b: null }; // 2台のプレイヤー
 let activeKey = "a";     // 今、表に出ているのはどちらか
@@ -598,9 +603,7 @@ function advanceToStandby(){
   activeKey = otherKey(oldKey);
   currentIndex = standbyIndex;
 
-  // スワイプ操作(タップ)と同じタイミングでミュート状態を反映してから再生する。
-  // （ミュート解除の反映を後回しにすると、ブラウザから見て「操作に伴わない
-  //   音声再生」と判定されて止められることがあったため、必ず同期的に行う）
+  // ミュート状態を反映してから、1回だけ再生を指示する
   applyMuteState();
   const newActive = getActivePlayer();
   if (newActive && typeof newActive.playVideo === "function") newActive.playVideo();
@@ -625,7 +628,8 @@ function watchPlaybackRecovery(player){
       if (typeof player.getPlayerState !== "function") return;
       const state = player.getPlayerState();
       debugLog("watchdog(+" + delay + "ms) state=" + (PLAYER_STATE_NAMES[String(state)] || state));
-      if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.CUED){
+      // PAUSED/CUEDだけでなく、UNSTARTEDのまま動かなくなるケースも保険としてカバーする
+      if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.CUED || state === YT.PlayerState.UNSTARTED){
         debugLog("watchdog: 再生し直します");
         player.playVideo();
       }
@@ -657,21 +661,21 @@ function goToPreviousVideo(){
 }
 
 function applyMuteState(){
+  // ★重要：この関数はミュートのON/OFFだけを行い、playVideo()は呼ばない。
+  // 以前、ここでもplayVideo()を呼んでいたところ、呼び出し元(advanceToStandby等)
+  // でも別途playVideo()を呼んでいたため「同じタイミングでplayVideo()が2回」
+  // 送られてしまい、YouTube側のプレイヤーが混乱して読み込み状態のまま
+  // 固まってしまう不具合の原因になっていた（デバッグログで判明）。
+  // 再生の指示は、必要な場所で1回だけ行うのが正しい。
   const p = getActivePlayer();
   if (!p) return;
   if (isMuted){
     debugLog("applyMuteState: mute()");
     if (typeof p.mute === "function") p.mute();
-    return;
+  } else {
+    debugLog("applyMuteState: unMute()");
+    if (typeof p.unMute === "function") p.unMute();
   }
-  debugLog("applyMuteState: unMute()+playVideo()");
-  if (typeof p.unMute === "function") p.unMute();
-  // ミュート解除は「音ありで再生する」という扱いになるため、ブラウザ側の
-  // 自動再生ポリシーの判断で、再生が一時停止されてしまうことがある。
-  // （ミュートボタンをタップした直後や、スワイプ後に反映するときの両方で起こりうる）
-  // そこで、ミュート解除のたびに念のため再生も促しておく
-  // （すでに再生中なら何も起きない、安全な操作）。
-  if (typeof p.playVideo === "function") p.playVideo();
 }
 
 /* ============================================================
@@ -725,10 +729,14 @@ swipeLayer.addEventListener("touchend", (e) => {
 document.getElementById("btn-mute").addEventListener("click", toggleMute);
 
 function toggleMute(){
-  if (!getActivePlayer()) return;
+  const p = getActivePlayer();
+  if (!p) return;
   isMuted = !isMuted;
   debugLog("toggleMute tapped -> isMuted=" + isMuted);
-  applyMuteState(); // ミュート解除時の一時停止対策も、この中で一括して行っている
+  applyMuteState();
+  // ミュート解除ボタン単体のタップでは（スワイプのように他の再生指示と
+  // 重ならないので）念のため一度だけ再生も促しておく（安全な保険）
+  if (!isMuted && typeof p.playVideo === "function") p.playVideo();
   document.getElementById("btn-mute").textContent = isMuted ? "🔇" : "🔊";
 }
 

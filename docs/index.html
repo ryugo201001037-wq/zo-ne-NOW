@@ -102,6 +102,20 @@
     z-index:8; pointer-events:none; letter-spacing:.02em;
   }
 
+  /* タップで一時停止したときに出す、真ん中の一時停止アイコン。
+     「止まっているのが意図的な一時停止なのか、それとも固まっているだけなのか」を
+     一目で区別できるようにするための表示。 */
+  #pause-indicator{
+    position:absolute; top:50%; left:50%; transform:translate(-50%, -50%);
+    width:72px; height:72px; border-radius:50%;
+    background:rgba(16,19,26,.55); backdrop-filter:blur(6px);
+    display:flex; align-items:center; justify-content:center;
+    font-size:30px; color:var(--white);
+    opacity:0; pointer-events:none; transition:opacity .2s ease;
+    z-index:6;
+  }
+  #pause-indicator.visible{ opacity:1; }
+
   /* 画面の端に常に置いておく「勉強する」ボタン。
      割り込み画面を待たなくても、いつでも自分から学習に入れるようにするための入口。
      動画の邪魔にならないよう、ミュートボタンと対になる左上の隅に、
@@ -218,6 +232,9 @@
 
     <div id="feed-loading">動画を読み込んでいます…</div>
 
+    <!-- タップで一時停止したときに、真ん中に一瞬〜ずっと表示するアイコン -->
+    <div id="pause-indicator" aria-hidden="true">⏸</div>
+
     <!-- スワイプ・タップ検知用の透明レイヤー -->
     <div id="swipe-layer"></div>
 
@@ -228,7 +245,7 @@
     <!-- 画面の端に常に置いておく「勉強する」ボタン。いつでも自分から学習に入れる。 -->
     <button id="btn-quick-study" class="icon-btn quick-study-btn" aria-label="勉強を始める">📚</button>
 
-    <p class="swipe-hint">↑ 上にスワイプで次の動画　/　タップで音ON・OFF</p>
+    <p class="swipe-hint">↑ 上にスワイプで次の動画　/　タップで一時停止</p>
   </section>
 
   <!-- ============================================================
@@ -391,6 +408,7 @@ let standbyIndex = null; // 裏側のプレイヤーに、次はどの動画を�
 let videoHistory = [];   // 表示した動画のインデックス履歴（下スワイプで戻れるようにするため）
 let watchedCount = 0;    // ここまでに視聴を終えた（または送り飛ばした）動画の本数
 let isMuted = true;
+let isPaused = false;    // タップで一時停止しているかどうか
 let cameFromPrompt = false; // タイマー画面に「啓発プロンプト経由」で来たかどうか
 
 function otherKey(key){ return key === "a" ? "b" : "a"; }
@@ -537,11 +555,14 @@ function showPromptScreen(){
   const active = getActivePlayer();
   if (active && typeof active.pauseVideo === "function") active.pauseVideo();
   cancelPendingPlaybackRecovery(); // この一時停止は意図的なものなので、見張り役に復旧させない
+  resetPauseState(); // タップでの一時停止表示は消しておく（フィードに戻ったら再生から始めるため）
   showScreen("screen-prompt");
 }
 
 // 裏で先読みしておいた「ランダムな次の動画」に、表と裏を入れ替えながら切り替える
 function advanceToStandby(){
+  resetPauseState(); // スワイプしたら、一時停止中でも必ず再生から始める
+
   if (videoIds.length < 2 || !players.b || standbyIndex === null){
     // 動画が1本しかない等、先読みの仕組みが使えない場合は最初から再生し直す
     const active = getActivePlayer();
@@ -606,6 +627,7 @@ function watchPlaybackRecovery(player){
     setTimeout(() => {
       if (myToken !== playbackRecoveryToken) return; // もっと新しいスワイプ等で予約が上書きされていたら何もしない
       if (!document.getElementById("screen-feed").classList.contains("active")) return; // フィード画面にいなければ何もしない
+      if (isPaused) return; // ユーザーが意図的に一時停止しているなら何もしない
       if (player !== getActivePlayer()) return; // その間にさらにスワイプしていたら何もしない
       if (typeof player.getPlayerState !== "function") return;
       const state = player.getPlayerState();
@@ -633,6 +655,7 @@ function swapPlayerVisibility(){
 function goToPreviousVideo(){
   if (videoHistory.length === 0) return; // 戻れる履歴がない（見始めたばかり）
 
+  resetPauseState(); // スワイプしたら、一時停止中でも必ず再生から始める
   currentIndex = videoHistory.pop();
   const active = getActivePlayer();
   if (active && typeof active.loadVideoById === "function"){
@@ -695,8 +718,8 @@ swipeLayer.addEventListener("touchend", (e) => {
       goToPreviousVideo();
     }
   } else if (Math.abs(deltaY) < TAP_THRESHOLD && Math.abs(deltaX) < TAP_THRESHOLD && elapsed < 300){
-    // 軽いタップ → ミュートのON/OFF切り替え
-    toggleMute();
+    // 軽いタップ → 一時停止/再生の切り替え（音のON/OFFは右上の専用ボタンで行う）
+    togglePause();
   }
 }, { passive: true });
 
@@ -714,6 +737,29 @@ function toggleMute(){
   document.getElementById("btn-mute").textContent = isMuted ? "🔇" : "🔊";
 }
 
+// 動画をタップして一時停止・再生を切り替える
+function togglePause(){
+  const p = getActivePlayer();
+  if (!p) return;
+  isPaused = !isPaused;
+  const indicator = document.getElementById("pause-indicator");
+  if (isPaused){
+    if (typeof p.pauseVideo === "function") p.pauseVideo();
+    cancelPendingPlaybackRecovery(); // 意図的な一時停止なので、見張り役に復旧させない
+    indicator.classList.add("visible");
+  } else {
+    if (typeof p.playVideo === "function") p.playVideo();
+    indicator.classList.remove("visible");
+  }
+}
+
+// 一時停止中の表示を解除する（動画を切り替えるときに使う）
+function resetPauseState(){
+  isPaused = false;
+  const indicator = document.getElementById("pause-indicator");
+  if (indicator) indicator.classList.remove("visible");
+}
+
 /* ============================================================
    画面の端に常に置いてある「勉強する」ボタン
    ------------------------------------------------------------
@@ -724,6 +770,7 @@ document.getElementById("btn-quick-study").addEventListener("click", () => {
   const active = getActivePlayer();
   if (active && typeof active.pauseVideo === "function") active.pauseVideo();
   cancelPendingPlaybackRecovery(); // この一時停止は意図的なものなので、見張り役に復旧させない
+  resetPauseState(); // タップでの一時停止表示は消しておく（フィードに戻ったら再生から始めるため）
   cameFromPrompt = false;
   showScreen("screen-timer");
 });
@@ -855,6 +902,7 @@ function resumeFeedFromTimer(){
     advanceToStandby();
   } else {
     // 「勉強するボタン」から直接来た場合、見ていた動画の続きを再生する
+    resetPauseState();
     const active = getActivePlayer();
     if (active && typeof active.playVideo === "function") active.playVideo();
   }

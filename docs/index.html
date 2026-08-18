@@ -182,6 +182,12 @@
   #screen-done .emoji{ font-size:46px; }
   #done-today-time{ color:var(--mint); font-family:var(--font-ui); font-weight:600; }
 
+  /* 累計時間・連続日数を示す、控えめな記録表示 */
+  #timer-stats, #done-total-stats{
+    color:var(--mint); font-family:var(--font-ui); font-size:12px; font-weight:600;
+    letter-spacing:.02em;
+  }
+
   /* ============================================================
      初回訪問時のみ表示する「ホーム画面に追加」バナー
   ============================================================ */
@@ -268,6 +274,7 @@
     <div class="card">
       <h1>学習タイマー</h1>
       <p class="sub" id="timer-sub">スタートを押して勉強を始めましょう</p>
+      <p class="sub" id="timer-stats"></p>
 
       <div class="timer-display" id="timer-display">00:00</div>
 
@@ -285,6 +292,7 @@
       <h1>おつかれさまでした</h1>
       <p class="sub">今日も一歩、前進しましたね。</p>
       <p class="sub" id="done-today-time"></p>
+      <p class="sub" id="done-total-stats"></p>
       <button id="btn-done-home" class="btn btn-primary">ホームに戻る</button>
     </div>
   </section>
@@ -336,19 +344,25 @@ function showScreen(id){
 }
 
 /* ============================================================
-   1日の勉強時間の記録
+   勉強時間の記録
    ------------------------------------------------------------
    localStorageに「日付ごとの合計勉強秒数」を保存しておく、簡易的な記録機能。
    ページを閉じても、翌日以降もブラウザに残り続けます。
+   「今日の分」だけでなく、「累計」「連続で記録がある日数」も
+   ここから計算して、タイマー画面・完了画面に表示しています。
 ============================================================ */
 const STUDY_LOG_KEY = "zonenow_mvp_study_log";
 
-function getTodayKey(){
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+// 指定した日付の「YYYY-MM-DD」キーを作る
+function getDateKey(date){
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function getTodayKey(){
+  return getDateKey(new Date());
 }
 
 function loadStudyLog(){
@@ -360,6 +374,7 @@ function loadStudyLog(){
 }
 
 function addStudyTime(seconds){
+  if (seconds <= 0) return;
   const log = loadStudyLog();
   const key = getTodayKey();
   log[key] = (log[key] || 0) + seconds;
@@ -371,12 +386,50 @@ function getTodayStudySeconds(){
   return log[getTodayKey()] || 0;
 }
 
+// これまでの記録をすべて合計した時間
+function getTotalStudySeconds(){
+  const log = loadStudyLog();
+  return Object.keys(log).reduce((sum, key) => sum + (log[key] || 0), 0);
+}
+
+// 今日（今日まだ記録がなければ昨日）から遡って、何日連続で記録があるか
+function getStudyStreak(){
+  const log = loadStudyLog();
+  const cursor = new Date();
+  if (!(log[getDateKey(cursor)] > 0)){
+    cursor.setDate(cursor.getDate() - 1); // 今日はまだ勉強していないだけかもしれないので、連続記録は途切れさせない
+  }
+  let streak = 0;
+  while (log[getDateKey(cursor)] > 0){
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
 function formatStudyDuration(totalSeconds){
   const totalMinutes = Math.floor(totalSeconds / 60);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   if (hours > 0) return `${hours}時間${minutes}分`;
   return `${minutes}分`;
+}
+
+// 「累計〇時間〇分・〇日連続」の1行を作る。記録がまだなければ空文字を返す
+function formatStudyStatsLine(){
+  const total = getTotalStudySeconds();
+  if (total <= 0) return "";
+  return `累計 ${formatStudyDuration(total)}　・　${getStudyStreak()}日連続`;
+}
+
+// タイマー画面・完了画面の「累計・連続日数」表示を、今の記録に合わせて更新する
+function renderStudyStats(){
+  const line = formatStudyStatsLine();
+  [document.getElementById("timer-stats"), document.getElementById("done-total-stats")].forEach((el) => {
+    if (!el) return;
+    el.textContent = line;
+    el.style.display = line ? "" : "none";
+  });
 }
 
 /* ============================================================
@@ -595,9 +648,15 @@ function advanceToStandby(){
   resetPauseState(); // スワイプしたら、一時停止中でも必ず再生から始める
 
   if (videoIds.length < 2 || !players.b || standbyIndex === null){
-    // 動画が1本しかない等、先読みの仕組みが使えない場合は最初から再生し直す
+    // 先読みの仕組みがまだ準備できていない場合（起動直後にすぐ連続でスワイプした場合など）。
+    // 動画一覧がもう複数本ある状態なら、同じ動画を繰り返すのではなく、
+    // その場で別のランダムな動画を選んで直接読み込む。
     const active = getActivePlayer();
-    if (active && typeof active.seekTo === "function"){
+    if (active && videoIds.length > 1 && typeof active.loadVideoById === "function"){
+      currentIndex = pickRandomIndex(currentIndex);
+      active.loadVideoById(videoIds[currentIndex]);
+      applyMuteState();
+    } else if (active && typeof active.seekTo === "function"){
       active.seekTo(0);
       active.playVideo();
     }
@@ -824,7 +883,15 @@ document.getElementById("btn-keep-watching").addEventListener("click", () => {
    ------------------------------------------------------------
    目標時間などは決めず、スタートを押した瞬間から0:00で数え始め、
    ストップを押すまでひたすら数字が増え続けるだけのシンプルな方式。
-   ストップを押した時点までの時間が、今日の勉強時間として記録されます。
+
+   ★記録が消えないようにする工夫★
+   以前は「ストップを押した瞬間」にしか記録を保存していなかったため、
+   ストップを押し忘れたままアプリを閉じたり、スマホの電池が切れたり
+   すると、その日の勉強時間が丸ごと消えてしまっていました。
+   そこで、動作中は15秒ごとに「そこまでの分」を少しずつ記録に
+   足していく方式にしています（checkpointStudyTime）。
+   これなら万が一ストップを押せなかった場合でも、最後の15秒未満が
+   記録されないだけで済みます。
 
    ★画面が裏に回っても正しく動くようにする工夫★
    スマホでロック画面にしたり、他のアプリに切り替えたりすると、
@@ -840,6 +907,10 @@ let stopwatchSec = 0;         // 画面に表示している経過時間（秒�
 let stopwatchStartedAt = null; // スタートを押した瞬間の時刻（Date.now()の値）
 let timerIntervalId = null;
 let timerRunning = false;
+
+let lastCheckpointSec = 0;  // 記録として保存済みの経過秒数（この先の差分だけを追加保存する）
+let lastCheckpointAt = 0;   // 最後にチェックポイント保存をした実時刻（Date.now()の値）
+const CHECKPOINT_INTERVAL_MS = 15000; // 15秒ごとに記録を保存する
 
 const timerDisplay = document.getElementById("timer-display");
 const timerSub = document.getElementById("timer-sub");
@@ -857,6 +928,19 @@ function updateStopwatchFromClock(){
   if (!timerRunning || stopwatchStartedAt === null) return;
   stopwatchSec = Math.floor((Date.now() - stopwatchStartedAt) / 1000);
   renderTimer();
+  maybeCheckpointStudyTime();
+}
+
+// 前回の保存から15秒以上経っていたら、その差分を記録に足しておく
+function maybeCheckpointStudyTime(){
+  if (Date.now() - lastCheckpointAt < CHECKPOINT_INTERVAL_MS) return;
+  const delta = stopwatchSec - lastCheckpointSec;
+  if (delta > 0){
+    addStudyTime(delta);
+    lastCheckpointSec = stopwatchSec;
+    renderStudyStats(); // 記録が増えた分を、その場で表示にも反映する
+  }
+  lastCheckpointAt = Date.now();
 }
 
 // 画面が裏から表に戻ってきた瞬間に、経過時間のズレをすぐ正しく直す
@@ -875,6 +959,8 @@ timerToggleBtn.addEventListener("click", () => {
 function startStopwatch(){
   timerRunning = true;
   stopwatchStartedAt = Date.now();
+  lastCheckpointSec = 0;
+  lastCheckpointAt = Date.now();
   timerToggleBtn.textContent = "ストップ";
   timerSub.textContent = "がんばって！終わったらストップを押してね";
   // 勉強中は「動画に戻る」で寄り道できないようにする（ほかの機能は不要、との方針のため）
@@ -889,10 +975,14 @@ function stopStopwatch(){
   timerIntervalId = null;
   timerRunning = false;
 
-  // ストップまでに経過した時間を、今日の勉強時間として記録する
-  addStudyTime(stopwatchSec);
+  // すでにチェックポイントで保存済みの分は除いて、残りの差分だけを記録に足す
+  const remaining = stopwatchSec - lastCheckpointSec;
+  if (remaining > 0) addStudyTime(remaining);
+  lastCheckpointSec = 0;
+
   document.getElementById("done-today-time").textContent =
     "今日の合計勉強時間: " + formatStudyDuration(getTodayStudySeconds());
+  renderStudyStats();
 
   stopwatchSec = 0;
   stopwatchStartedAt = null;
@@ -987,6 +1077,9 @@ function resumeFeedFromTimer(){
 document.getElementById("btn-banner-close").addEventListener("click", () => {
   document.getElementById("pwa-banner").classList.remove("visible");
 });
+
+// タイマー画面を最初に表示する前から、これまでの記録が見えるようにしておく
+renderStudyStats();
 
 /* ============================================================
    ⑥ Service Workerの登録（PWA対応に必須）

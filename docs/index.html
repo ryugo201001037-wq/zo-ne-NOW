@@ -175,6 +175,28 @@
     font-family:var(--font-ui); font-size:56px; font-weight:700; letter-spacing:.02em;
     margin-bottom:28px; font-variant-numeric:tabular-nums;
   }
+  .timer-links{ display:flex; justify-content:center; gap:8px; }
+  .timer-links .btn-text{ width:auto; }
+
+  /* ============================================================
+     学習記録の一覧画面
+  ============================================================ */
+  .history-card{
+    max-height:75vh; display:flex; flex-direction:column;
+  }
+  .history-list{
+    overflow-y:auto; text-align:left; margin-bottom:24px;
+  }
+  .history-row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:11px 2px; border-bottom:1px solid rgba(255,255,255,.07);
+    font-family:var(--font-ui);
+  }
+  .history-row:last-child{ border-bottom:none; }
+  .history-date{ font-size:14px; color:var(--white); }
+  .history-date.is-today{ color:var(--ember-soft); font-weight:600; }
+  .history-minutes{ font-size:14px; font-weight:600; color:var(--mint); font-variant-numeric:tabular-nums; }
+  .history-minutes.is-empty{ color:var(--muted); font-weight:400; }
 
   /* ============================================================
      完了画面
@@ -279,7 +301,10 @@
       <div class="timer-display" id="timer-display">00:00</div>
 
       <button id="btn-timer-toggle" class="btn btn-primary">スタート</button>
-      <button id="btn-timer-back" class="btn btn-text">動画に戻る</button>
+      <div class="timer-links" id="timer-links">
+        <button id="btn-timer-back" class="btn btn-text">動画に戻る</button>
+        <button id="btn-view-history" class="btn btn-text">記録を見る</button>
+      </div>
     </div>
   </section>
 
@@ -298,7 +323,19 @@
   </section>
 
   <!-- ============================================================
-       ⑤ 初回訪問時だけ出す「ホーム画面に追加」バナー
+       ⑤ 学習記録の一覧画面（直近2週間の記録を日付ごとに並べるだけのシンプルな一覧）
+  ============================================================ -->
+  <section id="screen-history" class="screen">
+    <div class="card history-card">
+      <h1>学習記録</h1>
+      <p class="sub" id="history-summary"></p>
+      <div class="history-list" id="history-list"></div>
+      <button id="btn-history-back" class="btn btn-ghost">閉じる</button>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       ⑥ 初回訪問時だけ出す「ホーム画面に追加」バナー
   ============================================================ -->
   <div id="pwa-banner">
     <p id="pwa-banner-text"></p>
@@ -431,6 +468,58 @@ function renderStudyStats(){
     el.style.display = line ? "" : "none";
   });
 }
+
+// 「学習記録」画面：直近14日分を、新しい日から順に並べるだけのシンプルな一覧
+const HISTORY_DAYS = 14;
+
+function renderHistoryScreen(){
+  const log = loadStudyLog();
+  const listEl = document.getElementById("history-list");
+  const summaryEl = document.getElementById("history-summary");
+  listEl.textContent = ""; // 前回描画した分をクリアする
+
+  const todayKey = getTodayKey();
+  const weekdayNames = ["日", "月", "火", "水", "木", "金", "土"];
+
+  for (let i = 0; i < HISTORY_DAYS; i++){
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = getDateKey(d);
+    const seconds = log[key] || 0;
+    const isToday = key === todayKey;
+
+    const row = document.createElement("div");
+    row.className = "history-row";
+
+    const dateEl = document.createElement("span");
+    dateEl.className = "history-date" + (isToday ? " is-today" : "");
+    dateEl.textContent = `${d.getMonth() + 1}/${d.getDate()}(${weekdayNames[d.getDay()]})` + (isToday ? " 今日" : "");
+
+    const minutesEl = document.createElement("span");
+    if (seconds > 0){
+      minutesEl.className = "history-minutes";
+      minutesEl.textContent = formatStudyDuration(seconds);
+    } else {
+      minutesEl.className = "history-minutes is-empty";
+      minutesEl.textContent = "記録なし";
+    }
+
+    row.appendChild(dateEl);
+    row.appendChild(minutesEl);
+    listEl.appendChild(row);
+  }
+
+  summaryEl.textContent = formatStudyStatsLine() || "まだ記録がありません";
+}
+
+document.getElementById("btn-view-history").addEventListener("click", () => {
+  renderHistoryScreen();
+  showScreen("screen-history");
+});
+
+document.getElementById("btn-history-back").addEventListener("click", () => {
+  showScreen("screen-timer");
+});
 
 /* ============================================================
    ① YouTube IFrame Player API まわり
@@ -915,7 +1004,7 @@ const CHECKPOINT_INTERVAL_MS = 15000; // 15秒ごとに記録を保存する
 const timerDisplay = document.getElementById("timer-display");
 const timerSub = document.getElementById("timer-sub");
 const timerToggleBtn = document.getElementById("btn-timer-toggle");
-const timerBackBtn = document.getElementById("btn-timer-back");
+const timerLinks = document.getElementById("timer-links"); // 「動画に戻る」「記録を見る」をまとめて表示/非表示する
 
 function renderTimer(){
   const min = Math.floor(stopwatchSec / 60).toString().padStart(2, "0");
@@ -963,8 +1052,8 @@ function startStopwatch(){
   lastCheckpointAt = Date.now();
   timerToggleBtn.textContent = "ストップ";
   timerSub.textContent = "がんばって！終わったらストップを押してね";
-  // 勉強中は「動画に戻る」で寄り道できないようにする（ほかの機能は不要、との方針のため）
-  timerBackBtn.style.display = "none";
+  // 勉強中は「動画に戻る」「記録を見る」で寄り道できないようにする（ほかの機能は不要、との方針のため）
+  timerLinks.style.display = "none";
 
   timerIntervalId = setInterval(updateStopwatchFromClock, 1000);
 }
@@ -989,7 +1078,7 @@ function stopStopwatch(){
   renderTimer();
   timerToggleBtn.textContent = "スタート";
   timerSub.textContent = "スタートを押して勉強を始めましょう";
-  timerBackBtn.style.display = "";
+  timerLinks.style.display = "";
 
   showScreen("screen-done");
 }
@@ -1015,7 +1104,7 @@ function resumeFeedFromTimer(){
   renderTimer();
   timerToggleBtn.textContent = "スタート";
   timerSub.textContent = "スタートを押して勉強を始めましょう";
-  timerBackBtn.style.display = "";
+  timerLinks.style.display = "";
   showScreen("screen-feed");
 
   if (cameFromPrompt){
@@ -1031,7 +1120,7 @@ function resumeFeedFromTimer(){
 }
 
 /* ============================================================
-   ⑤ 初回訪問時だけ「ホーム画面に追加」バナーを出す
+   ⑥ 初回訪問時だけ「ホーム画面に追加」バナーを出す
    ------------------------------------------------------------
    localStorageは、ブラウザに小さなデータを保存しておける仕組みです。
    一度「訪問済み」と記録しておけば、次回以降はバナーを出しません。
@@ -1082,7 +1171,7 @@ document.getElementById("btn-banner-close").addEventListener("click", () => {
 renderStudyStats();
 
 /* ============================================================
-   ⑥ Service Workerの登録（PWA対応に必須）
+   ⑦ Service Workerの登録（PWA対応に必須）
 ============================================================ */
 if ("serviceWorker" in navigator){
   window.addEventListener("load", () => {

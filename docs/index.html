@@ -455,6 +455,10 @@ function submitUserName(){
   localStorage.setItem(USER_NAME_KEY, name);
   showScreen("screen-feed");
   recordEvent("起動（名前登録）"); // 名前登録が済んで、初めて使い始めたタイミングで記録する
+
+  // 名前を入力している間に動画側の起動時の見張りチェックが終わってしまっている
+  // ことがあるため、フィード画面に来たこのタイミングで改めて確認しておく
+  if (getActivePlayer()) watchPlaybackRecovery(getActivePlayer());
 }
 
 /* ============================================================
@@ -787,6 +791,12 @@ function onPrimaryPlayerReady(){
 
   activeKey = "a";
   applyMuteState();
+
+  // playerVarsのautoplay:1だけに頼ると、端末やブラウザによっては
+  // 自動再生が始まらず「止まった動画」が表示されたままになることがある。
+  // そこでJS側からも明示的に一度だけ再生を指示しておく（保険）。
+  if (typeof players.a.playVideo === "function") players.a.playVideo();
+  watchPlaybackRecovery(players.a); // それでも止まっていたら、少し後で読み込み直す見張り役
 
   // 裏側担当のプレイヤーBは「先読み専用」として用意する（再生リストの読み込みは別で行う）
   players.b = new YT.Player("yt-player-b", {

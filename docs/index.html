@@ -406,6 +406,10 @@ const CONFIG = {
   LOG_ENDPOINT_URL: "https://script.google.com/macros/s/AKfycbw-lxIN21S855TfWsZ5d5iuemgBKPY5hxTcWkQP7iQZ3r-f0hqnn0JsqV4Ly4sRmp3Mxg/exec"
 };
 
+// 今回のセッション（アプリを開いてから、次に裏に回す/閉じるまで）の行動記録。
+// setupNameGate（下）が最初にこれを使うため、CONFIGの直後という早い位置で定義しておく。
+let sessionNarrative = [];
+
 /* ============================================================
    画面切り替えの小さなヘルパー
 ============================================================ */
@@ -430,7 +434,7 @@ function getUserName(){
 
 (function setupNameGate(){
   if (getUserName()){
-    sendLog("session_start"); // 登録済みユーザーが開いたタイミングを毎回記録する
+    recordEvent("起動"); // 登録済みユーザーが開いたタイミングを毎回記録する
     return;
   }
   showScreen("screen-name");
@@ -450,15 +454,18 @@ function submitUserName(){
   }
   localStorage.setItem(USER_NAME_KEY, name);
   showScreen("screen-feed");
-  sendLog("session_start"); // 名前登録が済んで、初めて使い始めたタイミングで記録する
+  recordEvent("起動（名前登録）"); // 名前登録が済んで、初めて使い始めたタイミングで記録する
 }
 
 /* ============================================================
    使用ログの送信
    ------------------------------------------------------------
    「誰が」「何本くらい動画を見たタイミングで」「勉強タイマーを
-   いつ始めたか」「啓発プロンプトでどちらを選んだか」を、
-   Google スプレッドシートに1行ずつ送って記録してもらう仕組みです。
+   いつ始めたか」「啓発プロンプトでどちらを選んだか」を記録します。
+   操作のたびに1行ずつ送ると読むときにバラバラで追いづらいため、
+   「アプリを開いてから、次に裏に回す（閉じる）まで」の一連の行動を
+   sessionNarrativeに時刻付きでためておき、最後にまとめて1行の
+   文字列として送ります（recordEvent / flushSessionNarrative）。
    CONFIG.LOG_ENDPOINT_URL が空のうちは何もしません
    （ログ機能をまだ準備していない状態でも、アプリ自体は問題なく動きます）。
 ============================================================ */
@@ -499,21 +506,41 @@ function sendLogBeacon(eventType, detail){
   }
 }
 
+// 「18:05」のような時:分の文字列を作る
+function formatClockTime(){
+  const d = new Date();
+  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+
+// 行動を1つ、時刻付きでその場の記録に足していく（この時点ではまだ送信しない）
+function recordEvent(text){
+  sessionNarrative.push(formatClockTime() + " " + text);
+}
+
+// たまった行動記録を「→」でつないだ1行の文字列にまとめて、まとめて1回だけ送る
+function flushSessionNarrative(){
+  if (sessionNarrative.length === 0) return;
+  sendLogBeacon("session_log", sessionNarrative.join(" → "));
+  sessionNarrative = [];
+}
+
 /* ============================================================
    アプリを開いた／閉じた（裏に回した）タイミングの記録
    ------------------------------------------------------------
    スマホのブラウザでは「完全に閉じた瞬間」を確実に検知する方法が
    ないため、画面が非表示になったタイミング（ホームに戻る・他の
    アプリに切り替える・画面ロックする、など）を「終了」とみなして
-   記録し、画面に戻ってきたら「再開」として記録する。
+   記録し、その時点でたまっている行動記録をまとめて1行送信する。
+   画面に戻ってきたら「再開」の記録から新しい1行を始める。
    （アプリを閉じずに一瞬だけ切り替えただけの場合も同じ扱いになるが、
      利用状況を大まかに把握する用途としては十分と判断）
 ============================================================ */
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden"){
-    sendLogBeacon("session_end");
+    recordEvent("終了");
+    flushSessionNarrative();
   } else if (document.visibilityState === "visible"){
-    sendLog("session_start", "再開");
+    recordEvent("再開");
   }
 });
 
@@ -908,7 +935,7 @@ function showPromptScreen(){
   cancelPendingPlaybackRecovery(); // この一時停止は意図的なものなので、見張り役に復旧させない
   resetPauseState(); // タップでの一時停止表示は消しておく（フィードに戻ったら再生から始めるため）
   const genreBreakdown = formatGenreBreakdown();
-  sendLog("prompt_shown", "視聴本数:" + watchedCount + (genreBreakdown ? "　ジャンル内訳:" + genreBreakdown : ""));
+  recordEvent("警告表示(視聴" + watchedCount + "本" + (genreBreakdown ? "・" + genreBreakdown : "") + ")");
   showScreen("screen-prompt");
 }
 
@@ -1138,13 +1165,13 @@ document.getElementById("btn-quick-study").addEventListener("click", () => {
    ② 啓発プロンプト画面のボタン操作
 ============================================================ */
 document.getElementById("btn-start-study").addEventListener("click", () => {
-  sendLog("prompt_choice", "選択:はい、始める");
+  recordEvent("「はい、始める」を選択");
   cameFromPrompt = true; // 動画は見終わっているので、戻るときは次の動画から再開する
   showScreen("screen-timer");
 });
 
 document.getElementById("btn-keep-watching").addEventListener("click", () => {
-  sendLog("prompt_choice", "選択:まだ動画を見る");
+  recordEvent("「まだ動画を見る」を選択");
   advanceToStandby();
   showScreen("screen-feed");
 });
@@ -1234,7 +1261,7 @@ function startStopwatch(){
   lastCheckpointAt = Date.now();
   const enteredFrom = cameFromPrompt ? "警告から" : "自主的に";
   const lastVideoGenre = videoGenreMap[videoIds[currentIndex]] || "ジャンル未設定";
-  sendLog("timer_start", `入り方:${enteredFrom}　直前の動画ジャンル:${lastVideoGenre}`);
+  recordEvent(`タイマー開始(${enteredFrom}/${lastVideoGenre})`);
   timerToggleBtn.textContent = "ストップ";
   timerSub.textContent = "がんばって！終わったらストップを押してね";
   // 勉強中は「動画に戻る」「記録を見る」で寄り道できないようにする（ほかの機能は不要、との方針のため）
@@ -1254,7 +1281,7 @@ function stopStopwatch(){
   if (remaining > 0) addStudyTime(remaining);
   lastCheckpointSec = 0;
 
-  sendLog("timer_stop", "経過時間:" + formatStudyDuration(stopwatchSec));
+  recordEvent("タイマー終了(" + formatStudyDuration(stopwatchSec) + ")");
 
   document.getElementById("done-today-time").textContent =
     "今日の合計勉強時間: " + formatStudyDuration(getTodayStudySeconds());

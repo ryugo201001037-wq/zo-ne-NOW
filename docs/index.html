@@ -778,11 +778,12 @@ function onPrimaryPlayerReady(){
   currentIndex = players.a.getPlaylistIndex() || 0;
   tagGenreForVideoIds(videoIds, CONFIG.PLAYLISTS[0].genre);
 
-  // 最初の1本も含めて完全ランダムにするため、ここで見る動画を選び直す
-  if (videoIds.length > 1){
-    currentIndex = pickRandomIndex(-1); // -1は「除外する動画がない」という意味
-    players.a.loadVideoById(videoIds[currentIndex]);
-  }
+  // ★起動直後の1本だけは、プレイヤーがすでに読み込み始めている動画を
+  //   そのまま使う（＝再選択しない）。以前は「最初の1本も完全ランダムに
+  //   するため」ここで別の動画に読み込み直していたが、その分バッファリング
+  //   がもう一度発生し、アプリを開いてから再生が始まるまでが遅くなって
+  //   いた。2本目以降のランダム性（スワイプ）には影響しないため、
+  //   起動をすぐ再生できることを優先する。
 
   activeKey = "a";
   applyMuteState();

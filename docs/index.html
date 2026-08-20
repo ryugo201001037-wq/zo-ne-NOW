@@ -1191,14 +1191,31 @@ function toggleMute(){
 function togglePause(){
   const p = getActivePlayer();
   if (!p) return;
-  isPaused = !isPaused;
+
+  // ★内部フラグ(isPaused)だけで判断せず、実際の再生状況も確認する。
+  //   自動再生がブロックされて動画が実際には止まっているのに、内部フラグ上は
+  //   「再生中」のままだと、タップしても「もっと止める」(pauseVideo)が呼ばれて
+  //   しまい、直したいのに直せないという不具合があった。
+  const state = typeof p.getPlayerState === "function" ? p.getPlayerState() : null;
+  const reallyPlaying = state === YT.PlayerState.PLAYING || state === YT.PlayerState.BUFFERING;
+  isPaused = reallyPlaying; // 今から一時停止にするなら true、再生を始めるなら false
+  debugLog("タップ操作 実際の状態=" + (PLAYER_STATE_NAMES[state] || state) + " → " + (isPaused ? "一時停止にする" : "再生を試みる"));
+
   const indicator = document.getElementById("pause-indicator");
   if (isPaused){
     if (typeof p.pauseVideo === "function") p.pauseVideo();
     cancelPendingPlaybackRecovery(); // 意図的な一時停止なので、見張り役に復旧させない
     indicator.classList.add("visible");
   } else {
-    if (typeof p.playVideo === "function") p.playVideo();
+    // 実際のタップ操作（ユーザー操作）の中で呼んでいるため、ブラウザの自動再生
+    // 制限があっても再生できる可能性が高い。確実性を優先してloadVideoByIdで
+    // 読み込み直す（playVideo()だけより確実に効くことが分かっているため）。
+    if (typeof p.loadVideoById === "function" && videoIds[currentIndex]){
+      p.loadVideoById(videoIds[currentIndex]);
+      applyMuteState();
+    } else if (typeof p.playVideo === "function"){
+      p.playVideo();
+    }
     indicator.classList.remove("visible");
   }
 }

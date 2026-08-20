@@ -729,6 +729,21 @@ let isPaused = false;    // タップで一時停止しているかどうか
 let cameFromPrompt = false; // タイマー画面に「啓発プロンプト経由」で来たかどうか
 let videoGenreMap = {};    // 動画ID → ジャンル名 の対応表（genre:""のリストの動画は登録されない）
 let genreWatchCounts = {}; // このセッションで見たジャンルごとの本数（記録ログに使う）
+let primaryPlayerBecameReady = false; // 起動時の読み込みが無事に終わったかどうか
+
+// ★起動時の「読み込み中…」が永遠に終わらない不具合への保険★
+// 電波が悪い・YouTube側のスクリプト自体が読み込めない、などの理由で
+// プレイヤーの準備が完了しないと、これまでは何も起きず「読み込み中…」の
+// くるくる表示が画面に出たまま止まってしまっていた（起動処理そのものが
+// 始まっていないので、他の再生系の対策は一切効かない）。
+// しばらく待っても準備が終わらなければ、状況をユーザーに伝えて
+// 開き直しを促す。
+setTimeout(() => {
+  if (primaryPlayerBecameReady) return;
+  const loadingEl = document.getElementById("feed-loading");
+  loadingEl.classList.remove("hidden");
+  loadingEl.textContent = "動画の読み込みに時間がかかっています。電波の良いところで、もう一度開き直してみてください。";
+}, 8000);
 
 function otherKey(key){ return key === "a" ? "b" : "a"; }
 function getActivePlayer(){ return players[activeKey]; }
@@ -775,6 +790,7 @@ function mergeVideoIds(listA, listB){
 }
 
 function onPrimaryPlayerReady(){
+  primaryPlayerBecameReady = true;
   document.getElementById("feed-loading").classList.add("hidden");
 
   // 1つ目の再生リストの中身（動画IDの並び）を取得する

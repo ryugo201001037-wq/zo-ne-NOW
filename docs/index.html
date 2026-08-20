@@ -485,6 +485,38 @@ function sendLog(eventType, detail){
   });
 }
 
+// アプリが閉じられる／裏に回る瞬間専用の送信方法。
+// 画面が消える直前は、普通のfetchだと送信の途中でブラウザに打ち切られて
+// 届かないことがあるため、ページが消えるタイミングでも確実に送り切れる
+// navigator.sendBeaconを使う。
+function sendLogBeacon(eventType, detail){
+  if (!CONFIG.LOG_ENDPOINT_URL) return;
+  const payload = JSON.stringify({ name: getUserName(), event: eventType, detail: detail || "" });
+  if (navigator.sendBeacon){
+    navigator.sendBeacon(CONFIG.LOG_ENDPOINT_URL, payload);
+  } else {
+    sendLog(eventType, detail); // 古いブラウザ向けの保険（確実性は落ちる）
+  }
+}
+
+/* ============================================================
+   アプリを開いた／閉じた（裏に回した）タイミングの記録
+   ------------------------------------------------------------
+   スマホのブラウザでは「完全に閉じた瞬間」を確実に検知する方法が
+   ないため、画面が非表示になったタイミング（ホームに戻る・他の
+   アプリに切り替える・画面ロックする、など）を「終了」とみなして
+   記録し、画面に戻ってきたら「再開」として記録する。
+   （アプリを閉じずに一瞬だけ切り替えただけの場合も同じ扱いになるが、
+     利用状況を大まかに把握する用途としては十分と判断）
+============================================================ */
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden"){
+    sendLogBeacon("session_end");
+  } else if (document.visibilityState === "visible"){
+    sendLog("session_start", "再開");
+  }
+});
+
 /* ============================================================
    勉強時間の記録
    ------------------------------------------------------------
@@ -1200,7 +1232,9 @@ function startStopwatch(){
   stopwatchStartedAt = Date.now();
   lastCheckpointSec = 0;
   lastCheckpointAt = Date.now();
-  sendLog("timer_start");
+  const enteredFrom = cameFromPrompt ? "警告から" : "自主的に";
+  const lastVideoGenre = videoGenreMap[videoIds[currentIndex]] || "ジャンル未設定";
+  sendLog("timer_start", `入り方:${enteredFrom}　直前の動画ジャンル:${lastVideoGenre}`);
   timerToggleBtn.textContent = "ストップ";
   timerSub.textContent = "がんばって！終わったらストップを押してね";
   // 勉強中は「動画に戻る」「記録を見る」で寄り道できないようにする（ほかの機能は不要、との方針のため）

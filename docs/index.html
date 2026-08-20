@@ -256,6 +256,10 @@
 
 <div id="app">
 
+  <!-- 2つ目以降の再生リストを裏方で読み込むための画面外スロット。
+       ジャンル分け用に動画一覧を取得するだけの使い捨てプレイヤーをここに一時的に置く。 -->
+  <div id="genre-loader-slot" style="position:fixed; left:-9999px; top:-9999px; width:1px; height:1px; overflow:hidden;"></div>
+
   <!-- ============================================================
        ⓪ 名前入力画面（初回だけ表示。記録を個人にひもづけるために使う）
   ============================================================ -->
@@ -371,14 +375,18 @@
 /* ============================================================
    ⚙️ 設定エリア（検証中はここの数値だけ触ればOK）
    ------------------------------------------------------------
-   PLAYLIST_IDS               : 使いたいYouTube再生リストのIDを配列で指定します。
-                                 再生リストのURLの「list=」の後ろの文字列です。
-                                 例）https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxx
-                                                                          ↑ここ
+   PLAYLISTS                  : 使いたいYouTube再生リストを配列で指定します。
                                  1つの再生リストは動画200本くらいまでしか読み込めない
-                                 ことがあるため、リストを2つに分けておくと、その分
-                                 多くの動画を候補に混ぜられます。2つ目を使わないなら
-                                 空文字("")のままでOKです。
+                                 ことがあるため、リストを複数に分けておくと、その分
+                                 多くの動画を候補に混ぜられます（数はいくつでもOK）。
+                                 各要素は { id: "再生リストID", genre: "ジャンル名" } の形。
+                                   id    : 再生リストURLの「list=」の後ろの文字列
+                                           例）https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxx
+                                                                                    ↑ここ
+                                   genre : 自由に決めたジャンル名（例:"英語","数学"）。
+                                           まだジャンル分けしないリストは genre:"" のままでOK。
+                                           （ジャンルを設定すると、記録用ログに「よく見た
+                                             ジャンル」が一緒に送られるようになります）
    FIRST_PROMPT_AFTER         : 最初に啓発プロンプトを出すタイミング（何本目の動画の後か）
    PROMPT_INTERVAL_AFTER_FIRST: 2回目以降、何本ごとにプロンプトを出すか
    LOG_ENDPOINT_URL           : 使用ログの送信先（Google Apps ScriptのウェブアプリURL）。
@@ -389,9 +397,9 @@ const CONFIG = {
   //    通常の再生リストIDはもう少し長い文字列（30文字前後）のことが多いので、
   //    もし動画が読み込めない場合はYouTubeアプリの「共有」→リンクをコピーで
   //    フルのURLを取り直し、list= の後ろの文字列に置き換えてください。
-  PLAYLIST_IDS: [
-    "PLToIvTt0MLnw",
-    "PLFB9BPLvu_yA" // 2つ目の再生リスト
+  PLAYLISTS: [
+    { id: "PLToIvTt0MLnw", genre: "" },
+    { id: "PLFB9BPLvu_yA", genre: "" } // 2つ目の再生リスト
   ],
   FIRST_PROMPT_AFTER: 15,        // 15本見たら最初のプロンプト
   PROMPT_INTERVAL_AFTER_FIRST: 10, // その後は10本ごとにプロンプト
@@ -656,6 +664,8 @@ let watchedCount = 0;    // ここまでに視聴を終えた（または送り�
 let isMuted = true;
 let isPaused = false;    // タップで一時停止しているかどうか
 let cameFromPrompt = false; // タイマー画面に「啓発プロンプト経由」で来たかどうか
+let videoGenreMap = {};    // 動画ID → ジャンル名 の対応表（genre:""のリストの動画は登録されない）
+let genreWatchCounts = {}; // このセッションで見たジャンルごとの本数（記録ログに使う）
 
 function otherKey(key){ return key === "a" ? "b" : "a"; }
 function getActivePlayer(){ return players[activeKey]; }
@@ -676,7 +686,7 @@ function onYouTubeIframeAPIReady(){
   players.a = new YT.Player("yt-player-a", {
     playerVars: {
       listType: "playlist",
-      list: CONFIG.PLAYLIST_IDS[0],
+      list: CONFIG.PLAYLISTS[0].id,
       autoplay: 1,
       mute: 1,          // ブラウザの自動再生ポリシー上、最初はミュート必須
       controls: 0,       // YouTube標準のコントロールは消し、自前のUIだけにする
@@ -707,6 +717,7 @@ function onPrimaryPlayerReady(){
   // 1つ目の再生リストの中身（動画IDの並び）を取得する
   videoIds = players.a.getPlaylist() || [];
   currentIndex = players.a.getPlaylistIndex() || 0;
+  tagGenreForVideoIds(videoIds, CONFIG.PLAYLISTS[0].genre);
 
   // 最初の1本も含めて完全ランダムにするため、ここで見る動画を選び直す
   if (videoIds.length > 1){
@@ -717,37 +728,61 @@ function onPrimaryPlayerReady(){
   activeKey = "a";
   applyMuteState();
 
-  // 裏側担当のプレイヤーBを用意する。
-  // 2つ目の再生リストが設定されていれば、まずそれをこっそり読み込んで動画一覧に
-  // 混ぜ込んでから（見た目の再生はもう始まっているので体感の待ち時間はない）、
-  // 通常の「先読み専用」の役目に切り替える。
-  const secondPlaylistId = (CONFIG.PLAYLIST_IDS[1] || "").trim();
+  // 裏側担当のプレイヤーBは「先読み専用」として用意する（再生リストの読み込みは別で行う）
   players.b = new YT.Player("yt-player-b", {
-    playerVars: secondPlaylistId
-      ? {
-          listType: "playlist", list: secondPlaylistId,
-          mute: 1, controls: 0, disablekb: 1, fs: 0,
-          playsinline: 1, rel: 0, modestbranding: 1, iv_load_policy: 3, cc_load_policy: 0
-        }
-      : {
-          mute: 1, controls: 0, disablekb: 1, fs: 0,
-          playsinline: 1, rel: 0, modestbranding: 1, iv_load_policy: 3, cc_load_policy: 0
-        },
+    playerVars: {
+      mute: 1, controls: 0, disablekb: 1, fs: 0,
+      playsinline: 1, rel: 0, modestbranding: 1, iv_load_policy: 3, cc_load_policy: 0
+    },
     events: {
-      onReady: secondPlaylistId ? onSecondPlaylistReady : preloadStandbyVideo,
+      onReady: preloadStandbyVideo,
       onStateChange: onPlayerStateChange,
       onError: onPlayerError
     }
   });
+
+  // 2つ目以降の再生リストは、画面に見えない裏方の専用プレイヤーで1つずつこっそり
+  // 読み込み、動画候補一覧とジャンル対応表に混ぜ込んでいく（表示中の再生には無関係）
+  loadRemainingPlaylists(CONFIG.PLAYLISTS.slice(1));
 }
 
-// 2つ目の再生リストの動画IDを、候補の一覧に混ぜ込んでから、
-// プレイヤーBを本来の「先読み専用」の役目に戻す
-function onSecondPlaylistReady(){
-  const extraVideoIds = players.b.getPlaylist() || [];
-  videoIds = mergeVideoIds(videoIds, extraVideoIds);
-  if (typeof players.b.stopVideo === "function") players.b.stopVideo(); // 2つ目のリストの自動再生を止めておく
-  preloadStandbyVideo();
+// ジャンル名が設定されている再生リストの動画IDだけ、対応表に記録する
+function tagGenreForVideoIds(ids, genre){
+  if (!genre) return;
+  ids.forEach((id) => { videoGenreMap[id] = genre; });
+}
+
+// 2本目以降の再生リストを、画面外に置いた使い捨てのプレイヤーで1つずつ読み込み、
+// 動画候補一覧（videoIds）とジャンル対応表（videoGenreMap）に混ぜ込んでいく。
+// 見えている再生（プレイヤーA・B）にはまったく手を出さない、完全に裏方の処理。
+function loadRemainingPlaylists(playlists){
+  if (playlists.length === 0) return;
+  const [current, ...rest] = playlists;
+
+  const loaderEl = document.createElement("div");
+  document.getElementById("genre-loader-slot").appendChild(loaderEl);
+
+  const finishThisOne = (loaderPlayer) => {
+    if (loaderPlayer && typeof loaderPlayer.destroy === "function") loaderPlayer.destroy();
+    loaderEl.remove();
+    loadRemainingPlaylists(rest); // 続けて次のリストを読み込む
+  };
+
+  const loader = new YT.Player(loaderEl, {
+    playerVars: {
+      listType: "playlist", list: current.id,
+      mute: 1, controls: 0, disablekb: 1, fs: 0, playsinline: 1
+    },
+    events: {
+      onReady: (event) => {
+        const ids = event.target.getPlaylist() || [];
+        videoIds = mergeVideoIds(videoIds, ids);
+        tagGenreForVideoIds(ids, current.genre);
+        finishThisOne(event.target);
+      },
+      onError: () => finishThisOne(loader) // このリストが読み込めなくても、残りは続けて読み込む
+    }
+  });
 }
 
 // 裏側のプレイヤーに、次に見る動画（ランダムに選んだもの）をこっそり読み込んでおく（再生はしない＝cue）
@@ -804,6 +839,9 @@ function onPlayerStateChange(event){
      もっともシンプルに仮説検証を進められると判断したためです）
 ============================================================ */
 function handleVideoAdvance(){
+  const watchedGenre = videoGenreMap[videoIds[currentIndex]];
+  if (watchedGenre) genreWatchCounts[watchedGenre] = (genreWatchCounts[watchedGenre] || 0) + 1;
+
   watchedCount++;
 
   if (shouldShowPrompt(watchedCount)){
@@ -821,12 +859,24 @@ function shouldShowPrompt(count){
   return (count - CONFIG.FIRST_PROMPT_AFTER) % CONFIG.PROMPT_INTERVAL_AFTER_FIRST === 0;
 }
 
+// 「ジャンル名6/ジャンル名4」のように、多く見た順に並べた内訳の文字列を作る
+// （ジャンルが1つも設定されていなければ空文字を返す）
+function formatGenreBreakdown(){
+  const genres = Object.keys(genreWatchCounts);
+  if (genres.length === 0) return "";
+  return genres
+    .sort((a, b) => genreWatchCounts[b] - genreWatchCounts[a])
+    .map((g) => `${g}${genreWatchCounts[g]}`)
+    .join("/");
+}
+
 function showPromptScreen(){
   const active = getActivePlayer();
   if (active && typeof active.pauseVideo === "function") active.pauseVideo();
   cancelPendingPlaybackRecovery(); // この一時停止は意図的なものなので、見張り役に復旧させない
   resetPauseState(); // タップでの一時停止表示は消しておく（フィードに戻ったら再生から始めるため）
-  sendLog("prompt_shown", "視聴本数:" + watchedCount);
+  const genreBreakdown = formatGenreBreakdown();
+  sendLog("prompt_shown", "視聴本数:" + watchedCount + (genreBreakdown ? "　ジャンル内訳:" + genreBreakdown : ""));
   showScreen("screen-prompt");
 }
 

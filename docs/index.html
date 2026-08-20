@@ -134,6 +134,14 @@
   }
   #feed-loading.hidden{ display:none; }
 
+  /* ⚠️一時的な調査用のデバッグ表示。原因が分かったら削除する。 */
+  #debug-log{
+    position:absolute; left:6px; right:6px; bottom:6px; max-height:40%;
+    overflow-y:auto; z-index:50; background:rgba(0,0,0,.75); color:#0f0;
+    font-family:monospace; font-size:10px; line-height:1.5; padding:6px 8px;
+    border-radius:8px; white-space:pre-wrap; pointer-events:none;
+  }
+
   /* ============================================================
      カード共通スタイル（啓発プロンプト／タイマー／完了画面）
   ============================================================ */
@@ -287,6 +295,9 @@
 
     <div id="feed-loading">動画を読み込んでいます…</div>
 
+    <!-- ⚠️一時的な調査用のデバッグ表示。原因が分かったら削除する。 -->
+    <div id="debug-log"></div>
+
     <!-- タップで一時停止したときに、真ん中に一瞬〜ずっと表示するアイコン -->
     <div id="pause-indicator" aria-hidden="true">⏸</div>
 
@@ -409,6 +420,23 @@ const CONFIG = {
 // 今回のセッション（アプリを開いてから、次に裏に回す/閉じるまで）の行動記録。
 // setupNameGate（下）が最初にこれを使うため、CONFIGの直後という早い位置で定義しておく。
 let sessionNarrative = [];
+
+/* ============================================================
+   ⚠️一時的な調査用のログ表示（原因が分かったら丸ごと削除する）
+   ------------------------------------------------------------
+   「起動時に動画が再生されない」不具合の原因を、推測ではなく
+   実際の端末で起きていることを見て特定するための仕組み。
+============================================================ */
+const debugLogEl = document.getElementById("debug-log");
+function debugLog(msg){
+  if (!debugLogEl) return;
+  const t = new Date();
+  const time = String(t.getMinutes()).padStart(2, "0") + ":" + String(t.getSeconds()).padStart(2, "0") + "." + String(t.getMilliseconds()).padStart(3, "0");
+  debugLogEl.textContent += `[${time}] ${msg}\n`;
+  debugLogEl.scrollTop = debugLogEl.scrollHeight;
+}
+debugLog("スクリプト開始");
+const PLAYER_STATE_NAMES = { "-1": "UNSTARTED", 0: "ENDED", 1: "PLAYING", 2: "PAUSED", 3: "BUFFERING", 5: "CUED" };
 
 /* ============================================================
    画面切り替えの小さなヘルパー
@@ -740,6 +768,7 @@ let primaryPlayerBecameReady = false; // 起動時の読み込みが無事に終
 // 開き直しを促す。
 setTimeout(() => {
   if (primaryPlayerBecameReady) return;
+  debugLog("★8秒経ってもonPrimaryPlayerReadyが呼ばれていない");
   const loadingEl = document.getElementById("feed-loading");
   loadingEl.classList.remove("hidden");
   loadingEl.textContent = "動画の読み込みに時間がかかっています。電波の良いところで、もう一度開き直してみてください。";
@@ -761,6 +790,7 @@ function pickRandomIndex(excludeIndex){
 }
 
 function onYouTubeIframeAPIReady(){
+  debugLog("onYouTubeIframeAPIReady 呼ばれた");
   players.a = new YT.Player("yt-player-a", {
     playerVars: {
       listType: "playlist",
@@ -790,6 +820,7 @@ function mergeVideoIds(listA, listB){
 }
 
 function onPrimaryPlayerReady(){
+  debugLog("onPrimaryPlayerReady 呼ばれた state=" + PLAYER_STATE_NAMES[players.a.getPlayerState()]);
   primaryPlayerBecameReady = true;
   document.getElementById("feed-loading").classList.add("hidden");
 
@@ -797,6 +828,7 @@ function onPrimaryPlayerReady(){
   videoIds = players.a.getPlaylist() || [];
   currentIndex = players.a.getPlaylistIndex() || 0;
   tagGenreForVideoIds(videoIds, CONFIG.PLAYLISTS[0].genre);
+  debugLog("videoIds件数=" + videoIds.length + " currentIndex=" + currentIndex);
 
   activeKey = "a";
   applyMuteState();
@@ -810,6 +842,7 @@ function onPrimaryPlayerReady(){
   //   読み込み直していて、その分バッファリングが二重発生して遅かった。
   //   今回は同じ動画のまま呼ぶことで、その遅さを避けつつ再生の確実さを戻す。
   if (videoIds.length > 0 && typeof players.a.loadVideoById === "function"){
+    debugLog("loadVideoById呼び出し: " + videoIds[currentIndex]);
     players.a.loadVideoById(videoIds[currentIndex]);
   }
   watchPlaybackRecovery(players.a); // それでも止まっていたら、少し後で読み込み直す見張り役
@@ -884,6 +917,7 @@ function preloadStandbyVideo(){
 // などで再生できない」は分けて扱う。後者は珍しくないので、画面を止めずに
 // 静かに他の動画へ切り替える（毎回エラー画面を出すと使い勝手が悪いため）。
 function onPlayerError(event){
+  debugLog("onPlayerError code=" + (event && event.data));
   if (videoIds.length === 0){
     document.getElementById("feed-loading").classList.remove("hidden");
     document.getElementById("feed-loading").textContent =
@@ -902,6 +936,7 @@ function onPlayerError(event){
 // プレイヤーの状態が変わるたびに呼ばれる（再生中・一時停止・終了、など）
 function onPlayerStateChange(event){
   const firedKey = (event.target === players.a) ? "a" : "b";
+  debugLog("state変化 [" + firedKey + "] " + (PLAYER_STATE_NAMES[event.data] || event.data) + (firedKey !== activeKey ? "（表ではないので無視）" : ""));
 
   // 今表に出ているプレイヤー以外（＝裏で先読み中のプレイヤー）の変化は無視する
   if (firedKey !== activeKey) return;
@@ -1038,14 +1073,16 @@ function watchPlaybackRecovery(player){
   const stuckStates = [YT.PlayerState.UNSTARTED, YT.PlayerState.PAUSED, YT.PlayerState.CUED];
   [1000, 2200, 3600].forEach((delay) => {
     setTimeout(() => {
-      if (myToken !== playbackRecoveryToken) return; // もっと新しいスワイプ等で予約が上書きされていたら何もしない
-      if (!document.getElementById("screen-feed").classList.contains("active")) return; // フィード画面にいなければ何もしない
-      if (isPaused) return; // ユーザーが意図的に一時停止しているなら何もしない
-      if (player !== getActivePlayer()) return; // その間にさらにスワイプしていたら何もしない
+      if (myToken !== playbackRecoveryToken){ debugLog("見張り(" + delay + "ms): 予約が古いので何もしない"); return; }
+      if (!document.getElementById("screen-feed").classList.contains("active")){ debugLog("見張り(" + delay + "ms): フィード画面ではないので何もしない"); return; }
+      if (isPaused){ debugLog("見張り(" + delay + "ms): 意図的な一時停止なので何もしない"); return; }
+      if (player !== getActivePlayer()){ debugLog("見張り(" + delay + "ms): プレイヤーが入れ替わっているので何もしない"); return; }
       if (typeof player.getPlayerState !== "function") return;
       const state = player.getPlayerState();
+      debugLog("見張り(" + delay + "ms): state=" + (PLAYER_STATE_NAMES[state] || state));
       if (stuckStates.indexOf(state) === -1) return; // 再生中・読み込み中なら何もしない
 
+      debugLog("見張り(" + delay + "ms): 止まっているので読み込み直す");
       if (typeof player.loadVideoById === "function" && videoIds[currentIndex]){
         player.loadVideoById(videoIds[currentIndex]);
         applyMuteState();
@@ -1424,7 +1461,7 @@ if ("serviceWorker" in navigator){
 </script>
 
 <!-- YouTube IFrame Player APIの本体を読み込む -->
-<script src="https://www.youtube.com/iframe_api"></script>
+<script src="https://www.youtube.com/iframe_api" onload="debugLog('iframe_apiスクリプトの読み込み成功')" onerror="debugLog('★iframe_apiスクリプトの読み込み自体に失敗')"></script>
 
 </body>
 </html>

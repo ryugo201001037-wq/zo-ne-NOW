@@ -782,20 +782,20 @@ function onPrimaryPlayerReady(){
   currentIndex = players.a.getPlaylistIndex() || 0;
   tagGenreForVideoIds(videoIds, CONFIG.PLAYLISTS[0].genre);
 
-  // ★起動直後の1本だけは、プレイヤーがすでに読み込み始めている動画を
-  //   そのまま使う（＝再選択しない）。以前は「最初の1本も完全ランダムに
-  //   するため」ここで別の動画に読み込み直していたが、その分バッファリング
-  //   がもう一度発生し、アプリを開いてから再生が始まるまでが遅くなって
-  //   いた。2本目以降のランダム性（スワイプ）には影響しないため、
-  //   起動をすぐ再生できることを優先する。
-
   activeKey = "a";
   applyMuteState();
 
-  // playerVarsのautoplay:1だけに頼ると、端末やブラウザによっては
-  // 自動再生が始まらず「止まった動画」が表示されたままになることがある。
-  // そこでJS側からも明示的に一度だけ再生を指示しておく（保険）。
-  if (typeof players.a.playVideo === "function") players.a.playVideo();
+  // ★起動直後の1本は「同じ動画のままloadVideoById()を呼び直す」。
+  //   playerVarsのautoplay:1だけに頼ると、端末やブラウザによっては自動再生が
+  //   始まらず「止まった動画」が表示されたままになることがあり、実際に
+  //   起きていた（loadVideoById()はJS側からの明示的な「読み込んで再生する」
+  //   命令なので、autoplay設定より確実に効く）。
+  //   以前は「最初の1本も完全ランダムにするため」ここで別のランダムな動画に
+  //   読み込み直していて、その分バッファリングが二重発生して遅かった。
+  //   今回は同じ動画のまま呼ぶことで、その遅さを避けつつ再生の確実さを戻す。
+  if (videoIds.length > 0 && typeof players.a.loadVideoById === "function"){
+    players.a.loadVideoById(videoIds[currentIndex]);
+  }
   watchPlaybackRecovery(players.a); // それでも止まっていたら、少し後で読み込み直す見張り役
 
   // 裏側担当のプレイヤーBは「先読み専用」として用意する（再生リストの読み込みは別で行う）

@@ -163,6 +163,16 @@
   .btn-ghost{ background:rgba(255,255,255,.08); color:var(--white); }
   .btn-text{ background:none; color:var(--muted); font-size:13px; padding:8px; margin-bottom:0; }
 
+  /* 名前入力画面の入力欄 */
+  .text-input{
+    display:block; width:100%; padding:14px 16px; margin-bottom:16px;
+    border-radius:14px; border:1px solid rgba(255,255,255,.15);
+    background:rgba(255,255,255,.06); color:var(--white);
+    font-family:var(--font-ui); font-size:16px; text-align:center;
+  }
+  .text-input::placeholder{ color:var(--muted); }
+  .text-input:focus{ outline:none; border-color:var(--ember); }
+
   /* ============================================================
      啓発プロンプト画面（割り込み画面）
   ============================================================ */
@@ -245,6 +255,19 @@
 <body>
 
 <div id="app">
+
+  <!-- ============================================================
+       ⓪ 名前入力画面（初回だけ表示。記録を個人にひもづけるために使う）
+  ============================================================ -->
+  <section id="screen-name" class="screen">
+    <div class="card">
+      <p class="emoji">👋</p>
+      <h1>はじめまして</h1>
+      <p class="sub">記録をつけるために、お名前を教えてください。</p>
+      <input type="text" id="name-input" class="text-input" placeholder="なまえ" maxlength="20" />
+      <button id="btn-name-submit" class="btn btn-primary">はじめる</button>
+    </div>
+  </section>
 
   <!-- ============================================================
        ① フィード画面：全画面のショート動画スワイプ
@@ -358,6 +381,8 @@
                                  空文字("")のままでOKです。
    FIRST_PROMPT_AFTER         : 最初に啓発プロンプトを出すタイミング（何本目の動画の後か）
    PROMPT_INTERVAL_AFTER_FIRST: 2回目以降、何本ごとにプロンプトを出すか
+   LOG_ENDPOINT_URL           : 使用ログの送信先（Google Apps ScriptのウェブアプリURL）。
+                                 空文字("")のままだと、ログの送信自体を行いません。
 ============================================================ */
 const CONFIG = {
   // ⚠️ 教えてもらったURLの list= の値をそのまま設定しています。
@@ -369,7 +394,8 @@ const CONFIG = {
     "PLFB9BPLvu_yA" // 2つ目の再生リスト
   ],
   FIRST_PROMPT_AFTER: 15,        // 15本見たら最初のプロンプト
-  PROMPT_INTERVAL_AFTER_FIRST: 10 // その後は10本ごとにプロンプト
+  PROMPT_INTERVAL_AFTER_FIRST: 10, // その後は10本ごとにプロンプト
+  LOG_ENDPOINT_URL: "" // ⚠️ Google Apps Scriptをデプロイしたら、そのウェブアプリURLをここに入れる
 };
 
 /* ============================================================
@@ -378,6 +404,77 @@ const CONFIG = {
 function showScreen(id){
   document.querySelectorAll(".screen").forEach((el) => el.classList.remove("active"));
   document.getElementById(id).classList.add("active");
+}
+
+/* ============================================================
+   名前の登録（初回だけ）
+   ------------------------------------------------------------
+   検証を「誰が・何をしたか」まで追えるようにするため、初めて開いた
+   ときだけ名前を聞き、以降はlocalStorageに保存した名前を使い続けます。
+   （個人を特定する情報としては名前だけを使い、それ以外の情報は
+     集めません）
+============================================================ */
+const USER_NAME_KEY = "zonenow_mvp_user_name";
+
+function getUserName(){
+  return localStorage.getItem(USER_NAME_KEY) || "";
+}
+
+(function setupNameGate(){
+  if (getUserName()){
+    sendLog("session_start"); // 登録済みユーザーが開いたタイミングを毎回記録する
+    return;
+  }
+  showScreen("screen-name");
+})();
+
+document.getElementById("btn-name-submit").addEventListener("click", submitUserName);
+document.getElementById("name-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") submitUserName();
+});
+
+function submitUserName(){
+  const input = document.getElementById("name-input");
+  const name = input.value.trim();
+  if (!name){
+    input.focus();
+    return;
+  }
+  localStorage.setItem(USER_NAME_KEY, name);
+  showScreen("screen-feed");
+  sendLog("session_start"); // 名前登録が済んで、初めて使い始めたタイミングで記録する
+}
+
+/* ============================================================
+   使用ログの送信
+   ------------------------------------------------------------
+   「誰が」「何本くらい動画を見たタイミングで」「勉強タイマーを
+   いつ始めたか」「啓発プロンプトでどちらを選んだか」を、
+   Google スプレッドシートに1行ずつ送って記録してもらう仕組みです。
+   CONFIG.LOG_ENDPOINT_URL が空のうちは何もしません
+   （ログ機能をまだ準備していない状態でも、アプリ自体は問題なく動きます）。
+============================================================ */
+function sendLog(eventType, detail){
+  if (!CONFIG.LOG_ENDPOINT_URL) return;
+
+  const payload = {
+    name: getUserName(),
+    event: eventType,
+    detail: detail || ""
+  };
+
+  // Content-Typeをtext/plainにしているのは、application/jsonにすると
+  // ブラウザが先に「プリフライトリクエスト」という確認を送ってしまい、
+  // Google Apps Script側がそれにうまく応答できず失敗することがあるため。
+  // 中身はJSON文字列のまま送り、Apps Script側でJSON.parseして読み取る。
+  fetch(CONFIG.LOG_ENDPOINT_URL, {
+    method: "POST",
+    mode: "no-cors", // 送りっぱなしでよく、返事の中身は見ないので
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(payload)
+  }).catch(() => {
+    // ログの送信に失敗しても、アプリ本体の動作には一切影響させない
+  });
 }
 
 /* ============================================================
@@ -729,6 +826,7 @@ function showPromptScreen(){
   if (active && typeof active.pauseVideo === "function") active.pauseVideo();
   cancelPendingPlaybackRecovery(); // この一時停止は意図的なものなので、見張り役に復旧させない
   resetPauseState(); // タップでの一時停止表示は消しておく（フィードに戻ったら再生から始めるため）
+  sendLog("prompt_shown", "視聴本数:" + watchedCount);
   showScreen("screen-prompt");
 }
 
@@ -958,11 +1056,13 @@ document.getElementById("btn-quick-study").addEventListener("click", () => {
    ② 啓発プロンプト画面のボタン操作
 ============================================================ */
 document.getElementById("btn-start-study").addEventListener("click", () => {
+  sendLog("prompt_choice", "選択:はい、始める");
   cameFromPrompt = true; // 動画は見終わっているので、戻るときは次の動画から再開する
   showScreen("screen-timer");
 });
 
 document.getElementById("btn-keep-watching").addEventListener("click", () => {
+  sendLog("prompt_choice", "選択:まだ動画を見る");
   advanceToStandby();
   showScreen("screen-feed");
 });
@@ -1050,6 +1150,7 @@ function startStopwatch(){
   stopwatchStartedAt = Date.now();
   lastCheckpointSec = 0;
   lastCheckpointAt = Date.now();
+  sendLog("timer_start");
   timerToggleBtn.textContent = "ストップ";
   timerSub.textContent = "がんばって！終わったらストップを押してね";
   // 勉強中は「動画に戻る」「記録を見る」で寄り道できないようにする（ほかの機能は不要、との方針のため）
@@ -1068,6 +1169,8 @@ function stopStopwatch(){
   const remaining = stopwatchSec - lastCheckpointSec;
   if (remaining > 0) addStudyTime(remaining);
   lastCheckpointSec = 0;
+
+  sendLog("timer_stop", "経過時間:" + formatStudyDuration(stopwatchSec));
 
   document.getElementById("done-today-time").textContent =
     "今日の合計勉強時間: " + formatStudyDuration(getTodayStudySeconds());

@@ -340,6 +340,7 @@
       <div class="timer-display" id="timer-display">00:00</div>
 
       <button id="btn-timer-toggle" class="btn btn-primary">スタート</button>
+      <button id="btn-timer-finish" class="btn btn-ghost" style="display:none;">終了する</button>
       <div class="timer-links" id="timer-links">
         <button id="btn-timer-back" class="btn btn-text">動画に戻る</button>
         <button id="btn-view-history" class="btn btn-text">記録を見る</button>
@@ -1287,6 +1288,7 @@ let stopwatchSec = 0;         // 画面に表示している経過時間（秒�
 let stopwatchStartedAt = null; // スタートを押した瞬間の時刻（Date.now()の値）
 let timerIntervalId = null;
 let timerRunning = false;
+let timerPaused = false; // 「スタートはしたが、今は一時停止中」かどうか
 
 let lastCheckpointSec = 0;  // 記録として保存済みの経過秒数（この先の差分だけを追加保存する）
 let lastCheckpointAt = 0;   // 最後にチェックポイント保存をした実時刻（Date.now()の値）
@@ -1295,6 +1297,7 @@ const CHECKPOINT_INTERVAL_MS = 15000; // 15秒ごとに記録を保存する
 const timerDisplay = document.getElementById("timer-display");
 const timerSub = document.getElementById("timer-sub");
 const timerToggleBtn = document.getElementById("btn-timer-toggle");
+const timerFinishBtn = document.getElementById("btn-timer-finish"); // 一時停止中でも押せる「終了する」ボタン
 const timerLinks = document.getElementById("timer-links"); // 「動画に戻る」「記録を見る」をまとめて表示/非表示する
 
 function renderTimer(){
@@ -1329,34 +1332,78 @@ document.addEventListener("visibilitychange", () => {
 });
 
 timerToggleBtn.addEventListener("click", () => {
-  if (!timerRunning){
-    startStopwatch();
+  if (!timerRunning && !timerPaused){
+    startStopwatch(); // まだ一度もスタートしていない
+  } else if (timerRunning){
+    pauseStopwatch(); // 動いているので一時停止する
   } else {
-    stopStopwatch();
+    resumeStopwatch(); // 一時停止中なので再開する
   }
+});
+
+timerFinishBtn.addEventListener("click", () => {
+  stopStopwatch();
 });
 
 function startStopwatch(){
   timerRunning = true;
+  timerPaused = false;
   stopwatchStartedAt = Date.now();
   lastCheckpointSec = 0;
   lastCheckpointAt = Date.now();
   const enteredFrom = cameFromPrompt ? "警告から" : "自主的に";
   const lastVideoGenre = videoGenreMap[videoIds[currentIndex]] || "ジャンル未設定";
   recordEvent(`タイマー開始(${enteredFrom}/${lastVideoGenre})`);
-  timerToggleBtn.textContent = "ストップ";
-  timerSub.textContent = "がんばって！終わったらストップを押してね";
+  timerToggleBtn.textContent = "一時停止";
+  timerSub.textContent = "がんばって！一時停止もできます";
+  timerFinishBtn.style.display = ""; // スタートしたら「終了する」ボタンを出す
   // 勉強中は「動画に戻る」「記録を見る」で寄り道できないようにする（ほかの機能は不要、との方針のため）
   timerLinks.style.display = "none";
 
   timerIntervalId = setInterval(updateStopwatchFromClock, 1000);
 }
 
-function stopStopwatch(){
+// 一時停止：セッションは終わらせず、時間のカウントだけ止める
+function pauseStopwatch(){
   updateStopwatchFromClock(); // 止める直前の正確な経過時間を確定させる
   clearInterval(timerIntervalId);
   timerIntervalId = null;
   timerRunning = false;
+  timerPaused = true;
+
+  // 一時停止する瞬間までの分も、念のため記録に足しておく（安全のため）
+  const remaining = stopwatchSec - lastCheckpointSec;
+  if (remaining > 0){
+    addStudyTime(remaining);
+    lastCheckpointSec = stopwatchSec;
+    renderStudyStats();
+  }
+
+  recordEvent("タイマー一時停止(" + formatStudyDuration(stopwatchSec) + ")");
+  timerToggleBtn.textContent = "再開";
+  timerSub.textContent = "一時停止中です";
+}
+
+// 再開：止めていた経過時間を保ったまま、カウントを再び進める
+function resumeStopwatch(){
+  timerRunning = true;
+  timerPaused = false;
+  // 経過秒数(stopwatchSec)を保ったまま、基準時刻だけを今に合わせ直す
+  stopwatchStartedAt = Date.now() - stopwatchSec * 1000;
+  lastCheckpointAt = Date.now();
+  recordEvent("タイマー再開");
+  timerToggleBtn.textContent = "一時停止";
+  timerSub.textContent = "がんばって！一時停止もできます";
+
+  timerIntervalId = setInterval(updateStopwatchFromClock, 1000);
+}
+
+function stopStopwatch(){
+  updateStopwatchFromClock(); // 動いている場合は、止める直前の正確な経過時間を確定させる
+  clearInterval(timerIntervalId);
+  timerIntervalId = null;
+  timerRunning = false;
+  timerPaused = false;
 
   // すでにチェックポイントで保存済みの分は除いて、残りの差分だけを記録に足す
   const remaining = stopwatchSec - lastCheckpointSec;
@@ -1374,6 +1421,7 @@ function stopStopwatch(){
   renderTimer();
   timerToggleBtn.textContent = "スタート";
   timerSub.textContent = "スタートを押して勉強を始めましょう";
+  timerFinishBtn.style.display = "none";
   timerLinks.style.display = "";
 
   showScreen("screen-done");
@@ -1395,11 +1443,13 @@ function resumeFeedFromTimer(){
   clearInterval(timerIntervalId);
   timerIntervalId = null;
   timerRunning = false;
+  timerPaused = false;
   stopwatchSec = 0;
   stopwatchStartedAt = null;
   renderTimer();
   timerToggleBtn.textContent = "スタート";
   timerSub.textContent = "スタートを押して勉強を始めましょう";
+  timerFinishBtn.style.display = "none";
   timerLinks.style.display = "";
   showScreen("screen-feed");
 

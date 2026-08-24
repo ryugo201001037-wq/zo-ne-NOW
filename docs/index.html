@@ -102,6 +102,12 @@
     z-index:8; pointer-events:none; letter-spacing:.02em;
   }
 
+  /* 動画を10秒戻す/進めるボタン */
+  .seek-controls{
+    position:absolute; left:0; right:0; bottom:calc(var(--safe-bottom) + 50px);
+    display:flex; justify-content:center; gap:28px; z-index:10;
+  }
+
   /* タップで一時停止したときに出す、真ん中の一時停止アイコン。
      「止まっているのが意図的な一時停止なのか、それとも固まっているだけなのか」を
      一目で区別できるようにするための表示。 */
@@ -329,6 +335,12 @@
 
     <!-- 画面の端に常に置いておく「勉強する」ボタン。いつでも自分から学習に入れる。 -->
     <button id="btn-quick-study" class="icon-btn quick-study-btn" aria-label="勉強を始める">📚</button>
+
+    <!-- 今見ている動画を10秒戻す/進めるボタン -->
+    <div class="seek-controls">
+      <button id="btn-seek-back" class="icon-btn" type="button" aria-label="10秒戻す">⏪</button>
+      <button id="btn-seek-forward" class="icon-btn" type="button" aria-label="10秒進める">⏩</button>
+    </div>
 
     <p class="swipe-hint">↑ 上にスワイプで次の動画　/　タップで一時停止</p>
   </section>
@@ -1228,6 +1240,17 @@ swipeLayer.addEventListener("touchend", (e) => {
 
 // マウス操作（PCでの動作確認用）にもかんたんに対応
 document.getElementById("btn-mute").addEventListener("click", toggleMute);
+
+// 今見ている動画を10秒戻す/進める
+document.getElementById("btn-seek-back").addEventListener("click", () => seekRelative(-10));
+document.getElementById("btn-seek-forward").addEventListener("click", () => seekRelative(10));
+
+function seekRelative(deltaSeconds){
+  const p = getActivePlayer();
+  if (!p || typeof p.getCurrentTime !== "function" || typeof p.seekTo !== "function") return;
+  const target = Math.max(0, p.getCurrentTime() + deltaSeconds); // 0秒より前には戻さない
+  p.seekTo(target, true);
+}
 
 function toggleMute(){
   const p = getActivePlayer();

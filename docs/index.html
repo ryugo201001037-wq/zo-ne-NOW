@@ -1619,28 +1619,99 @@ async function sendAiQuestion(){
 // ※sendLog()と違って、答えを読み取る必要があるのでno-corsは使わない。
 //   Content-Typeをtext/plainにして、余計な確認リクエスト(プリフライト)が
 //   発生しないようにしている点はsendLog()と同じ。
+// ★Google Apps Scriptは、POSTの「送信」はできてもcorsの制限で
+//   「答えを読み取る」ことがブラウザにブロックされてしまうことがある
+//   （実機で確認済み）。そこで、送信と受け取りを分ける方式にする。
+//   1. 質問はこれまで通りno-corsで送りっぱなしにする（Apps Script側は
+//      その中でAIへの問い合わせまで終わらせ、答えを一時保存しておく）
+//   2. 答えは、昔ながらの「JSONP」という、<script>タグでの読み込みを
+//      使って受け取る。<script>タグはcorsの制限を受けないため、
+//      これなら確実に答えを読み取れる。
+
+function generateRequestId(){
+  return "req_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
+}
+
+function sleep(ms){
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// <script>タグを使って、指定したURLの中身をJSONPとして読み取る
+function jsonpRequest(url, timeoutMs){
+  return new Promise((resolve, reject) => {
+    const callbackName = "zonenowJsonp_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+    const script = document.createElement("script");
+    let finished = false;
+
+    const cleanup = () => {
+      delete window[callbackName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+    };
+
+    window[callbackName] = (data) => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      resolve(data);
+    };
+
+    script.onerror = () => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      reject(new Error("jsonp読み込み失敗"));
+    };
+
+    const joiner = url.indexOf("?") === -1 ? "?" : "&";
+    script.src = url + joiner + "callback=" + callbackName;
+    document.body.appendChild(script);
+
+    setTimeout(() => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      reject(new Error("jsonpタイムアウト"));
+    }, timeoutMs);
+  });
+}
+
 async function askAi(question, image){
   if (!CONFIG.LOG_ENDPOINT_URL){
     return "AI機能はまだ準備できていません。管理者に確認してください。";
   }
-  try {
-    const response = await fetch(CONFIG.LOG_ENDPOINT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({
-        type: "ai_question",
-        name: getUserName(),
-        question: question,
-        imageBase64: image ? image.base64 : "",
-        imageMediaType: image ? image.mediaType : ""
-      })
-    });
-    const data = await response.json();
-    if (data && data.answer) return data.answer;
-    return "うまく答えを受け取れませんでした。もう一度試してみてください。";
-  } catch (e){
-    return "通信エラーが発生しました。電波の良いところで、もう一度試してみてください。";
+
+  const requestId = generateRequestId();
+
+  // 質問を送る（送りっぱなし。Apps Script側でAIへの問い合わせまで終わらせて
+  // 一時保存しておいてもらい、答えは下のポーリングで別途取りに行く）
+  fetch(CONFIG.LOG_ENDPOINT_URL, {
+    method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({
+      type: "ai_question",
+      requestId: requestId,
+      name: getUserName(),
+      question: question,
+      imageBase64: image ? image.base64 : "",
+      imageMediaType: image ? image.mediaType : ""
+    })
+  }).catch(() => {});
+
+  // 答えができるまで、少し待ってから何度か確認しにいく
+  const pollUrl = CONFIG.LOG_ENDPOINT_URL + "?requestId=" + encodeURIComponent(requestId);
+  const MAX_ATTEMPTS = 20; // 2秒間隔で20回=約40秒まで待つ
+  for (let i = 0; i < MAX_ATTEMPTS; i++){
+    await sleep(2000);
+    try {
+      const data = await jsonpRequest(pollUrl, 5000);
+      if (data && data.answer) return data.answer;
+      // pending:trueならまだAIが考え中なので、そのまま次のループへ
+    } catch (e){
+      // 1回の確認が失敗しても、まだ何回か確認のチャンスが残っているので続ける
+    }
   }
+  return "AIからの回答に時間がかかっています。少し時間をおいてからもう一度試してみてください。";
 }
 
 /* ============================================================

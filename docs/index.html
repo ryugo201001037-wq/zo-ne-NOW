@@ -882,20 +882,25 @@ function onPrimaryPlayerReady(){
   // 1つ目の再生リストの中身（動画IDの並び）を取得する
   videoIds = players.a.getPlaylist() || [];
   currentIndex = players.a.getPlaylistIndex() || 0;
+
+  // ★起動直後の1本も、2本目以降と同じように完全ランダムに選ぶ。
+  //   自動再生を確実にするため、この後どのみちloadVideoById()を
+  //   明示的に呼ぶ（＝1回読み込み直すコストはすでに発生している）ので、
+  //   ここでランダムな動画を選んでも追加の遅さはほぼ発生しない。
+  if (videoIds.length > 1){
+    currentIndex = pickRandomIndex(-1); // -1は「除外する動画がない」という意味
+  }
+
   tagGenreForVideoIds(videoIds, CONFIG.PLAYLISTS[0].genre);
   debugLog("videoIds件数=" + videoIds.length + " currentIndex=" + currentIndex);
 
   activeKey = "a";
   applyMuteState();
 
-  // ★起動直後の1本は「同じ動画のままloadVideoById()を呼び直す」。
-  //   playerVarsのautoplay:1だけに頼ると、端末やブラウザによっては自動再生が
-  //   始まらず「止まった動画」が表示されたままになることがあり、実際に
-  //   起きていた（loadVideoById()はJS側からの明示的な「読み込んで再生する」
-  //   命令なので、autoplay設定より確実に効く）。
-  //   以前は「最初の1本も完全ランダムにするため」ここで別のランダムな動画に
-  //   読み込み直していて、その分バッファリングが二重発生して遅かった。
-  //   今回は同じ動画のまま呼ぶことで、その遅さを避けつつ再生の確実さを戻す。
+  // playerVarsのautoplay:1だけに頼ると、端末やブラウザによっては自動再生が
+  // 始まらず「止まった動画」が表示されたままになることがあり、実際に起きていた。
+  // loadVideoById()はJS側からの明示的な「読み込んで再生する」命令なので、
+  // autoplay設定より確実に効く。
   if (videoIds.length > 0 && typeof players.a.loadVideoById === "function"){
     debugLog("loadVideoById呼び出し: " + videoIds[currentIndex]);
     players.a.loadVideoById(videoIds[currentIndex]);

@@ -217,6 +217,24 @@
   .history-minutes{ font-size:14px; font-weight:600; color:var(--mint); font-variant-numeric:tabular-nums; }
   .history-minutes.is-empty{ color:var(--muted); font-weight:400; }
 
+  /* AIに質問する画面（チャット風） */
+  .ai-card{ max-height:80vh; display:flex; flex-direction:column; }
+  .ai-messages{
+    overflow-y:auto; text-align:left; margin-bottom:12px; flex:1;
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .ai-bubble{
+    padding:10px 14px; border-radius:14px; font-size:14px; line-height:1.6;
+    max-width:85%; white-space:pre-wrap; font-family:var(--font-ui);
+  }
+  .ai-bubble-user{ align-self:flex-end; background:var(--ember); color:var(--white); }
+  .ai-bubble-ai{ align-self:flex-start; background:rgba(255,255,255,.08); color:var(--white); }
+  .ai-image-preview{ display:flex; align-items:center; gap:8px; margin-bottom:8px; min-height:0; }
+  .ai-image-preview img{ max-width:64px; max-height:64px; border-radius:8px; }
+  .ai-input-row{ display:flex; gap:8px; align-items:center; }
+  .ai-input-row .text-input{ margin-bottom:0; flex:1; }
+  .ai-input-row .btn{ width:auto; margin-bottom:0; }
+
   /* ============================================================
      完了画面
   ============================================================ */
@@ -341,6 +359,7 @@
 
       <button id="btn-timer-toggle" class="btn btn-primary">スタート</button>
       <button id="btn-timer-finish" class="btn btn-ghost" style="display:none;">終了する</button>
+      <button id="btn-ask-ai" class="btn btn-ghost">わからないことをAIに聞く</button>
       <div class="timer-links" id="timer-links">
         <button id="btn-timer-back" class="btn btn-text">動画に戻る</button>
         <button id="btn-view-history" class="btn btn-text">記録を見る</button>
@@ -375,6 +394,25 @@
   </section>
 
   <!-- ============================================================
+       ⑤ AIに質問する画面（勉強タイマー中に、外のアプリに行かなくても
+          わからないことを聞けるようにするための画面）
+  ============================================================ -->
+  <section id="screen-ai" class="screen">
+    <div class="card ai-card">
+      <h1>AIに質問</h1>
+      <div class="ai-messages" id="ai-messages"></div>
+      <div class="ai-image-preview" id="ai-image-preview"></div>
+      <div class="ai-input-row">
+        <input type="file" id="ai-image-input" accept="image/*" style="display:none;">
+        <button id="btn-ai-attach" class="icon-btn" type="button" aria-label="写真を添付">📷</button>
+        <input type="text" id="ai-question-input" class="text-input" placeholder="わからないことを聞いてみよう">
+        <button id="btn-ai-send" class="btn btn-primary" type="button">送信</button>
+      </div>
+      <button id="btn-ai-back" class="btn btn-text">タイマーに戻る</button>
+    </div>
+  </section>
+
+  <!-- ============================================================
        ⑥ 初回訪問時だけ出す「ホーム画面に追加」バナー
   ============================================================ -->
   <div id="pwa-banner">
@@ -404,6 +442,9 @@
    PROMPT_INTERVAL_AFTER_FIRST: 2回目以降、何本ごとにプロンプトを出すか
    LOG_ENDPOINT_URL           : 使用ログの送信先（Google Apps ScriptのウェブアプリURL）。
                                  空文字("")のままだと、ログの送信自体を行いません。
+                                 「AIに質問」機能も同じApps ScriptのURLを使います
+                                 （Apps Script側でAIへの問い合わせも処理するように
+                                   していれば、URLは1つのままでOKです）。
 ============================================================ */
 const CONFIG = {
   // ⚠️ 教えてもらったURLの list= の値をそのまま設定しています。
@@ -1473,6 +1514,133 @@ function resumeFeedFromTimer(){
     if (active && typeof active.playVideo === "function") active.playVideo();
   }
   cameFromPrompt = false;
+}
+
+/* ============================================================
+   ⑤ AIに質問する画面
+   ------------------------------------------------------------
+   勉強中にわからないことがあったとき、SNSなど他のアプリを開いて
+   しまうと勉強が中断してしまう。ZoneNOWから出なくても質問できる
+   ようにするための、簡単なチャット画面。
+   ・タイマーは裏で動き続けたまま質問できる（この画面に来ても
+     タイマーの状態はそのまま）
+   ・会話の流れは覚えない（毎回、独立した質問として送る）シンプルな
+     作り。複雑な会話をしたい場合は今後の検討課題とする。
+   ・実際にAIを呼び出す部分はGoogle Apps Script側で行う
+     （CONFIG.LOG_ENDPOINT_URLと同じURL。詳しくはApps Script側の
+       コードを参照）。CONFIG.LOG_ENDPOINT_URLが空のときは
+     使えない旨を伝えるだけで、エラーにはしない。
+============================================================ */
+const aiMessagesEl = document.getElementById("ai-messages");
+const aiQuestionInput = document.getElementById("ai-question-input");
+const aiImageInput = document.getElementById("ai-image-input");
+const aiImagePreviewEl = document.getElementById("ai-image-preview");
+let pendingAiImage = null; // { base64, mediaType } / 添付中の画像（送信するまで保持）
+
+document.getElementById("btn-ask-ai").addEventListener("click", () => {
+  showScreen("screen-ai");
+});
+document.getElementById("btn-ai-back").addEventListener("click", () => {
+  showScreen("screen-timer");
+});
+
+document.getElementById("btn-ai-attach").addEventListener("click", () => {
+  aiImageInput.click();
+});
+
+aiImageInput.addEventListener("change", () => {
+  const file = aiImageInput.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    // readAsDataURLの結果は "data:image/jpeg;base64,xxxxx" という形なので、
+    // 種類(mediaType)と本体(base64)に分けて取り出す
+    const commaIndex = reader.result.indexOf(",");
+    const base64 = reader.result.slice(commaIndex + 1);
+    const mediaTypeMatch = reader.result.match(/^data:(.*?);base64/);
+    const mediaType = mediaTypeMatch ? mediaTypeMatch[1] : "image/jpeg";
+    pendingAiImage = { base64, mediaType };
+    renderAiImagePreview(reader.result);
+  };
+  reader.readAsDataURL(file);
+});
+
+function renderAiImagePreview(dataUrl){
+  aiImagePreviewEl.textContent = "";
+  const img = document.createElement("img");
+  img.src = dataUrl;
+  aiImagePreviewEl.appendChild(img);
+
+  const removeBtn = document.createElement("button");
+  removeBtn.type = "button";
+  removeBtn.className = "btn-text";
+  removeBtn.textContent = "✕ 写真を外す";
+  removeBtn.addEventListener("click", () => {
+    pendingAiImage = null;
+    aiImagePreviewEl.textContent = "";
+    aiImageInput.value = "";
+  });
+  aiImagePreviewEl.appendChild(removeBtn);
+}
+
+function addAiBubble(role, text){
+  const bubble = document.createElement("div");
+  bubble.className = "ai-bubble " + (role === "user" ? "ai-bubble-user" : "ai-bubble-ai");
+  bubble.textContent = text;
+  aiMessagesEl.appendChild(bubble);
+  aiMessagesEl.scrollTop = aiMessagesEl.scrollHeight;
+  return bubble;
+}
+
+document.getElementById("btn-ai-send").addEventListener("click", sendAiQuestion);
+aiQuestionInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") sendAiQuestion();
+});
+
+async function sendAiQuestion(){
+  const question = aiQuestionInput.value.trim();
+  if (!question && !pendingAiImage) return; // 文字も写真もなければ何もしない
+
+  addAiBubble("user", question || "（写真を送信）");
+  recordEvent("AIに質問");
+
+  aiQuestionInput.value = "";
+  const imageToSend = pendingAiImage;
+  pendingAiImage = null;
+  aiImagePreviewEl.textContent = "";
+  aiImageInput.value = "";
+
+  const thinkingBubble = addAiBubble("ai", "考え中…");
+  const result = await askAi(question, imageToSend);
+  thinkingBubble.textContent = result;
+}
+
+// Apps Script経由でAIに質問を送り、答えの文章を返す。
+// ※sendLog()と違って、答えを読み取る必要があるのでno-corsは使わない。
+//   Content-Typeをtext/plainにして、余計な確認リクエスト(プリフライト)が
+//   発生しないようにしている点はsendLog()と同じ。
+async function askAi(question, image){
+  if (!CONFIG.LOG_ENDPOINT_URL){
+    return "AI機能はまだ準備できていません。管理者に確認してください。";
+  }
+  try {
+    const response = await fetch(CONFIG.LOG_ENDPOINT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        type: "ai_question",
+        name: getUserName(),
+        question: question,
+        imageBase64: image ? image.base64 : "",
+        imageMediaType: image ? image.mediaType : ""
+      })
+    });
+    const data = await response.json();
+    if (data && data.answer) return data.answer;
+    return "うまく答えを受け取れませんでした。もう一度試してみてください。";
+  } catch (e){
+    return "通信エラーが発生しました。電波の良いところで、もう一度試してみてください。";
+  }
 }
 
 /* ============================================================

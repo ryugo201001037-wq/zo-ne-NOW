@@ -962,6 +962,16 @@ function onPlayerStateChange(event){
      もっともシンプルに仮説検証を進められると判断したためです）
 ============================================================ */
 function handleVideoAdvance(){
+  // ★フィード画面にいないとき（勉強タイマー中など）は何もしない★
+  // タイマーに入るときに動画は一時停止しているはずだが、端末によっては
+  // その一時停止の命令が効かず、裏でミュートのまま再生され続けてしまう
+  // ことがある。そのまま動画が最後まで進んでしまうと、ここが呼ばれて
+  // 「勉強タイマー中なのに啓発プロンプト画面に切り替わる」という
+  // 不具合になっていた。
+  if (!document.getElementById("screen-feed").classList.contains("active")){
+    return;
+  }
+
   const watchedGenre = videoGenreMap[videoIds[currentIndex]];
   if (watchedGenre) genreWatchCounts[watchedGenre] = (genreWatchCounts[watchedGenre] || 0) + 1;
 

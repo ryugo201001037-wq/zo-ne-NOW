@@ -476,6 +476,41 @@ const CONFIG = {
 // setupNameGate（下）が最初にこれを使うため、CONFIGの直後という早い位置で定義しておく。
 let sessionNarrative = [];
 
+// 記録を送りきれずに終わったセッションがないか確認するためのlocalStorageのキー
+const PENDING_NARRATIVE_KEY = "zonenow_mvp_pending_narrative";
+
+// ユーザー名の保存キー。下の孤立記録の回収処理がsendLogBeacon()経由で
+// getUserName()を使うため、その定義（もっと下にある「名前の登録」セクション）
+// より前に、ここで定義しておく必要がある。
+const USER_NAME_KEY = "zonenow_mvp_user_name";
+
+/* ============================================================
+   前回、送信できずに終わった記録がないか確認し、あれば真っ先に送る
+   ------------------------------------------------------------
+   これまでは「アプリを裏に回した瞬間(visibilitychange)」だけを
+   送信のきっかけにしていたが、PCでタブを直接閉じる・強制終了する
+   などの場合、そのきっかけ自体が発火せず、記録が丸ごと消えてしまう
+   ことがあった（実際に報告あり）。
+   そこで、記録するたびにlocalStorageにも控えを残しておき（下の
+   saveNarrativeBackup）、次にアプリを開いたタイミングで「前回送り
+   きれなかった控えが残っていないか」を確認し、残っていれば真っ先に
+   送っておくことで、消えてしまうリスクを大きく減らす。
+   これはCONFIGとsessionNarrativeの直後、他の初期化より前に
+   実行する必要があるため、この早い位置に置いている。
+============================================================ */
+(function recoverOrphanedNarrative(){
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(PENDING_NARRATIVE_KEY) || "null");
+  } catch (e){
+    saved = null; // 保存データが壊れていた場合は諦めて捨てる
+  }
+  localStorage.removeItem(PENDING_NARRATIVE_KEY);
+  if (saved && saved.length > 0){
+    sendLogBeacon("session_log", saved.join(" → ") + " → （前回終了時に送れず、次回起動時に送信）");
+  }
+})();
+
 /* ============================================================
    ⚠️一時的な調査用のログ表示（原因が分かったら丸ごと削除する）
    ------------------------------------------------------------
@@ -509,8 +544,6 @@ function showScreen(id){
    （個人を特定する情報としては名前だけを使い、それ以外の情報は
      集めません）
 ============================================================ */
-const USER_NAME_KEY = "zonenow_mvp_user_name";
-
 function getUserName(){
   return localStorage.getItem(USER_NAME_KEY) || "";
 }
@@ -602,6 +635,16 @@ function formatClockTime(){
 // 行動を1つ、時刻付きでその場の記録に足していく（この時点ではまだ送信しない）
 function recordEvent(text){
   sessionNarrative.push(formatClockTime() + " " + text);
+  saveNarrativeBackup();
+}
+
+// 今たまっている記録を、万が一に備えてlocalStorageにも控えておく
+function saveNarrativeBackup(){
+  try {
+    localStorage.setItem(PENDING_NARRATIVE_KEY, JSON.stringify(sessionNarrative));
+  } catch (e){
+    // 保存できなくても致命的ではないので無視する
+  }
 }
 
 // たまった行動記録を「→」でつないだ1行の文字列にまとめて、まとめて1回だけ送る
@@ -609,6 +652,7 @@ function flushSessionNarrative(){
   if (sessionNarrative.length === 0) return;
   sendLogBeacon("session_log", sessionNarrative.join(" → "));
   sessionNarrative = [];
+  localStorage.removeItem(PENDING_NARRATIVE_KEY); // 送信できたはずなので、控えも消す
 }
 
 /* ============================================================
@@ -629,6 +673,17 @@ document.addEventListener("visibilitychange", () => {
   } else if (document.visibilityState === "visible"){
     recordEvent("再開");
   }
+});
+
+// ★保険：visibilitychangeが発火しないままページが閉じられるケースに備え、
+//   pagehide（ページが実際に閉じられる直前に確実に発火するイベント）でも
+//   同じ処理をしておく。visibilitychangeで既に送信済みなら
+//   sessionNarrativeは空になっているので、flushSessionNarrative()は
+//   何もしない（二重送信にはならない）。
+window.addEventListener("pagehide", () => {
+  if (sessionNarrative.length === 0) return;
+  recordEvent("終了(pagehide)");
+  flushSessionNarrative();
 });
 
 /* ============================================================

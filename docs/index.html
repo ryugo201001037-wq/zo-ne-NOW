@@ -104,8 +104,11 @@
 
   /* 動画を10秒戻す/進めるボタン */
   .seek-controls{
-    position:absolute; left:0; right:0; bottom:calc(var(--safe-bottom) + 50px);
-    display:flex; justify-content:center; gap:28px; z-index:10;
+    position:absolute; left:0; right:0; bottom:calc(var(--safe-bottom) + 54px);
+    display:flex; justify-content:center; gap:40px; z-index:10;
+  }
+  .seek-controls .icon-btn{
+    width:58px; height:58px; font-size:24px; /* タップしやすいよう、通常のicon-btnより大きくする */
   }
 
   /* タップで一時停止したときに出す、真ん中の一時停止アイコン。

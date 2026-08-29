@@ -862,9 +862,7 @@ let currentIndex = 0;    // 今何本目を再生しているか
 let standbyIndex = null; // 裏側のプレイヤーに、次はどの動画を仕込んであるか
 let videoHistory = [];   // 表示した動画のインデックス履歴（下スワイプで戻れるようにするため）
 let watchedCount = 0;    // ここまでに視聴を終えた（または送り飛ばした）動画の本数
-let isMuted = true; // 自動再生の確実さを優先し、起動直後は必ずミュートから始める
-let autoUnmuteAttempted = false; // このセッション内で、前回の音の好みに合わせた自動解除をすでに試したか
-const SOUND_PREFERENCE_KEY = "zonenow_mvp_wants_sound"; // 前回「音あり」にしていたかを覚えておくキー
+let isMuted = true;
 let isPaused = false;    // タップで一時停止しているかどうか
 let cameFromPrompt = false; // タイマー画面に「啓発プロンプト経由」で来たかどうか
 let videoGenreMap = {};    // 動画ID → ジャンル名 の対応表（genre:""のリストの動画は登録されない）
@@ -1276,7 +1274,6 @@ swipeLayer.addEventListener("touchstart", (e) => {
 
 swipeLayer.addEventListener("touchend", (e) => {
   if (!getActivePlayer()) return;
-  tryAutoUnmuteOnFirstInteraction(); // 実際のタップ操作の中でだけ、安全に音を解除できる
   const touchEndY = e.changedTouches[0].clientY;
   const touchEndX = e.changedTouches[0].clientX;
   const deltaY = touchEndY - touchStartY;
@@ -1324,43 +1321,6 @@ function toggleMute(){
   // 重ならないので）念のため一度だけ再生も促しておく（安全な保険）
   if (!isMuted && typeof p.playVideo === "function") p.playVideo();
   document.getElementById("btn-mute").textContent = isMuted ? "🔇" : "🔊";
-  saveSoundPreference();
-}
-
-// 今のミュート状態を「次回起動時の好み」として覚えておく
-function saveSoundPreference(){
-  try {
-    localStorage.setItem(SOUND_PREFERENCE_KEY, isMuted ? "false" : "true");
-  } catch (e){
-    // 保存できなくても致命的ではないので無視する
-  }
-}
-
-// ★起動直後は自動再生の確実さのため必ずミュートから始めるが、前回
-//   「音あり」にしていた人には、実際のタップ操作（ユーザー操作）の
-//   中でだけ、1回だけ自動でミュートを解除する。
-//   ブラウザの自動再生制限は「音つきでいきなり再生を始める」ことは
-//   ブロックするが、「すでに（無音で）再生中の動画を、ユーザー操作の
-//   中でミュート解除する」のは安全に行える。これにより、起動直後の
-//   確実な自動再生を崩さずに、最初のタップで音が出るようにできる。
-function tryAutoUnmuteOnFirstInteraction(){
-  if (autoUnmuteAttempted) return;
-  autoUnmuteAttempted = true;
-  if (!isMuted) return; // すでに音ありなら何もしない
-
-  let wantsSound = false;
-  try {
-    wantsSound = localStorage.getItem(SOUND_PREFERENCE_KEY) === "true";
-  } catch (e){
-    wantsSound = false;
-  }
-  if (!wantsSound) return; // 前回「音あり」にした記録がなければ、これまで通りミュートのまま
-
-  const p = getActivePlayer();
-  if (!p) return;
-  isMuted = false;
-  applyMuteState();
-  document.getElementById("btn-mute").textContent = "🔊";
 }
 
 // 動画をタップして一時停止・再生を切り替える

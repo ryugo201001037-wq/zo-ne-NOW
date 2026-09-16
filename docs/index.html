@@ -1787,13 +1787,15 @@ function resumeFeedFromTimer(){
 /* ============================================================
    勉強ガチャ・図鑑
    ------------------------------------------------------------
-   10分以上、勉強タイマーを続けて完了すると、動物ガチャが1回分
-   もらえる（1日3回まで）。集めた動物は図鑑で見られる。
+   5分以上、勉強タイマーを続けて完了すると、動物ガチャが1回分
+   もらえる（5分ごとに1回、1日3回まで。10分なら一気に2回もらえる）。
+   もらった回数はその日のうちに使い切らなくても消えずに貯まる。
+   集めた動物は図鑑で見られる。
    タイマーを何度も細切れにスタート・ストップして回数を稼げて
    しまわないよう、1日の上限を設けている。
 ============================================================ */
-const GACHA_MIN_SECONDS = 60;    // ★ブラッシュアップ中は1分に短縮（落ち着いたら伸ばす）
-const GACHA_DAILY_LIMIT = 3;     // 1日にもらえる回数の上限（★ブラッシュアップ中は一旦外している）
+const GACHA_MIN_SECONDS = 5 * 60; // 5分勉強するごとにガチャ1回分もらえる
+const GACHA_DAILY_LIMIT = 3;      // 1日にもらえる回数の上限
 const GACHA_SPINS_KEY = "zonenow_mvp_gacha_spins_available";
 const GACHA_DAILY_KEY = "zonenow_mvp_gacha_daily_earned";
 const GACHA_COLLECTION_KEY = "zonenow_mvp_gacha_collection";
@@ -1844,15 +1846,22 @@ function saveGachaCollection(collection){
   localStorage.setItem(GACHA_COLLECTION_KEY, JSON.stringify(collection));
 }
 
-// タイマー終了時に、条件を満たしていればガチャ1回分を付与する
+// タイマー終了時に、条件を満たしていればガチャ分を付与する
+// (5分ごとに1回。例: 10分勉強したなら一気に2回分もらえる。ただし1日の上限は超えない)
 function maybeAwardGachaSpin(finalStopwatchSec){
   if (finalStopwatchSec < GACHA_MIN_SECONDS) return;
-  // ★ブラッシュアップ中は1日の上限チェックを外している(GACHA_DAILY_LIMIT自体は
-  //   残してあるので、あとで `if (earnedToday >= GACHA_DAILY_LIMIT) return;` を
-  //   戻せばすぐ元に戻せる)
+
   const earnedToday = loadGachaDailyEarned();
-  saveGachaDailyEarned(earnedToday + 1);
-  saveGachaSpinsAvailable(loadGachaSpinsAvailable() + 1);
+  const remainingToday = GACHA_DAILY_LIMIT - earnedToday;
+  if (remainingToday <= 0) return; // 今日はもう上限までもらっている
+
+  const earnedThisSession = Math.floor(finalStopwatchSec / GACHA_MIN_SECONDS);
+  const awardCount = Math.min(earnedThisSession, remainingToday);
+  if (awardCount <= 0) return;
+
+  saveGachaDailyEarned(earnedToday + awardCount);
+  // 貯めておいた回数はここに積み上がっていくだけで、日付が変わっても消えない
+  saveGachaSpinsAvailable(loadGachaSpinsAvailable() + awardCount);
 }
 
 // 完了画面の「ガチャを回す」ボタンの表示・非表示を、今のガチャ回数に合わせて更新する

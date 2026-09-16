@@ -872,6 +872,37 @@ let videoGenreMap = {};    // 動画ID → ジャンル名 の対応表（genre:
 let genreWatchCounts = {}; // このセッションで見たジャンルごとの本数（記録ログに使う）
 let primaryPlayerBecameReady = false; // 起動時の読み込みが無事に終わったかどうか
 
+/* ============================================================
+   動画のパーソナライズ化（よく見るジャンルを少し出やすくする）
+   ------------------------------------------------------------
+   genreWatchCountsは「このセッションだけ」の記録だが、こちらは
+   localStorageに保存して、アプリを開き直しても覚えておく版。
+   これを使って、次にどの動画を選ぶかの「重み」を調整する。
+   ★あくまで「少し出やすくする」程度に留め、特定のジャンルに
+   偏りすぎて視聴の幅が狭くならないよう、GENRE_WEIGHT_FACTORで
+   効き具合を調整できるようにしている。
+============================================================ */
+const GENRE_COUNTS_KEY = "zonenow_mvp_genre_watch_counts";
+const GENRE_WEIGHT_FACTOR = 0.15; // 大きくするほどジャンルの好みが選ばれやすさに強く反映される
+
+function loadPersistedGenreCounts(){
+  try {
+    return JSON.parse(localStorage.getItem(GENRE_COUNTS_KEY)) || {};
+  } catch (e){
+    return {};
+  }
+}
+
+let persistedGenreWatchCounts = loadPersistedGenreCounts();
+
+function savePersistedGenreCounts(){
+  try {
+    localStorage.setItem(GENRE_COUNTS_KEY, JSON.stringify(persistedGenreWatchCounts));
+  } catch (e){
+    // 保存できなくても致命的ではないので無視する
+  }
+}
+
 // ★起動時の「読み込み中…」が永遠に終わらない不具合への保険★
 // 電波が悪い・YouTube側のスクリプト自体が読み込めない、などの理由で
 // プレイヤーの準備が完了しないと、これまでは何も起きず「読み込み中…」の
@@ -890,16 +921,28 @@ setTimeout(() => {
 function otherKey(key){ return key === "a" ? "b" : "a"; }
 function getActivePlayer(){ return players[activeKey]; }
 
-// 動画一覧の中から、指定したインデックス以外をランダムに1つ選ぶ
-// （「完全ランダム」だが、直前と同じ動画が連続で出るのだけは避ける）
+// 動画一覧の中から、指定したインデックス以外を1つ選ぶ。
+// 完全ランダムではなく、これまでよく見てきたジャンルの動画が
+// 「少しだけ」選ばれやすくなるよう重みをつけている
+// （直前と同じ動画が連続で出るのだけは避ける）。
 function pickRandomIndex(excludeIndex){
   if (videoIds.length === 0) return 0;
   if (videoIds.length === 1) return 0;
-  let idx;
-  do {
-    idx = Math.floor(Math.random() * videoIds.length);
-  } while (idx === excludeIndex);
-  return idx;
+
+  const weights = videoIds.map((id, idx) => {
+    if (idx === excludeIndex) return 0;
+    const genre = videoGenreMap[id];
+    const genreCount = genre ? (persistedGenreWatchCounts[genre] || 0) : 0;
+    return 1 + genreCount * GENRE_WEIGHT_FACTOR;
+  });
+
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+  let r = Math.random() * totalWeight;
+  for (let i = 0; i < weights.length; i++){
+    r -= weights[i];
+    if (r <= 0) return i;
+  }
+  return weights.length - 1; // 浮動小数点の誤差対策（通常はここに来ない）
 }
 
 function onYouTubeIframeAPIReady(){
@@ -1089,7 +1132,11 @@ function handleVideoAdvance(){
   }
 
   const watchedGenre = videoGenreMap[videoIds[currentIndex]];
-  if (watchedGenre) genreWatchCounts[watchedGenre] = (genreWatchCounts[watchedGenre] || 0) + 1;
+  if (watchedGenre){
+    genreWatchCounts[watchedGenre] = (genreWatchCounts[watchedGenre] || 0) + 1;
+    persistedGenreWatchCounts[watchedGenre] = (persistedGenreWatchCounts[watchedGenre] || 0) + 1;
+    savePersistedGenreCounts();
+  }
 
   watchedCount++;
 
@@ -1100,12 +1147,58 @@ function handleVideoAdvance(){
   }
 }
 
+/* ============================================================
+   啓発プロンプトのタイミングの個人最適化
+   ------------------------------------------------------------
+   「はい、始める」を選んだときの視聴本数を記録しておき、その
+   平均値をもとに、次回以降のプロンプトのタイミングを本人に
+   合わせて調整する。5本〜20本の範囲におさめ、極端になりすぎない
+   ようにしている。記録がまだない場合はCONFIGの初期値のまま。
+============================================================ */
+const PROMPT_ACCEPT_HISTORY_KEY = "zonenow_mvp_prompt_accept_history";
+const PROMPT_ACCEPT_HISTORY_MAX = 20; // 直近20回分だけ覚えておく（昔のクセを引きずりすぎないため）
+const PERSONALIZED_PROMPT_MIN = 5;
+const PERSONALIZED_PROMPT_MAX = 20;
+
+function loadPromptAcceptHistory(){
+  try {
+    return JSON.parse(localStorage.getItem(PROMPT_ACCEPT_HISTORY_KEY)) || [];
+  } catch (e){
+    return [];
+  }
+}
+
+// 「はい、始める」を選んだ瞬間の視聴本数を記録する
+function recordPromptAccept(countAtAccept){
+  const history = loadPromptAcceptHistory();
+  history.push(countAtAccept);
+  while (history.length > PROMPT_ACCEPT_HISTORY_MAX) history.shift();
+  try {
+    localStorage.setItem(PROMPT_ACCEPT_HISTORY_KEY, JSON.stringify(history));
+  } catch (e){
+    // 保存できなくても致命的ではないので無視する
+  }
+}
+
+// 記録の平均から、この人に合ったプロンプトのタイミングを求める
+// （記録がまだなければnullを返し、その場合はCONFIGの初期値を使う）
+function getPersonalizedPromptThreshold(){
+  const history = loadPromptAcceptHistory();
+  if (history.length === 0) return null;
+  const average = history.reduce((sum, n) => sum + n, 0) / history.length;
+  return Math.min(PERSONALIZED_PROMPT_MAX, Math.max(PERSONALIZED_PROMPT_MIN, Math.round(average)));
+}
+
 // 「今、啓発プロンプトを出すべきタイミングか」を判定する
-// 例）FIRST_PROMPT_AFTER=20, INTERVAL=10 なら → 20本目、30本目、40本目…で表示
+// 例）しきい値が20なら → 20本目、40本目、60本目…で表示
 function shouldShowPrompt(count){
-  if (count < CONFIG.FIRST_PROMPT_AFTER) return false;
-  if (count === CONFIG.FIRST_PROMPT_AFTER) return true;
-  return (count - CONFIG.FIRST_PROMPT_AFTER) % CONFIG.PROMPT_INTERVAL_AFTER_FIRST === 0;
+  const personalized = getPersonalizedPromptThreshold();
+  const firstThreshold = personalized !== null ? personalized : CONFIG.FIRST_PROMPT_AFTER;
+  const interval = personalized !== null ? personalized : CONFIG.PROMPT_INTERVAL_AFTER_FIRST;
+
+  if (count < firstThreshold) return false;
+  if (count === firstThreshold) return true;
+  return (count - firstThreshold) % interval === 0;
 }
 
 // 「ジャンル名6/ジャンル名4」のように、多く見た順に並べた内訳の文字列を作る
@@ -1386,6 +1479,7 @@ document.getElementById("btn-quick-study").addEventListener("click", () => {
 ============================================================ */
 document.getElementById("btn-start-study").addEventListener("click", () => {
   recordEvent("「はい、始める」を選択");
+  recordPromptAccept(watchedCount); // 本人が勉強を始めやすい本数の傾向として記録する
   cameFromPrompt = true; // 動画は見終わっているので、戻るときは次の動画から再開する
   showScreen("screen-timer");
 });

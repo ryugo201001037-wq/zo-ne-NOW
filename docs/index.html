@@ -244,6 +244,31 @@
   .ai-input-row .text-input{ margin-bottom:0; flex:1; }
   .ai-input-row .btn{ width:auto; margin-bottom:0; }
 
+  /* ガチャ画面・図鑑画面 */
+  .gacha-spins-text{ color:var(--mint); font-weight:600; }
+  .gacha-reveal{
+    min-height:140px; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:6px; margin:16px 0;
+  }
+  .gacha-reveal-emoji{ font-size:64px; line-height:1; }
+  .gacha-reveal-stars{ color:var(--ember-soft); font-size:14px; letter-spacing:2px; }
+  .gacha-reveal-name{ font-family:var(--font-ui); font-weight:700; font-size:16px; }
+  .gacha-reveal-new{ color:var(--mint); font-size:12px; font-weight:700; }
+
+  .collection-grid{
+    display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;
+    margin-bottom:20px; text-align:center;
+  }
+  .collection-item{
+    background:rgba(255,255,255,.06); border-radius:14px; padding:12px 4px;
+    font-family:var(--font-ui);
+  }
+  .collection-item .emoji{ font-size:32px; margin:0 0 4px; }
+  .collection-item .stars{ font-size:10px; color:var(--ember-soft); }
+  .collection-item .name{ font-size:11px; color:var(--muted); margin-top:2px; }
+  .collection-item .count{ font-size:10px; color:var(--mint); margin-top:2px; }
+  .collection-item.is-unowned{ opacity:.35; }
+
   /* ============================================================
      完了画面
   ============================================================ */
@@ -392,7 +417,35 @@
       <p class="sub">今日も一歩、前進しましたね。</p>
       <p class="sub" id="done-today-time"></p>
       <p class="sub" id="done-total-stats"></p>
+      <p class="sub gacha-spins-text" id="done-gacha-status"></p>
+      <button id="btn-go-gacha" class="btn btn-primary" style="display:none;">🎁 ガチャを回す</button>
       <button id="btn-done-home" class="btn btn-primary">ホームに戻る</button>
+      <button id="btn-view-collection" class="btn btn-text">📖 図鑑を見る</button>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       ガチャ画面：10分以上勉強すると1回分もらえる、動物ガチャ
+  ============================================================ -->
+  <section id="screen-gacha" class="screen">
+    <div class="card">
+      <h1>勉強ガチャ</h1>
+      <p class="sub" id="gacha-spins-remaining"></p>
+      <div class="gacha-reveal" id="gacha-reveal"></div>
+      <button id="btn-gacha-spin" class="btn btn-primary">ガチャを回す！</button>
+      <button id="btn-gacha-back" class="btn btn-ghost">もどる</button>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       図鑑画面：これまで手に入れた動物キャラクターの一覧
+  ============================================================ -->
+  <section id="screen-collection" class="screen">
+    <div class="card history-card">
+      <h1>図鑑</h1>
+      <p class="sub" id="collection-summary"></p>
+      <div class="collection-grid" id="collection-grid"></div>
+      <button id="btn-collection-back" class="btn btn-ghost">閉じる</button>
     </div>
   </section>
 
@@ -1647,6 +1700,9 @@ function stopStopwatch(){
     "今日の合計勉強時間: " + formatStudyDuration(getTodayStudySeconds());
   renderStudyStats();
 
+  maybeAwardGachaSpin(stopwatchSec); // リセットする前の経過時間で、ガチャの権利を判定する
+  renderDoneGachaStatus();
+
   stopwatchSec = 0;
   stopwatchStartedAt = null;
   renderTimer();
@@ -1694,6 +1750,209 @@ function resumeFeedFromTimer(){
     if (active && typeof active.playVideo === "function") active.playVideo();
   }
   cameFromPrompt = false;
+}
+
+/* ============================================================
+   勉強ガチャ・図鑑
+   ------------------------------------------------------------
+   10分以上、勉強タイマーを続けて完了すると、動物ガチャが1回分
+   もらえる（1日3回まで）。集めた動物は図鑑で見られる。
+   タイマーを何度も細切れにスタート・ストップして回数を稼げて
+   しまわないよう、1日の上限を設けている。
+============================================================ */
+const GACHA_MIN_SECONDS = 600;   // 10分以上でガチャ1回分
+const GACHA_DAILY_LIMIT = 3;     // 1日にもらえる回数の上限
+const GACHA_SPINS_KEY = "zonenow_mvp_gacha_spins_available";
+const GACHA_DAILY_KEY = "zonenow_mvp_gacha_daily_earned";
+const GACHA_COLLECTION_KEY = "zonenow_mvp_gacha_collection";
+
+// レア度が上がるほど出現率は下がる（合計100になるよう調整）
+const GACHA_CHARACTERS = [
+  { id: "sparrow",   rarity: 1,  emoji: "🐦",     name: "ちょこちょこスズメ", weight: 30 },
+  { id: "cat",       rarity: 2,  emoji: "🐱",     name: "のんびりネコ",       weight: 22 },
+  { id: "dog",       rarity: 3,  emoji: "🐶",     name: "がんばりイヌ",       weight: 16 },
+  { id: "rabbit",    rarity: 4,  emoji: "🐰",     name: "はやとびウサギ",     weight: 12 },
+  { id: "owl",       rarity: 5,  emoji: "🦉",     name: "ものしりフクロウ",   weight: 9 },
+  { id: "fox",       rarity: 6,  emoji: "🦊",     name: "ちえのキツネ",       weight: 6 },
+  { id: "tiger",     rarity: 7,  emoji: "🐯",     name: "しゅうちゅうトラ",   weight: 3 },
+  { id: "polarbear", rarity: 8,  emoji: "🐻‍❄️", name: "こんじょうシロクマ", weight: 1.5 },
+  { id: "dragon",    rarity: 9,  emoji: "🐉",     name: "ごうかくリュウ",     weight: 0.4 },
+  { id: "phoenix",   rarity: 10, emoji: "🔥",     name: "きせきのホウオウ",   weight: 0.1 }
+];
+
+function loadGachaSpinsAvailable(){
+  return parseInt(localStorage.getItem(GACHA_SPINS_KEY) || "0", 10) || 0;
+}
+function saveGachaSpinsAvailable(n){
+  localStorage.setItem(GACHA_SPINS_KEY, String(n));
+}
+
+// 「今日すでに何回分もらったか」を、日付ごとにリセットしながら覚えておく
+function loadGachaDailyEarned(){
+  try {
+    const data = JSON.parse(localStorage.getItem(GACHA_DAILY_KEY) || "null");
+    if (data && data.date === getTodayKey()) return data.count;
+  } catch (e){
+    // 壊れていたら0扱いにする
+  }
+  return 0;
+}
+function saveGachaDailyEarned(count){
+  localStorage.setItem(GACHA_DAILY_KEY, JSON.stringify({ date: getTodayKey(), count: count }));
+}
+
+function loadGachaCollection(){
+  try {
+    return JSON.parse(localStorage.getItem(GACHA_COLLECTION_KEY)) || {};
+  } catch (e){
+    return {};
+  }
+}
+function saveGachaCollection(collection){
+  localStorage.setItem(GACHA_COLLECTION_KEY, JSON.stringify(collection));
+}
+
+// タイマー終了時に、条件を満たしていればガチャ1回分を付与する
+function maybeAwardGachaSpin(finalStopwatchSec){
+  if (finalStopwatchSec < GACHA_MIN_SECONDS) return;
+  const earnedToday = loadGachaDailyEarned();
+  if (earnedToday >= GACHA_DAILY_LIMIT) return;
+  saveGachaDailyEarned(earnedToday + 1);
+  saveGachaSpinsAvailable(loadGachaSpinsAvailable() + 1);
+}
+
+// 完了画面の「ガチャを回す」ボタンの表示・非表示を、今のガチャ回数に合わせて更新する
+function renderDoneGachaStatus(){
+  const spins = loadGachaSpinsAvailable();
+  const statusEl = document.getElementById("done-gacha-status");
+  const goBtn = document.getElementById("btn-go-gacha");
+  if (spins > 0){
+    statusEl.textContent = `🎁 ガチャ ${spins}回分たまっています`;
+    goBtn.style.display = "";
+  } else {
+    statusEl.textContent = "";
+    goBtn.style.display = "none";
+  }
+}
+
+document.getElementById("btn-go-gacha").addEventListener("click", () => {
+  showScreen("screen-gacha");
+  renderGachaScreen();
+});
+
+document.getElementById("btn-gacha-back").addEventListener("click", () => {
+  showScreen("screen-done");
+  renderDoneGachaStatus();
+});
+
+document.getElementById("btn-view-collection").addEventListener("click", () => {
+  showScreen("screen-collection");
+  renderCollectionScreen();
+});
+
+document.getElementById("btn-collection-back").addEventListener("click", () => {
+  showScreen("screen-done");
+});
+
+function renderGachaScreen(){
+  const spins = loadGachaSpinsAvailable();
+  document.getElementById("gacha-spins-remaining").textContent = `残り ${spins}回`;
+  document.getElementById("gacha-reveal").innerHTML = "";
+  document.getElementById("btn-gacha-spin").disabled = spins <= 0;
+}
+
+// ガチャを回した直後は、演出（結果表示）を消さずに、残り回数の表示だけ更新する
+function updateGachaSpinCountDisplay(){
+  const spins = loadGachaSpinsAvailable();
+  document.getElementById("gacha-spins-remaining").textContent = `残り ${spins}回`;
+  document.getElementById("btn-gacha-spin").disabled = spins <= 0;
+}
+
+// 重み付きの抽選で、動物キャラクターを1体選ぶ
+function pickGachaCharacter(){
+  const totalWeight = GACHA_CHARACTERS.reduce((sum, c) => sum + c.weight, 0);
+  let r = Math.random() * totalWeight;
+  for (const character of GACHA_CHARACTERS){
+    r -= character.weight;
+    if (r <= 0) return character;
+  }
+  return GACHA_CHARACTERS[GACHA_CHARACTERS.length - 1]; // 浮動小数点の誤差対策
+}
+
+document.getElementById("btn-gacha-spin").addEventListener("click", () => {
+  const spins = loadGachaSpinsAvailable();
+  if (spins <= 0) return;
+  saveGachaSpinsAvailable(spins - 1);
+
+  const character = pickGachaCharacter();
+  const collection = loadGachaCollection();
+  const isNew = !collection[character.id];
+  collection[character.id] = (collection[character.id] || 0) + 1;
+  saveGachaCollection(collection);
+  recordEvent(`ガチャ結果:${character.name}(★${character.rarity})`);
+
+  const reveal = document.getElementById("gacha-reveal");
+  reveal.innerHTML = "";
+  const emojiEl = document.createElement("div");
+  emojiEl.className = "gacha-reveal-emoji";
+  emojiEl.textContent = character.emoji;
+  const starsEl = document.createElement("div");
+  starsEl.className = "gacha-reveal-stars";
+  starsEl.textContent = "★".repeat(character.rarity);
+  const nameEl = document.createElement("div");
+  nameEl.className = "gacha-reveal-name";
+  nameEl.textContent = character.name;
+  reveal.appendChild(emojiEl);
+  reveal.appendChild(starsEl);
+  reveal.appendChild(nameEl);
+  if (isNew){
+    const newEl = document.createElement("div");
+    newEl.className = "gacha-reveal-new";
+    newEl.textContent = "はじめて手に入れた！";
+    reveal.appendChild(newEl);
+  }
+
+  updateGachaSpinCountDisplay();
+});
+
+// 図鑑画面：手に入れた動物は絵と名前を、まだの動物は「？？？」を表示する
+function renderCollectionScreen(){
+  const collection = loadGachaCollection();
+  const ownedCount = GACHA_CHARACTERS.filter((c) => collection[c.id]).length;
+  document.getElementById("collection-summary").textContent =
+    `${ownedCount} / ${GACHA_CHARACTERS.length} 体 集めました`;
+
+  const grid = document.getElementById("collection-grid");
+  grid.textContent = "";
+  GACHA_CHARACTERS.forEach((character) => {
+    const owned = collection[character.id] || 0;
+    const item = document.createElement("div");
+    item.className = "collection-item" + (owned ? "" : " is-unowned");
+
+    const emojiEl = document.createElement("div");
+    emojiEl.className = "emoji";
+    emojiEl.textContent = owned ? character.emoji : "？";
+    item.appendChild(emojiEl);
+
+    const starsEl = document.createElement("div");
+    starsEl.className = "stars";
+    starsEl.textContent = "★".repeat(character.rarity);
+    item.appendChild(starsEl);
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "name";
+    nameEl.textContent = owned ? character.name : "？？？";
+    item.appendChild(nameEl);
+
+    if (owned > 1){
+      const countEl = document.createElement("div");
+      countEl.className = "count";
+      countEl.textContent = `×${owned}`;
+      item.appendChild(countEl);
+    }
+
+    grid.appendChild(item);
+  });
 }
 
 /* ============================================================

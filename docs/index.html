@@ -260,14 +260,35 @@
     margin-bottom:20px; text-align:center;
   }
   .collection-item{
-    background:rgba(255,255,255,.06); border-radius:14px; padding:12px 4px;
-    font-family:var(--font-ui);
+    position:relative; background:rgba(255,255,255,.06); border-radius:16px;
+    padding:14px 4px 10px; font-family:var(--font-ui);
+    border:1px solid rgba(255,255,255,.08);
+    box-shadow:0 4px 10px rgba(0,0,0,.18);
+    transition:transform .15s ease;
   }
-  .collection-item .emoji{ font-size:32px; margin:0 0 4px; }
-  .collection-item .stars{ font-size:10px; color:var(--ember-soft); }
-  .collection-item .name{ font-size:11px; color:var(--muted); margin-top:2px; }
-  .collection-item .count{ font-size:10px; color:var(--mint); margin-top:2px; }
-  .collection-item.is-unowned{ opacity:.35; }
+  .collection-item .emoji{ font-size:34px; margin:0 0 4px; filter:drop-shadow(0 2px 4px rgba(0,0,0,.35)); }
+  .collection-item .stars{ font-size:10px; color:var(--ember-soft); letter-spacing:1px; }
+  .collection-item .name{ font-size:11px; color:var(--muted); margin-top:3px; line-height:1.3; }
+  .collection-item .count{
+    position:absolute; top:6px; right:8px; font-size:10px; font-weight:700;
+    color:var(--white); background:rgba(0,0,0,.4); border-radius:8px; padding:1px 6px;
+  }
+  .collection-item.is-unowned{ opacity:.4; }
+  .collection-item.is-unowned .emoji{ filter:none; }
+
+  /* レア度が上がるほど、枠が豪華になっていく */
+  .collection-item.rarity-common{ }
+  .collection-item.rarity-rare{
+    border-color:rgba(110,198,255,.5); background:rgba(110,198,255,.08);
+  }
+  .collection-item.rarity-epic{
+    border-color:rgba(199,125,255,.6); background:rgba(199,125,255,.1);
+  }
+  .collection-item.rarity-legendary{
+    border-color:rgba(255,215,0,.7);
+    background:linear-gradient(160deg, rgba(255,215,0,.16), rgba(255,90,54,.1));
+    box-shadow:0 4px 14px rgba(255,180,60,.25);
+  }
 
   /* ============================================================
      完了画面
@@ -394,6 +415,7 @@
       <h1>学習タイマー</h1>
       <p class="sub" id="timer-sub">スタートを押して勉強を始めましょう</p>
       <p class="sub" id="timer-stats"></p>
+      <p class="sub gacha-spins-text" id="timer-gacha-hint"></p>
 
       <div class="timer-display" id="timer-display">00:00</div>
 
@@ -403,6 +425,7 @@
       <div class="timer-links" id="timer-links">
         <button id="btn-timer-back" class="btn btn-text">動画に戻る</button>
         <button id="btn-view-history" class="btn btn-text">記録を見る</button>
+        <button id="btn-view-collection-from-timer" class="btn btn-text">📖 図鑑</button>
       </div>
     </div>
   </section>
@@ -1525,6 +1548,7 @@ document.getElementById("btn-quick-study").addEventListener("click", () => {
   resetPauseState(); // タップでの一時停止表示は消しておく（フィードに戻ったら再生から始めるため）
   cameFromPrompt = false;
   showScreen("screen-timer");
+  renderTimerGachaHint();
 });
 
 /* ============================================================
@@ -1535,6 +1559,7 @@ document.getElementById("btn-start-study").addEventListener("click", () => {
   recordPromptAccept(watchedCount); // 本人が勉強を始めやすい本数の傾向として記録する
   cameFromPrompt = true; // 動画は見終わっているので、戻るときは次の動画から再開する
   showScreen("screen-timer");
+  renderTimerGachaHint();
 });
 
 document.getElementById("btn-keep-watching").addEventListener("click", () => {
@@ -1760,8 +1785,8 @@ function resumeFeedFromTimer(){
    タイマーを何度も細切れにスタート・ストップして回数を稼げて
    しまわないよう、1日の上限を設けている。
 ============================================================ */
-const GACHA_MIN_SECONDS = 600;   // 10分以上でガチャ1回分
-const GACHA_DAILY_LIMIT = 3;     // 1日にもらえる回数の上限
+const GACHA_MIN_SECONDS = 60;    // ★ブラッシュアップ中は1分に短縮（落ち着いたら伸ばす）
+const GACHA_DAILY_LIMIT = 3;     // 1日にもらえる回数の上限（★ブラッシュアップ中は一旦外している）
 const GACHA_SPINS_KEY = "zonenow_mvp_gacha_spins_available";
 const GACHA_DAILY_KEY = "zonenow_mvp_gacha_daily_earned";
 const GACHA_COLLECTION_KEY = "zonenow_mvp_gacha_collection";
@@ -1815,8 +1840,10 @@ function saveGachaCollection(collection){
 // タイマー終了時に、条件を満たしていればガチャ1回分を付与する
 function maybeAwardGachaSpin(finalStopwatchSec){
   if (finalStopwatchSec < GACHA_MIN_SECONDS) return;
+  // ★ブラッシュアップ中は1日の上限チェックを外している(GACHA_DAILY_LIMIT自体は
+  //   残してあるので、あとで `if (earnedToday >= GACHA_DAILY_LIMIT) return;` を
+  //   戻せばすぐ元に戻せる)
   const earnedToday = loadGachaDailyEarned();
-  if (earnedToday >= GACHA_DAILY_LIMIT) return;
   saveGachaDailyEarned(earnedToday + 1);
   saveGachaSpinsAvailable(loadGachaSpinsAvailable() + 1);
 }
@@ -1845,14 +1872,37 @@ document.getElementById("btn-gacha-back").addEventListener("click", () => {
   renderDoneGachaStatus();
 });
 
+// 図鑑画面は「完了画面」からも「タイマー画面」からも開けるようにしたので、
+// 「閉じる」を押したときにどちらへ戻ればいいかを覚えておく
+let collectionReturnScreen = "screen-done";
+
 document.getElementById("btn-view-collection").addEventListener("click", () => {
+  collectionReturnScreen = "screen-done";
+  showScreen("screen-collection");
+  renderCollectionScreen();
+});
+
+document.getElementById("btn-view-collection-from-timer").addEventListener("click", () => {
+  collectionReturnScreen = "screen-timer";
   showScreen("screen-collection");
   renderCollectionScreen();
 });
 
 document.getElementById("btn-collection-back").addEventListener("click", () => {
-  showScreen("screen-done");
+  showScreen(collectionReturnScreen);
 });
+
+// 初めて見た人でも「ガチャがある」と気づけるよう、タイマー画面にヒントを出す
+function renderTimerGachaHint(){
+  const spins = loadGachaSpinsAvailable();
+  const hintEl = document.getElementById("timer-gacha-hint");
+  if (spins > 0){
+    hintEl.textContent = `🎁 ガチャ${spins}回分たまっています`;
+  } else {
+    const minutes = Math.ceil(GACHA_MIN_SECONDS / 60);
+    hintEl.textContent = `🎁 ${minutes}分勉強するとガチャに挑戦できるよ`;
+  }
+}
 
 function renderGachaScreen(){
   const spins = loadGachaSpinsAvailable();
@@ -1916,6 +1966,14 @@ document.getElementById("btn-gacha-spin").addEventListener("click", () => {
 });
 
 // 図鑑画面：手に入れた動物は絵と名前を、まだの動物は「？？？」を表示する
+// レア度の数字を、見た目の豪華さの段階（common/rare/epic/legendary）に変換する
+function rarityTierClass(rarity){
+  if (rarity >= 9) return "rarity-legendary";
+  if (rarity >= 7) return "rarity-epic";
+  if (rarity >= 4) return "rarity-rare";
+  return "rarity-common";
+}
+
 function renderCollectionScreen(){
   const collection = loadGachaCollection();
   const ownedCount = GACHA_CHARACTERS.filter((c) => collection[c.id]).length;
@@ -1927,7 +1985,8 @@ function renderCollectionScreen(){
   GACHA_CHARACTERS.forEach((character) => {
     const owned = collection[character.id] || 0;
     const item = document.createElement("div");
-    item.className = "collection-item" + (owned ? "" : " is-unowned");
+    // 星の数でレア度は見えるようにしつつ、未所持のものは薄く表示して「まだ見ぬキャラ」感を出す
+    item.className = "collection-item " + rarityTierClass(character.rarity) + (owned ? "" : " is-unowned");
 
     const emojiEl = document.createElement("div");
     emojiEl.className = "emoji";
@@ -1944,7 +2003,7 @@ function renderCollectionScreen(){
     nameEl.textContent = owned ? character.name : "？？？";
     item.appendChild(nameEl);
 
-    if (owned > 1){
+    if (owned > 0){
       const countEl = document.createElement("div");
       countEl.className = "count";
       countEl.textContent = `×${owned}`;

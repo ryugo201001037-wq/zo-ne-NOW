@@ -971,7 +971,11 @@ let primaryPlayerBecameReady = false; // 起動時の読み込みが無事に終
    効き具合を調整できるようにしている。
 ============================================================ */
 const GENRE_COUNTS_KEY = "zonenow_mvp_genre_watch_counts";
-const GENRE_WEIGHT_FACTOR = 0.15; // 大きくするほどジャンルの好みが選ばれやすさに強く反映される
+// ★一旦0にして完全ランダムに戻している(見た本数が増えるほど重みが際限なく
+//   大きくなり続ける作りだったため、特定ジャンルに偏りすぎてしまっていた)。
+//   パーソナライズ化を復活させる場合は、重みに上限を設けるなど作り直してから
+//   0より大きい値に戻すこと。
+const GENRE_WEIGHT_FACTOR = 0; // 大きくするほどジャンルの好みが選ばれやすさに強く反映される
 
 function loadPersistedGenreCounts(){
   try {

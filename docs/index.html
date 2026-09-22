@@ -1610,13 +1610,13 @@ document.getElementById("btn-keep-watching").addEventListener("click", () => {
    ちゃんと追いつきます。
 ============================================================ */
 let stopwatchSec = 0;         // 画面に表示している経過時間（秒）
-let stopwatchStartedAt = null; // スタートを押した瞬間の時刻（Date.now()の値）
+let stopwatchStartedAt = null; // スタートを押した瞬間の時刻（performance.now()の値。端末の時計変更に影響されない）
 let timerIntervalId = null;
 let timerRunning = false;
 let timerPaused = false; // 「スタートはしたが、今は一時停止中」かどうか
 
 let lastCheckpointSec = 0;  // 記録として保存済みの経過秒数（この先の差分だけを追加保存する）
-let lastCheckpointAt = 0;   // 最後にチェックポイント保存をした実時刻（Date.now()の値）
+let lastCheckpointAt = 0;   // 最後にチェックポイント保存をした実時刻（performance.now()の値）
 const CHECKPOINT_INTERVAL_MS = 15000; // 15秒ごとに記録を保存する
 
 const timerDisplay = document.getElementById("timer-display");
@@ -1632,23 +1632,27 @@ function renderTimer(){
 }
 
 // 「スタートした実際の時刻」と「今」の差から、経過秒数を計算し直す
+// ★端末の時計がずれたり、電波の関係で自動時刻合わせが起きたりすると、
+//   Date.now()は前後に急に飛ぶことがある(勉強時間が急に激増/マイナスに
+//   なる不具合の原因になっていた)。performance.now()は端末の時計設定に
+//   影響されない「経過時間だけを測るための時計」なので、こちらを使う。
 function updateStopwatchFromClock(){
   if (!timerRunning || stopwatchStartedAt === null) return;
-  stopwatchSec = Math.floor((Date.now() - stopwatchStartedAt) / 1000);
+  stopwatchSec = Math.max(0, Math.floor((performance.now() - stopwatchStartedAt) / 1000));
   renderTimer();
   maybeCheckpointStudyTime();
 }
 
 // 前回の保存から15秒以上経っていたら、その差分を記録に足しておく
 function maybeCheckpointStudyTime(){
-  if (Date.now() - lastCheckpointAt < CHECKPOINT_INTERVAL_MS) return;
+  if (performance.now() - lastCheckpointAt < CHECKPOINT_INTERVAL_MS) return;
   const delta = stopwatchSec - lastCheckpointSec;
   if (delta > 0){
     addStudyTime(delta);
     lastCheckpointSec = stopwatchSec;
     renderStudyStats(); // 記録が増えた分を、その場で表示にも反映する
   }
-  lastCheckpointAt = Date.now();
+  lastCheckpointAt = performance.now();
 }
 
 // 画面が裏から表に戻ってきた瞬間に、経過時間のズレをすぐ正しく直す
@@ -1673,9 +1677,9 @@ timerFinishBtn.addEventListener("click", () => {
 function startStopwatch(){
   timerRunning = true;
   timerPaused = false;
-  stopwatchStartedAt = Date.now();
+  stopwatchStartedAt = performance.now();
   lastCheckpointSec = 0;
-  lastCheckpointAt = Date.now();
+  lastCheckpointAt = performance.now();
   const enteredFrom = cameFromPrompt ? "警告から" : "自主的に";
   const lastVideoGenre = videoGenreMap[videoIds[currentIndex]] || "ジャンル未設定";
   recordEvent(`タイマー開始(${enteredFrom}/${lastVideoGenre})`);
@@ -1714,8 +1718,8 @@ function resumeStopwatch(){
   timerRunning = true;
   timerPaused = false;
   // 経過秒数(stopwatchSec)を保ったまま、基準時刻だけを今に合わせ直す
-  stopwatchStartedAt = Date.now() - stopwatchSec * 1000;
-  lastCheckpointAt = Date.now();
+  stopwatchStartedAt = performance.now() - stopwatchSec * 1000;
+  lastCheckpointAt = performance.now();
   recordEvent("タイマー再開");
   timerToggleBtn.textContent = "一時停止";
   timerSub.textContent = "がんばって！一時停止もできます";

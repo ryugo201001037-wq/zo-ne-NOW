@@ -609,6 +609,11 @@ const USER_NAME_KEY = "zonenow_mvp_user_name";
    実際の端末で起きていることを見て特定するための仕組み。
 ============================================================ */
 const debugLogEl = document.getElementById("debug-log");
+// URLの末尾に ?debug=1 を付けて開いたときだけ、この調査用ログを画面に表示する
+// (原因調査のための一時的な仕組み。普段使う分には一切見えない)
+if (debugLogEl && new URLSearchParams(location.search).get("debug") === "1"){
+  debugLogEl.style.display = "block";
+}
 function debugLog(msg){
   if (!debugLogEl) return;
   const t = new Date();

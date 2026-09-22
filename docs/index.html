@@ -1037,12 +1037,16 @@ function pickRandomIndex(excludeIndex){
   return weights.length - 1; // 浮動小数点の誤差対策（通常はここに来ない）
 }
 
+// 表側プレイヤー(A)が今どの再生リストを読み込もうとしているか（CONFIG.PLAYLISTSの何番目か）。
+// 1つ目が読み込めなかった場合、次の再生リストで再挑戦するために使う。
+let primaryPlaylistIndex = 0;
+
 function onYouTubeIframeAPIReady(){
   debugLog("onYouTubeIframeAPIReady 呼ばれた");
   players.a = new YT.Player("yt-player-a", {
     playerVars: {
       listType: "playlist",
-      list: CONFIG.PLAYLISTS[0].id,
+      list: CONFIG.PLAYLISTS[primaryPlaylistIndex].id,
       autoplay: 1,
       mute: 1,          // ブラウザの自動再生ポリシー上、最初はミュート必須
       controls: 0,       // YouTube標準のコントロールは消し、自前のUIだけにする
@@ -1084,7 +1088,7 @@ function onPrimaryPlayerReady(){
     currentIndex = pickRandomIndex(-1); // -1は「除外する動画がない」という意味
   }
 
-  tagGenreForVideoIds(videoIds, CONFIG.PLAYLISTS[0].genre);
+  tagGenreForVideoIds(videoIds, CONFIG.PLAYLISTS[primaryPlaylistIndex].genre);
   debugLog("videoIds件数=" + videoIds.length + " currentIndex=" + currentIndex);
 
   activeKey = "a";
@@ -1113,9 +1117,10 @@ function onPrimaryPlayerReady(){
     }
   });
 
-  // 2つ目以降の再生リストは、画面に見えない裏方の専用プレイヤーで1つずつこっそり
-  // 読み込み、動画候補一覧とジャンル対応表に混ぜ込んでいく（表示中の再生には無関係）
-  loadRemainingPlaylists(CONFIG.PLAYLISTS.slice(1));
+  // 表側プレイヤーの読み込みにすでに使った1つを除いた残りを、画面に見えない
+  // 裏方の専用プレイヤーで1つずつこっそり読み込み、動画候補一覧とジャンル
+  // 対応表に混ぜ込んでいく（表示中の再生には無関係）
+  loadRemainingPlaylists(CONFIG.PLAYLISTS.filter((_, i) => i !== primaryPlaylistIndex));
 }
 
 // ジャンル名が設定されている再生リストの動画IDだけ、対応表に記録する
@@ -1172,6 +1177,17 @@ function preloadStandbyVideo(){
 function onPlayerError(event){
   debugLog("onPlayerError code=" + (event && event.data));
   if (videoIds.length === 0){
+    // ★表側プレイヤーの「1本目の再生リスト」自体が読み込めなかったケース。
+    //   通信が不安定な端末で起きやすく、これまでは即エラー画面で行き止まりに
+    //   なっていた。まだ試していない再生リストが残っているなら、それで
+    //   再挑戦してから、最後の手段としてエラー画面を出す。
+    if (primaryPlaylistIndex + 1 < CONFIG.PLAYLISTS.length){
+      primaryPlaylistIndex += 1;
+      const next = CONFIG.PLAYLISTS[primaryPlaylistIndex];
+      debugLog("1本目の再生リストが読み込めなかったため、次を試す: " + next.id);
+      players.a.loadPlaylist({ list: next.id, listType: "playlist" });
+      return;
+    }
     document.getElementById("feed-loading").classList.remove("hidden");
     document.getElementById("feed-loading").textContent =
       "動画を読み込めませんでした。少し待ってから、もう一度開き直してみてください。";

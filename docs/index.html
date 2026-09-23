@@ -1640,6 +1640,77 @@ let lastCheckpointSec = 0;  // 記録として保存済みの経過秒数（こ�
 let lastCheckpointAt = 0;   // 最後にチェックポイント保存をした実時刻（performance.now()の値）
 const CHECKPOINT_INTERVAL_MS = 15000; // 15秒ごとに記録を保存する
 
+/* ============================================================
+   ★ページの再読み込みをまたいでタイマーを復元する仕組み★
+   ------------------------------------------------------------
+   裏に回った瞬間の強制チェックポイント(forceCheckpointStudyTime)は
+   「記録が消えない」ようにはなったが、Androidがタブそのものを
+   終了させて読み込み直した場合、画面はホームの状態に戻ってしまい、
+   タイマーが動いていたことに気づかないまま「終了する」を押すと
+   「20分勉強したのに0分になった」ように見えてしまう。
+   そこで、実行中のタイマーの基準時刻をlocalStorageにも保存しておき、
+   ページの読み込み直後にそれを見つけたら、経過時間を計算し直して
+   タイマー画面に自動で復帰させる。
+   ★performance.now()はページの再読み込みをまたいで測れないため、
+   この「再読み込みをまたぐ」用途に限りDate.now()を使う。端末の
+   時計が再読み込みの瞬間だけ偶然ずれる可能性は残るが、何も復元
+   できないよりは大きく改善する。
+============================================================ */
+const ACTIVE_TIMER_KEY = "zonenow_mvp_active_timer_session";
+
+function saveActiveTimerState(){
+  try {
+    localStorage.setItem(ACTIVE_TIMER_KEY, JSON.stringify({
+      startedAtWall: Date.now() - stopwatchSec * 1000,
+      checkpointedSec: lastCheckpointSec
+    }));
+  } catch (e){
+    // 保存できなくても致命的ではないため、何もしない
+  }
+}
+
+function clearActiveTimerState(){
+  localStorage.removeItem(ACTIVE_TIMER_KEY);
+}
+
+// ページ読み込み時に、終了させられずに残っていたタイマーがないか確認し、
+// あれば経過時間を計算し直してタイマー画面へ自動で復帰する。
+function restoreActiveTimerIfAny(){
+  let saved;
+  try {
+    saved = JSON.parse(localStorage.getItem(ACTIVE_TIMER_KEY));
+  } catch (e){
+    saved = null;
+  }
+  if (!saved || typeof saved.startedAtWall !== "number") return;
+
+  const recoveredSec = Math.max(0, Math.floor((Date.now() - saved.startedAtWall) / 1000));
+  const checkpointedSec = typeof saved.checkpointedSec === "number" ? saved.checkpointedSec : 0;
+  const unsavedDelta = recoveredSec - checkpointedSec;
+  if (unsavedDelta > 0) addStudyTime(unsavedDelta); // 再読み込み前に保存しきれていなかった分を補う
+
+  stopwatchSec = recoveredSec;
+  lastCheckpointSec = recoveredSec;
+  lastCheckpointAt = performance.now();
+  stopwatchStartedAt = performance.now() - recoveredSec * 1000;
+  timerRunning = true;
+  timerPaused = false;
+  saveActiveTimerState(); // checkpointedSecを最新の状態に合わせておく
+
+  recordEvent("タイマー復元(再読み込み後、" + formatStudyDuration(recoveredSec) + "経過)");
+
+  cameFromPrompt = false; // 「動画に戻る」の挙動は通常のタイマー扱いにしておく
+  showScreen("screen-timer");
+  renderTimer();
+  renderTimerGachaHint();
+  timerToggleBtn.textContent = "一時停止";
+  timerSub.textContent = "がんばって！一時停止もできます";
+  timerFinishBtn.style.display = "";
+  timerLinks.style.display = "none";
+
+  timerIntervalId = setInterval(updateStopwatchFromClock, 1000);
+}
+
 const timerDisplay = document.getElementById("timer-display");
 const timerSub = document.getElementById("timer-sub");
 const timerToggleBtn = document.getElementById("btn-timer-toggle");
@@ -1672,6 +1743,7 @@ function maybeCheckpointStudyTime(){
     addStudyTime(delta);
     lastCheckpointSec = stopwatchSec;
     renderStudyStats(); // 記録が増えた分を、その場で表示にも反映する
+    saveActiveTimerState();
   }
   lastCheckpointAt = performance.now();
 }
@@ -1688,6 +1760,7 @@ function forceCheckpointStudyTime(){
     addStudyTime(remaining);
     lastCheckpointSec = stopwatchSec;
   }
+  saveActiveTimerState();
 }
 
 // 画面が裏から表に戻ってきた瞬間に、経過時間のズレをすぐ正しく直す
@@ -1733,6 +1806,7 @@ function startStopwatch(){
   // 勉強中は「動画に戻る」「記録を見る」で寄り道できないようにする（ほかの機能は不要、との方針のため）
   timerLinks.style.display = "none";
 
+  saveActiveTimerState();
   timerIntervalId = setInterval(updateStopwatchFromClock, 1000);
 }
 
@@ -1752,6 +1826,9 @@ function pauseStopwatch(){
     renderStudyStats();
   }
 
+  // 一時停止中は復元の対象にしない(再開時に改めて保存し直す)
+  clearActiveTimerState();
+
   recordEvent("タイマー一時停止(" + formatStudyDuration(stopwatchSec) + ")");
   timerToggleBtn.textContent = "再開";
   timerSub.textContent = "一時停止中です";
@@ -1768,6 +1845,7 @@ function resumeStopwatch(){
   timerToggleBtn.textContent = "一時停止";
   timerSub.textContent = "がんばって！一時停止もできます";
 
+  saveActiveTimerState();
   timerIntervalId = setInterval(updateStopwatchFromClock, 1000);
 }
 
@@ -1784,6 +1862,7 @@ function stopStopwatch(){
   lastCheckpointSec = 0;
 
   recordEvent("タイマー終了(" + formatStudyDuration(stopwatchSec) + ")");
+  clearActiveTimerState(); // 正常に終了したので、復元用のデータはもう不要
 
   document.getElementById("done-today-time").textContent =
     "今日の合計勉強時間: " + formatStudyDuration(getTodayStudySeconds());
@@ -1822,6 +1901,7 @@ function resumeFeedFromTimer(){
   timerPaused = false;
   stopwatchSec = 0;
   stopwatchStartedAt = null;
+  clearActiveTimerState();
   renderTimer();
   timerToggleBtn.textContent = "スタート";
   timerSub.textContent = "スタートを押して勉強を始めましょう";
@@ -2335,6 +2415,11 @@ document.getElementById("btn-banner-close").addEventListener("click", () => {
 
 // タイマー画面を最初に表示する前から、これまでの記録が見えるようにしておく
 renderStudyStats();
+
+// 前回、タイマーが動いたまま終了させられていないか確認し、あれば自動で復元する
+// (GACHA_MIN_SECONDSなど、後ろの方で定義されるconstに依存する処理を含むため、
+//  それらの宣言が終わったあとのこの位置で呼び出す)
+restoreActiveTimerIfAny();
 
 /* ============================================================
    ⑦ Service Workerの登録（PWA対応に必須）

@@ -1684,8 +1684,14 @@ function restoreActiveTimerIfAny(){
   }
   if (!saved || typeof saved.startedAtWall !== "number") return;
 
-  const recoveredSec = Math.max(0, Math.floor((Date.now() - saved.startedAtWall) / 1000));
   const checkpointedSec = typeof saved.checkpointedSec === "number" ? saved.checkpointedSec : 0;
+  // ★裏に回っている間（特に長時間ロックしたままにすると）に端末が自動で
+  //   時刻合わせを行い、Date.now()が後ろに戻ることがある。その場合、
+  //   計算上の経過時間がすでに保存済みの時間より短くなってしまい、
+  //   「勉強時間が減った」ように見えるバグの原因になっていた。
+  //   すでにcheckpointedSec分は確実に経過している(記録済み)のだから、
+  //   復元後の時間がそれを下回ることは絶対にないはずとして下限を設ける。
+  const recoveredSec = Math.max(checkpointedSec, Math.floor((Date.now() - saved.startedAtWall) / 1000));
   const unsavedDelta = recoveredSec - checkpointedSec;
   if (unsavedDelta > 0) addStudyTime(unsavedDelta); // 再読み込み前に保存しきれていなかった分を補う
 

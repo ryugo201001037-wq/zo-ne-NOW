@@ -1676,10 +1676,33 @@ function maybeCheckpointStudyTime(){
   lastCheckpointAt = performance.now();
 }
 
+// 裏に回った直後、スマホによってはタブが凍結・終了させられることがあり、
+// 次の15秒チェックポイントを待っていると、その間の勉強時間が記録されずに
+// 消えてしまうことがあった(「1時間勉強したのに5分しか記録されない」という
+// 報告の原因と考えられる)。15秒待たず、裏に回った瞬間に強制的に記録する。
+function forceCheckpointStudyTime(){
+  if (!timerRunning) return;
+  updateStopwatchFromClock(); // 経過秒数を今の瞬間の値に合わせてから
+  const remaining = stopwatchSec - lastCheckpointSec;
+  if (remaining > 0){
+    addStudyTime(remaining);
+    lastCheckpointSec = stopwatchSec;
+  }
+}
+
 // 画面が裏から表に戻ってきた瞬間に、経過時間のズレをすぐ正しく直す
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) updateStopwatchFromClock();
+  if (!document.hidden){
+    updateStopwatchFromClock();
+  } else {
+    forceCheckpointStudyTime();
+  }
 });
+
+// ★保険：visibilitychangeが発火しないままタブが終了させられるケースに備え、
+//   pagehideでも同じ強制記録をしておく（多重に呼ばれても、その時点で
+//   remainingが0になっているだけなので害はない）。
+window.addEventListener("pagehide", forceCheckpointStudyTime);
 
 timerToggleBtn.addEventListener("click", () => {
   if (!timerRunning && !timerPaused){

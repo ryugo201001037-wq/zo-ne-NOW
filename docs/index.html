@@ -258,6 +258,13 @@
   .collection-grid{
     display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;
     margin-bottom:20px; text-align:center;
+    /* #appがoverflow:hiddenのため、キャラ数が増えて.history-cardのmax-height:75vh
+       に収まりきらなくなると、はみ出た分がそのまま見えなくなって「見切れる」
+       (閉じるボタンごと隠れる)問題があった。.history-listと同じくここで
+       スクロールできるようにしておく。 */
+    overflow-y:auto;
+    flex:1;
+    min-height:0;
   }
   .collection-item{
     position:relative; min-width:0; overflow:hidden;
@@ -1552,16 +1559,17 @@ function togglePause(){
     cancelPendingPlaybackRecovery(); // 意図的な一時停止なので、見張り役に復旧させない
     indicator.classList.add("visible");
   } else {
-    // 実際のタップ操作（ユーザー操作）の中で呼んでいるため、ブラウザの自動再生
-    // 制限があっても再生できる可能性が高い。確実性を優先してloadVideoByIdで
-    // 読み込み直す（playVideo()だけより確実に効くことが分かっているため）。
-    if (typeof p.loadVideoById === "function" && videoIds[currentIndex]){
-      p.loadVideoById(videoIds[currentIndex]);
-      applyMuteState();
-    } else if (typeof p.playVideo === "function"){
-      p.playVideo();
-    }
+    // ★一時停止からの再開はplayVideo()を使う（一時停止していた位置から続きを
+    //   再生する）。以前はloadVideoById()で読み込み直していたが、これは
+    //   動画を最初から読み込み直してしまう＝一時停止するたびに動画の頭に
+    //   戻ってしまう不具合の原因だった。
+    //   実際のタップ操作（ユーザー操作）の中で呼んでいるため、ブラウザの
+    //   自動再生制限があっても再生できる可能性が高い。
+    //   それでも万が一再生が始まらない場合に備え、見張り役(watchPlaybackRecovery)
+    //   に「本当に止まっていたらloadVideoByIdで読み込み直す」対応を任せる。
+    if (typeof p.playVideo === "function") p.playVideo();
     indicator.classList.remove("visible");
+    watchPlaybackRecovery(p);
   }
 }
 

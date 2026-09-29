@@ -719,14 +719,19 @@ function sendLog(eventType, detail){
 // 画面が消える直前は、普通のfetchだと送信の途中でブラウザに打ち切られて
 // 届かないことがあるため、ページが消えるタイミングでも確実に送り切れる
 // navigator.sendBeaconを使う。
+// 戻り値：送信キューに入れられたかどうか(true/false)。
+// sendBeacon()は「1回に送れる量」に上限があり、たまっている記録が多いと
+// falseを返してキューに入れてすらもらえないことがある。この戻り値を
+// 呼び出し元で確認せず「送れたはず」として控えを消してしまっていたのが、
+// 「たまにログが送られてこない」不具合の原因だった。
 function sendLogBeacon(eventType, detail){
-  if (!CONFIG.LOG_ENDPOINT_URL) return;
+  if (!CONFIG.LOG_ENDPOINT_URL) return true; // 送信先が無いのは正常な状態なので、失敗扱いにしない
   const payload = JSON.stringify({ name: getUserName(), event: eventType, detail: detail || "" });
   if (navigator.sendBeacon){
-    navigator.sendBeacon(CONFIG.LOG_ENDPOINT_URL, payload);
-  } else {
-    sendLog(eventType, detail); // 古いブラウザ向けの保険（確実性は落ちる）
+    return navigator.sendBeacon(CONFIG.LOG_ENDPOINT_URL, payload);
   }
+  sendLog(eventType, detail); // 古いブラウザ向けの保険（確実性は落ちる）
+  return true; // fetchは非同期で結果を待てないため、ひとまず送信を試みたとみなす
 }
 
 // 「18:05」のような時:分の文字列を作る
@@ -753,7 +758,12 @@ function saveNarrativeBackup(){
 // たまった行動記録を「→」でつないだ1行の文字列にまとめて、まとめて1回だけ送る
 function flushSessionNarrative(){
   if (sessionNarrative.length === 0) return;
-  sendLogBeacon("session_log", sessionNarrative.join(" → "));
+  const sent = sendLogBeacon("session_log", sessionNarrative.join(" → "));
+  if (!sent){
+    // 送信キューに入れられなかった。控え(PENDING_NARRATIVE_KEY)は消さずに
+    // 残しておき、次回起動時のrecoverOrphanedNarrative()に再送を任せる。
+    return;
+  }
   sessionNarrative = [];
   localStorage.removeItem(PENDING_NARRATIVE_KEY); // 送信できたはずなので、控えも消す
 }

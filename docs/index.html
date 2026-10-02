@@ -2212,6 +2212,15 @@ const aiImageInput = document.getElementById("ai-image-input");
 const aiImagePreviewEl = document.getElementById("ai-image-preview");
 let pendingAiImage = null; // { base64, mediaType } / 添付中の画像（送信するまで保持）
 
+// ★AIとの会話を覚えておくための履歴。
+// 今までは質問のたびに「今の1問だけ」をAIに送っていたため、前の質問の
+// 内容を一切覚えていない状態になっていた（「さっきの件だけど」が通じない）。
+// ここに1問1答ずつ積み上げて、次の質問のときに一緒に送ることで、
+// 会話の流れをAI側にも渡せるようにする。
+// （長くなりすぎて送信が重くならないよう、直近のやり取りだけに絞る）
+let aiConversationHistory = []; // [{ role: "user"|"model", text: "..." }, ...]
+const AI_HISTORY_MAX_TURNS = 10; // 直近10往復(質問+回答で1往復)まで覚えておく
+
 document.getElementById("btn-ask-ai").addEventListener("click", () => {
   showScreen("screen-ai");
 });
@@ -2288,6 +2297,15 @@ async function sendAiQuestion(){
   const thinkingBubble = addAiBubble("ai", "考え中…");
   const result = await askAi(question, imageToSend);
   thinkingBubble.textContent = result;
+
+  // この1往復を履歴に積み、次の質問から会話の流れを覚えた状態で送れるようにする
+  aiConversationHistory.push({ role: "user", text: question || "（写真を送信）" });
+  aiConversationHistory.push({ role: "model", text: result });
+  // 直近のAI_HISTORY_MAX_TURNS往復(=質問と回答のペア)だけ残す
+  const maxEntries = AI_HISTORY_MAX_TURNS * 2;
+  if (aiConversationHistory.length > maxEntries){
+    aiConversationHistory = aiConversationHistory.slice(-maxEntries);
+  }
 }
 
 // Apps Script経由でAIに質問を送り、答えの文章を返す。
@@ -2359,6 +2377,8 @@ async function askAi(question, image){
 
   // 質問を送る（送りっぱなし。Apps Script側でAIへの問い合わせまで終わらせて
   // 一時保存しておいてもらい、答えは下のポーリングで別途取りに行く）
+  // ★historyには「今回の質問より前」の会話を入れる(今回ぶんはaskAiの呼び出し元が
+  //   まだ履歴に積む前にここを通るため、自然と「前回まで」の内容になる)。
   fetch(CONFIG.LOG_ENDPOINT_URL, {
     method: "POST",
     mode: "no-cors",
@@ -2369,7 +2389,8 @@ async function askAi(question, image){
       name: getUserName(),
       question: question,
       imageBase64: image ? image.base64 : "",
-      imageMediaType: image ? image.mediaType : ""
+      imageMediaType: image ? image.mediaType : "",
+      history: aiConversationHistory
     })
   }).catch(() => {});
 

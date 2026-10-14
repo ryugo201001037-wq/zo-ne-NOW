@@ -68,7 +68,7 @@
     position:relative; height:100%; width:100%; scroll-snap-align:start; scroll-snap-stop:always;
     background:#000; overflow:hidden;
   }
-  .short-slide video{
+  .short-slide video, .short-slide .short-media-image{
     position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
   }
   .short-slide::after{
@@ -245,6 +245,7 @@
   }
   .player-header-title{ font-family:var(--font-ui); font-size:13px; font-weight:600; color:#fff; opacity:.85; }
   #player-video{ width:100%; height:100%; object-fit:contain; background:#000; }
+  #player-image{ width:100%; height:100%; object-fit:contain; background:#000; display:none; }
   .player-info{ position:absolute; left:0; right:0; bottom:0; padding:20px 20px calc(20px + var(--safe-bottom)); background:linear-gradient(0deg, rgba(0,0,0,.75), rgba(0,0,0,0)); }
   .player-info h2{ font-size:18px; margin:0 0 6px; }
   .player-info p{ margin:0; font-family:var(--font-ui); font-size:12.5px; color:rgba(255,255,255,.75); }
@@ -281,9 +282,8 @@
     border-radius:16px; background:rgba(255,255,255,.06); border:1.5px dashed rgba(255,255,255,.25);
     overflow:hidden; margin:0 auto 22px; cursor:pointer;
   }
-  .post-upload video{ width:100%; height:100%; object-fit:cover; display:none; }
-  .post-upload.has-video video{ display:block; }
-  .post-upload.has-video .post-upload-empty{ display:none; }
+  .post-upload video, .post-upload img{ width:100%; height:100%; object-fit:cover; display:none; }
+  .post-upload.has-media .post-upload-empty{ display:none; }
   .post-upload-empty{
     position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
     gap:10px; color:rgba(255,255,255,.55); font-family:var(--font-ui); font-size:12.5px; text-align:center; padding:0 16px;
@@ -425,9 +425,10 @@
   <section id="player-screen" class="screen">
     <div class="player-header">
       <button class="back-btn" id="player-back">←</button>
-      <span class="player-header-title">本編動画</span>
+      <span class="player-header-title" id="player-header-title">本編動画</span>
     </div>
     <video id="player-video" playsinline controls></video>
+    <img id="player-image" alt="" />
     <div class="player-info">
       <h2 id="player-title"></h2>
       <p id="player-meta"></p>
@@ -459,11 +460,12 @@
       </div>
 
       <label class="post-upload" id="post-upload-label">
-        <input type="file" id="post-file-input" accept="video/*" hidden />
+        <input type="file" id="post-file-input" accept="video/*,image/*" hidden />
         <video id="post-preview-video" muted playsinline></video>
+        <img id="post-preview-image" alt="" />
         <div class="post-upload-empty">
           <div class="post-upload-icon" id="post-upload-icon"></div>
-          <p>タップして動画を選択</p>
+          <p>タップして動画・写真を選択</p>
         </div>
       </label>
 
@@ -487,12 +489,7 @@
         <input type="text" class="post-input" id="post-unit" placeholder="例：二次関数（啓発動画などは空欄でOK）" maxlength="20" />
       </div>
 
-      <div class="post-field">
-        <label class="post-label">投稿者名</label>
-        <input type="text" class="post-input" id="post-creator" placeholder="例：ゾーン先生" maxlength="20" />
-      </div>
-
-      <p class="post-note">※ 現在はデモ版です。投稿した動画はこの端末・このタブの中だけで表示され、リロードすると消えます。</p>
+      <p class="post-note">※ 現在はデモ版です。投稿者名はアカウント名を使う予定ですが、ログイン機能がまだないため仮の名前で表示されます。投稿した動画・写真はこの端末・このタブの中だけで表示され、リロードすると消えます。</p>
 
       <button class="post-submit" id="post-submit">投稿する</button>
     </div>
@@ -512,15 +509,24 @@
    実際のコンテンツができたら、ここのURLだけ差し替えてください。
 ============================================================ */
 const GRADES = [
+  { id:'junior1', label:'中学1年' },
+  { id:'junior2', label:'中学2年' },
+  { id:'junior3', label:'中学3年' },
   { id:'high1', label:'高校1年' },
   { id:'high2', label:'高校2年' },
   { id:'high3', label:'高校3年' },
+  { id:'other', label:'その他' },
 ];
 const SUBJECTS = [
   { id:'math', label:'数学' },
   { id:'japanese', label:'国語' },
   { id:'english', label:'英語' },
+  { id:'science', label:'理科' },
+  { id:'social', label:'社会' },
+  { id:'other', label:'その他' },
 ];
+const CURRENT_USER_NAME = 'あなた'; // ログイン機能ができるまでの仮の投稿者名
+const IMAGE_DISPLAY_SECONDS = 8; // 写真投稿のZoneメーター表示時間(秒)
 
 // デモ用の仮動画(公開サンプル素材)。本番では自社動画URLに差し替えます。
 const DEMO_SHORT = [
@@ -674,12 +680,15 @@ function renderFeed(videos){
     const comments = demoCount(v.id + '-comment', 20, 600);
     const bookmarks = demoCount(v.id + '-bookmark', 100, 2000);
 
+    const isImage = v.mediaType === 'image';
     const slide = document.createElement('div');
     slide.className = 'short-slide';
     slide.dataset.id = v.id;
     slide.innerHTML = `
       <div class="zone-meter"><div class="zone-meter-fill"></div></div>
-      <video src="${v.short}" muted loop playsinline preload="metadata"></video>
+      ${isImage
+        ? `<img class="short-media-image" src="${v.short}" alt="" />`
+        : `<video src="${v.short}" muted loop playsinline preload="metadata"></video>`}
 
       <div class="short-top">
         ${v.subject ? `<span class="badge subject">${labelOf(SUBJECTS, v.subject)}</span>` : ''}
@@ -708,9 +717,7 @@ function renderFeed(videos){
           ${icon('share')}
           <span class="action-label">シェア</span>
         </button>
-        <button class="action-item mute-item" data-role="mute">
-          ${icon('volumeOff')}
-        </button>
+        ${isImage ? '' : `<button class="action-item mute-item" data-role="mute">${icon('volumeOff')}</button>`}
       </div>
 
       <div class="caption-block">
@@ -732,13 +739,15 @@ function attachSlideEvents(){
     const id = slide.dataset.id;
     const video = slide.querySelector('video');
 
-    // 音のON/OFF（フィード内のスライドをまたいで状態を引き継ぐ）
+    // 音のON/OFF（フィード内のスライドをまたいで状態を引き継ぐ。写真投稿には音がないのでボタン自体がない）
     const muteBtn = slide.querySelector('[data-role="mute"]');
-    muteBtn.addEventListener('click', ()=>{
-      video.muted = !video.muted;
-      currentAudibleState = !video.muted;
-      muteBtn.innerHTML = icon(video.muted ? 'volumeOff' : 'volume');
-    });
+    if(muteBtn && video){
+      muteBtn.addEventListener('click', ()=>{
+        video.muted = !video.muted;
+        currentAudibleState = !video.muted;
+        muteBtn.innerHTML = icon(video.muted ? 'volumeOff' : 'volume');
+      });
+    }
 
     // いいね（ローカル表示のみ。サーバー保存は未実装）
     const likeBtn = slide.querySelector('[data-role="like"]');
@@ -787,24 +796,32 @@ function attachSlideEvents(){
   });
 }
 
-// ---- スワイプで表示されている動画だけ再生する ----
+// ---- スワイプで表示されている動画・写真だけ再生/表示する ----
 let currentAudibleState = true; // ミュート状態をスライド間で引き継ぐ
+const meterPulseTimers = new WeakMap(); // 写真投稿用：Zoneメーター満了時にCTAを光らせるタイマー
 function observeSlides(){
   const slides = feedEl.querySelectorAll('.short-slide');
   const io = new IntersectionObserver((entries)=>{
     entries.forEach(entry=>{
-      const video = entry.target.querySelector('video');
-      const meter = entry.target.querySelector('.zone-meter-fill');
+      const slide = entry.target;
+      const video = slide.querySelector('video');
+      const meter = slide.querySelector('.zone-meter-fill');
       if(entry.isIntersecting && entry.intersectionRatio > 0.6){
-        currentVisibleId = entry.target.dataset.id;
-        video.currentTime = 0;
-        video.play().catch(()=>{});
-        video.muted = !currentAudibleState;
-        const muteBtn = entry.target.querySelector('[data-role="mute"]');
-        if(muteBtn) muteBtn.innerHTML = icon(video.muted ? 'volumeOff' : 'volume');
-        runZoneMeter(video, meter);
+        currentVisibleId = slide.dataset.id;
+        if(video){
+          video.currentTime = 0;
+          video.play().catch(()=>{});
+          video.muted = !currentAudibleState;
+          const muteBtn = slide.querySelector('[data-role="mute"]');
+          if(muteBtn) muteBtn.innerHTML = icon(video.muted ? 'volumeOff' : 'volume');
+          runZoneMeterForVideo(video, meter);
+        } else {
+          const v = VIDEOS.find(x=>x.id===slide.dataset.id);
+          runZoneMeterForImage(meter, (v && v.duration) || IMAGE_DISPLAY_SECONDS);
+        }
       } else {
-        video.pause();
+        if(video) video.pause();
+        clearTimeout(meterPulseTimers.get(meter));
         meter.style.transition = 'none';
         meter.style.width = '0%';
       }
@@ -813,24 +830,32 @@ function observeSlides(){
   slides.forEach(s=>io.observe(s));
 }
 
-function runZoneMeter(video, meter){
+function pulseCta(){
+  const cta = document.getElementById('feed-cta');
+  cta.classList.add('pulse');
+  setTimeout(()=>cta.classList.remove('pulse'), 1200);
+}
+
+function startZoneMeter(meter, durationSeconds){
   meter.style.transition = 'none';
   meter.style.width = '0%';
-  const start = ()=>{
-    const dur = video.duration && isFinite(video.duration) ? video.duration : 20;
-    requestAnimationFrame(()=>{
-      meter.style.transition = `width ${dur}s linear`;
-      meter.style.width = '100%';
-    });
-  };
+  requestAnimationFrame(()=>{
+    meter.style.transition = `width ${durationSeconds}s linear`;
+    meter.style.width = '100%';
+  });
+}
+
+function runZoneMeterForVideo(video, meter){
+  const start = ()=> startZoneMeter(meter, video.duration && isFinite(video.duration) ? video.duration : 20);
   if(video.readyState >= 1) start();
   else video.addEventListener('loadedmetadata', start, { once:true });
+  video.onended = pulseCta;
+}
 
-  video.onended = ()=>{
-    const cta = document.getElementById('feed-cta');
-    cta.classList.add('pulse');
-    setTimeout(()=>cta.classList.remove('pulse'), 1200);
-  };
+function runZoneMeterForImage(meter, durationSeconds){
+  startZoneMeter(meter, durationSeconds);
+  clearTimeout(meterPulseTimers.get(meter));
+  meterPulseTimers.set(meter, setTimeout(pulseCta, durationSeconds * 1000));
 }
 
 function pauseAllShorts(){
@@ -885,6 +910,9 @@ const gradientBySubject = {
   math: 'linear-gradient(160deg, #2B2E63, #10131A)',
   japanese: 'linear-gradient(160deg, #7A3B2E, #10131A)',
   english: 'linear-gradient(160deg, #1E5C55, #10131A)',
+  science: 'linear-gradient(160deg, #2E6B4F, #10131A)',
+  social: 'linear-gradient(160deg, #6B5A2E, #10131A)',
+  other: 'linear-gradient(160deg, #4A3B63, #10131A)',
   none: 'linear-gradient(160deg, var(--cta-from), var(--cta-to))', // 教科なし(啓発動画など)の既定カラー
 };
 
@@ -928,17 +956,33 @@ document.getElementById('search-back').addEventListener('click', ()=> showScreen
 renderChips();
 renderResults();
 
-// ---- ロング動画プレイヤー ----
+// ---- ロング動画 / 写真プレイヤー ----
 function openPlayer(id){
   const v = VIDEOS.find(x=>x.id===id);
   if(!v) return;
   const pv = document.getElementById('player-video');
-  pv.src = v.long;
-  document.getElementById('player-title').textContent = v.title + '(本編)';
+  const pi = document.getElementById('player-image');
+  const isImage = v.mediaType === 'image';
+
+  if(isImage){
+    pv.pause();
+    pv.removeAttribute('src');
+    pv.style.display = 'none';
+    pi.src = v.long;
+    pi.style.display = 'block';
+  } else {
+    pi.removeAttribute('src');
+    pi.style.display = 'none';
+    pv.style.display = 'block';
+    pv.src = v.long;
+  }
+
+  document.getElementById('player-header-title').textContent = isImage ? '投稿写真' : '本編動画';
+  document.getElementById('player-title').textContent = v.title + (isImage ? '' : '(本編)');
   const metaParts = [v.subject ? labelOf(SUBJECTS, v.subject) : null, labelOf(GRADES, v.grade), v.unit || null, v.creator].filter(Boolean);
   document.getElementById('player-meta').textContent = metaParts.join(' ・ ');
   showScreen('player');
-  pv.play().catch(()=>{});
+  if(!isImage) pv.play().catch(()=>{});
 }
 document.getElementById('player-back').addEventListener('click', ()=> showScreen('home'));
 
@@ -964,6 +1008,7 @@ document.getElementById('post-upload-icon').innerHTML = icon('plus');
 
 let postSelectedFile = null;
 let postSelectedDuration = 0;
+let postMediaType = 'video';
 let postSubject = ''; // 空文字=「教科なし」(啓発動画など、学年ターゲットだけで教科・単元は必須にしない)
 let postGrade = null;
 
@@ -982,15 +1027,30 @@ renderPostChips();
 const postFileInput = document.getElementById('post-file-input');
 const postUploadLabel = document.getElementById('post-upload-label');
 const postPreviewVideo = document.getElementById('post-preview-video');
+const postPreviewImage = document.getElementById('post-preview-image');
 
 postFileInput.addEventListener('change', ()=>{
   const file = postFileInput.files[0];
   if(!file) return;
   postSelectedFile = file;
   postSelectedDuration = 0;
-  postPreviewVideo.src = URL.createObjectURL(file);
-  postUploadLabel.classList.add('has-video');
-  postPreviewVideo.play().catch(()=>{});
+  postMediaType = file.type.startsWith('image/') ? 'image' : 'video';
+  const url = URL.createObjectURL(file);
+
+  if(postMediaType === 'image'){
+    postPreviewVideo.pause();
+    postPreviewVideo.removeAttribute('src');
+    postPreviewVideo.style.display = 'none';
+    postPreviewImage.src = url;
+    postPreviewImage.style.display = 'block';
+  } else {
+    postPreviewImage.removeAttribute('src');
+    postPreviewImage.style.display = 'none';
+    postPreviewVideo.src = url;
+    postPreviewVideo.style.display = 'block';
+    postPreviewVideo.play().catch(()=>{});
+  }
+  postUploadLabel.classList.add('has-media');
 });
 postPreviewVideo.addEventListener('loadedmetadata', ()=>{
   if(isFinite(postPreviewVideo.duration)) postSelectedDuration = Math.round(postPreviewVideo.duration);
@@ -999,38 +1059,41 @@ postPreviewVideo.addEventListener('loadedmetadata', ()=>{
 function resetPostForm(){
   postSelectedFile = null;
   postSelectedDuration = 0;
+  postMediaType = 'video';
   postSubject = '';
   postGrade = null;
   document.getElementById('post-title').value = '';
   document.getElementById('post-unit').value = '';
-  document.getElementById('post-creator').value = '';
   postFileInput.value = '';
   postPreviewVideo.pause();
   postPreviewVideo.removeAttribute('src');
-  postUploadLabel.classList.remove('has-video');
+  postPreviewVideo.style.display = 'none';
+  postPreviewImage.removeAttribute('src');
+  postPreviewImage.style.display = 'none';
+  postUploadLabel.classList.remove('has-media');
   renderPostChips();
 }
 
 document.getElementById('post-submit').addEventListener('click', ()=>{
   const title = document.getElementById('post-title').value.trim();
   const unit = document.getElementById('post-unit').value.trim();
-  const creator = document.getElementById('post-creator').value.trim();
 
-  if(!postSelectedFile){ showToast('動画を選択してください'); return; }
+  if(!postSelectedFile){ showToast('動画か写真を選択してください'); return; }
   if(!title){ showToast('タイトルを入力してください'); return; }
   if(!postGrade){ showToast('ターゲット学年を選択してください'); return; }
 
-  const videoUrl = URL.createObjectURL(postSelectedFile);
+  const mediaUrl = URL.createObjectURL(postSelectedFile);
   VIDEOS.unshift({
     id: 'u' + Date.now(),
     subject: postSubject,
     grade: postGrade,
     unit,
     title,
-    creator: creator || '名無し',
-    duration: postSelectedDuration,
-    short: videoUrl,
-    long: videoUrl,
+    creator: CURRENT_USER_NAME,
+    duration: postMediaType === 'image' ? IMAGE_DISPLAY_SECONDS : postSelectedDuration,
+    mediaType: postMediaType,
+    short: mediaUrl,
+    long: mediaUrl,
   });
 
   feedVideos = VIDEOS;

@@ -250,7 +250,7 @@
   .player-info p{ margin:0; font-family:var(--font-ui); font-size:12.5px; color:rgba(255,255,255,.75); }
 
   /* ============================================================
-     AI / 記録 / プロフィール / 投稿：準備中のプレースホルダー画面
+     AI / 記録 / プロフィール：準備中のプレースホルダー画面
   ============================================================ */
   .dark-screen{ background:var(--ink); color:#fff; display:flex; flex-direction:column; }
   .placeholder-wrap{
@@ -265,6 +265,59 @@
   .placeholder-icon svg{ width:28px; height:28px; }
   .placeholder-title{ font-size:17px; font-weight:700; margin:0 0 8px; }
   .placeholder-sub{ font-family:var(--font-ui); font-size:13px; color:rgba(255,255,255,.6); margin:0; line-height:1.6; }
+
+  /* ============================================================
+     投稿画面
+  ============================================================ */
+  .post-form-wrap{
+    flex:1; overflow-y:auto;
+    padding:calc(var(--safe-top) + 16px) 20px calc(96px + var(--safe-bottom));
+  }
+  .post-form-header{ display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+  .post-form-title{ font-size:18px; font-weight:700; margin:0; }
+
+  .post-upload{
+    display:block; position:relative; width:100%; max-width:220px; aspect-ratio:9/13;
+    border-radius:16px; background:rgba(255,255,255,.06); border:1.5px dashed rgba(255,255,255,.25);
+    overflow:hidden; margin:0 auto 22px; cursor:pointer;
+  }
+  .post-upload video{ width:100%; height:100%; object-fit:cover; display:none; }
+  .post-upload.has-video video{ display:block; }
+  .post-upload.has-video .post-upload-empty{ display:none; }
+  .post-upload-empty{
+    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:10px; color:rgba(255,255,255,.55); font-family:var(--font-ui); font-size:12.5px; text-align:center; padding:0 16px;
+  }
+  .post-upload-icon{
+    width:44px; height:44px; border-radius:50%; background:rgba(255,255,255,.08);
+    display:flex; align-items:center; justify-content:center; color:#fff;
+  }
+  .post-upload-icon svg{ width:20px; height:20px; }
+
+  .post-field{ margin-bottom:18px; }
+  .post-label{
+    display:block; font-family:var(--font-ui); font-size:11px; font-weight:700; letter-spacing:.06em;
+    color:var(--muted); text-transform:uppercase; margin-bottom:8px;
+  }
+  .post-input{
+    width:100%; padding:12px 14px; border-radius:12px; background:rgba(255,255,255,.07);
+    border:1px solid rgba(255,255,255,.14); color:#fff; font-family:var(--font-ui); font-size:14px;
+  }
+  .post-input::placeholder{ color:rgba(255,255,255,.35); }
+  #create-screen .chip{ background:rgba(255,255,255,.07); border-color:rgba(255,255,255,.16); color:#fff; }
+  #create-screen .chip.active{
+    background:linear-gradient(135deg, var(--cta-from), var(--cta-to));
+    border-color:transparent; color:#fff;
+  }
+
+  .post-note{ font-family:var(--font-ui); font-size:11.5px; color:rgba(255,255,255,.45); line-height:1.6; margin:2px 0 22px; }
+
+  .post-submit{
+    width:100%; padding:14px; border-radius:14px; text-align:center;
+    background:linear-gradient(135deg, var(--cta-from), var(--cta-to)); color:#fff;
+    font-family:var(--font-ui); font-size:15px; font-weight:700;
+    box-shadow:0 8px 20px rgba(79,140,255,.35);
+  }
 
   /* ============================================================
      トースト（簡易な一時通知）
@@ -381,7 +434,7 @@
     </div>
   </section>
 
-  <!-- ============ AI / 記録 / プロフィール / 投稿（準備中） ============ -->
+  <!-- ============ AI / 記録 / プロフィール（準備中） ============ -->
   <section id="ai-screen" class="screen dark-screen">
     <div class="placeholder-wrap" data-placeholder="ai"></div>
     <div class="bottom-nav solid-dark" data-active-nav="ai"></div>
@@ -397,8 +450,52 @@
     <div class="bottom-nav solid-dark" data-active-nav="profile"></div>
   </section>
 
+  <!-- ============ 投稿画面 ============ -->
   <section id="create-screen" class="screen dark-screen">
-    <div class="placeholder-wrap" data-placeholder="create"></div>
+    <div class="post-form-wrap">
+      <div class="post-form-header">
+        <button class="back-btn" id="post-back">←</button>
+        <h1 class="post-form-title">動画を投稿</h1>
+      </div>
+
+      <label class="post-upload" id="post-upload-label">
+        <input type="file" id="post-file-input" accept="video/*" hidden />
+        <video id="post-preview-video" muted playsinline></video>
+        <div class="post-upload-empty">
+          <div class="post-upload-icon" id="post-upload-icon"></div>
+          <p>タップして動画を選択</p>
+        </div>
+      </label>
+
+      <div class="post-field">
+        <label class="post-label">タイトル</label>
+        <input type="text" class="post-input" id="post-title" placeholder="例：二次関数の最大値を10秒でつかむ" maxlength="60" />
+      </div>
+
+      <div class="post-field">
+        <label class="post-label">教科</label>
+        <div class="chip-row" id="post-subject-chips"></div>
+      </div>
+
+      <div class="post-field">
+        <label class="post-label">学年</label>
+        <div class="chip-row" id="post-grade-chips"></div>
+      </div>
+
+      <div class="post-field">
+        <label class="post-label">単元</label>
+        <input type="text" class="post-input" id="post-unit" placeholder="例：二次関数" maxlength="20" />
+      </div>
+
+      <div class="post-field">
+        <label class="post-label">投稿者名</label>
+        <input type="text" class="post-input" id="post-creator" placeholder="例：ゾーン先生" maxlength="20" />
+      </div>
+
+      <p class="post-note">※ 現在はデモ版です。投稿した動画はこの端末・このタブの中だけで表示され、リロードすると消えます。</p>
+
+      <button class="post-submit" id="post-submit">投稿する</button>
+    </div>
     <div class="bottom-nav solid-dark" data-active-nav="create"></div>
   </section>
 
@@ -838,12 +935,11 @@ function openPlayer(id){
 }
 document.getElementById('player-back').addEventListener('click', ()=> showScreen('home'));
 
-// ---- AI / 記録 / プロフィール / 投稿：準備中プレースホルダーの中身 ----
+// ---- AI / 記録 / プロフィール：準備中プレースホルダーの中身 ----
 const PLACEHOLDER_CONTENT = {
   ai: { iconName:'sparkle', title:'AIコーチ', sub:'あなた専用の学習アドバイスを準備中です' },
   record: { iconName:'chart', title:'学習記録', sub:'視聴時間やZoneメーターの記録をここに表示予定です' },
   profile: { iconName:'user', title:'プロフィール', sub:'アカウント機能は準備中です' },
-  create: { iconName:'plus', title:'投稿', sub:'コンテンツ投稿機能は準備中です' },
 };
 document.querySelectorAll('[data-placeholder]').forEach(el=>{
   const c = PLACEHOLDER_CONTENT[el.dataset.placeholder];
@@ -853,6 +949,93 @@ document.querySelectorAll('[data-placeholder]').forEach(el=>{
     <p class="placeholder-sub">${c.sub}</p>
   `;
 });
+
+// ---- 投稿画面 ----
+// 今はバックエンドがないため、投稿した動画はブラウザ内のメモリ(Object URL)に
+// 保持するだけで、リロードすると消えます。保存先ができたら送信処理をここに追加します。
+document.getElementById('post-upload-icon').innerHTML = icon('plus');
+
+let postSelectedFile = null;
+let postSelectedDuration = 0;
+let postSubject = null;
+let postGrade = null;
+
+function renderPostChips(){
+  const subjectWrap = document.getElementById('post-subject-chips');
+  const gradeWrap = document.getElementById('post-grade-chips');
+  subjectWrap.innerHTML = chipHtml(SUBJECTS, postSubject);
+  gradeWrap.innerHTML = chipHtml(GRADES, postGrade);
+  subjectWrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{ postSubject=c.dataset.id; renderPostChips(); }));
+  gradeWrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{ postGrade=c.dataset.id; renderPostChips(); }));
+}
+renderPostChips();
+
+const postFileInput = document.getElementById('post-file-input');
+const postUploadLabel = document.getElementById('post-upload-label');
+const postPreviewVideo = document.getElementById('post-preview-video');
+
+postFileInput.addEventListener('change', ()=>{
+  const file = postFileInput.files[0];
+  if(!file) return;
+  postSelectedFile = file;
+  postSelectedDuration = 0;
+  postPreviewVideo.src = URL.createObjectURL(file);
+  postUploadLabel.classList.add('has-video');
+  postPreviewVideo.play().catch(()=>{});
+});
+postPreviewVideo.addEventListener('loadedmetadata', ()=>{
+  if(isFinite(postPreviewVideo.duration)) postSelectedDuration = Math.round(postPreviewVideo.duration);
+});
+
+function resetPostForm(){
+  postSelectedFile = null;
+  postSelectedDuration = 0;
+  postSubject = null;
+  postGrade = null;
+  document.getElementById('post-title').value = '';
+  document.getElementById('post-unit').value = '';
+  document.getElementById('post-creator').value = '';
+  postFileInput.value = '';
+  postPreviewVideo.pause();
+  postPreviewVideo.removeAttribute('src');
+  postUploadLabel.classList.remove('has-video');
+  renderPostChips();
+}
+
+document.getElementById('post-submit').addEventListener('click', ()=>{
+  const title = document.getElementById('post-title').value.trim();
+  const unit = document.getElementById('post-unit').value.trim();
+  const creator = document.getElementById('post-creator').value.trim();
+
+  if(!postSelectedFile){ showToast('動画を選択してください'); return; }
+  if(!title){ showToast('タイトルを入力してください'); return; }
+  if(!postSubject){ showToast('教科を選択してください'); return; }
+  if(!postGrade){ showToast('学年を選択してください'); return; }
+  if(!unit){ showToast('単元を入力してください'); return; }
+
+  const videoUrl = URL.createObjectURL(postSelectedFile);
+  VIDEOS.unshift({
+    id: 'u' + Date.now(),
+    subject: postSubject,
+    grade: postGrade,
+    unit,
+    title,
+    creator: creator || '名無し',
+    duration: postSelectedDuration,
+    short: videoUrl,
+    long: videoUrl,
+  });
+
+  feedVideos = VIDEOS;
+  renderFeed(feedVideos);
+  renderResults();
+  resetPostForm();
+  showToast('投稿しました（この端末内のみ・保存はされません）');
+  showScreen('home');
+  feedEl.scrollTo({ top:0 });
+});
+
+document.getElementById('post-back').addEventListener('click', ()=> showScreen('home'));
 
 // ---- PWA: ホーム画面追加バナー ----
 let deferredPrompt = null;

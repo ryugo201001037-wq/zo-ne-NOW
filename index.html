@@ -473,18 +473,18 @@
       </div>
 
       <div class="post-field">
-        <label class="post-label">教科</label>
-        <div class="chip-row" id="post-subject-chips"></div>
-      </div>
-
-      <div class="post-field">
-        <label class="post-label">学年</label>
+        <label class="post-label">ターゲット学年</label>
         <div class="chip-row" id="post-grade-chips"></div>
       </div>
 
       <div class="post-field">
-        <label class="post-label">単元</label>
-        <input type="text" class="post-input" id="post-unit" placeholder="例：二次関数" maxlength="20" />
+        <label class="post-label">教科（任意・啓発動画などは未選択でOK）</label>
+        <div class="chip-row" id="post-subject-chips"></div>
+      </div>
+
+      <div class="post-field">
+        <label class="post-label">単元（任意）</label>
+        <input type="text" class="post-input" id="post-unit" placeholder="例：二次関数（啓発動画などは空欄でOK）" maxlength="20" />
       </div>
 
       <div class="post-field">
@@ -682,9 +682,9 @@ function renderFeed(videos){
       <video src="${v.short}" muted loop playsinline preload="metadata"></video>
 
       <div class="short-top">
-        <span class="badge subject">${labelOf(SUBJECTS, v.subject)}</span>
+        ${v.subject ? `<span class="badge subject">${labelOf(SUBJECTS, v.subject)}</span>` : ''}
         <span class="badge">${labelOf(GRADES, v.grade)}</span>
-        <span class="badge">${v.unit}</span>
+        ${v.unit ? `<span class="badge">${v.unit}</span>` : ''}
       </div>
 
       <div class="action-rail">
@@ -714,7 +714,7 @@ function renderFeed(videos){
       </div>
 
       <div class="caption-block">
-        <span class="caption-tag">#${v.unit}</span>
+        ${v.unit ? `<span class="caption-tag">#${v.unit}</span>` : ''}
         <p class="caption-text">${v.title}</p>
         <p class="caption-hashtags">#勉強 #やる気 #高校生 ・ @${v.creator}</p>
         <p class="caption-music">♪ オリジナル楽曲 - ZoneNOW</p>
@@ -860,8 +860,8 @@ function renderChips(){
   subjectWrap.innerHTML = chipHtml([{id:'all',label:'すべて'}, ...SUBJECTS], activeSubject);
 
   const unitsForSubject = activeSubject === 'all'
-    ? [...new Set(VIDEOS.map(v=>v.unit))]
-    : [...new Set(VIDEOS.filter(v=>v.subject===activeSubject).map(v=>v.unit))];
+    ? [...new Set(VIDEOS.map(v=>v.unit).filter(Boolean))]
+    : [...new Set(VIDEOS.filter(v=>v.subject===activeSubject).map(v=>v.unit).filter(Boolean))];
   const unitOptions = [{id:'all', label:'すべて'}, ...unitsForSubject.map(u=>({id:u, label:u}))];
   unitWrap.innerHTML = chipHtml(unitOptions, activeUnit);
 
@@ -885,7 +885,13 @@ const gradientBySubject = {
   math: 'linear-gradient(160deg, #2B2E63, #10131A)',
   japanese: 'linear-gradient(160deg, #7A3B2E, #10131A)',
   english: 'linear-gradient(160deg, #1E5C55, #10131A)',
+  none: 'linear-gradient(160deg, var(--cta-from), var(--cta-to))', // 教科なし(啓発動画など)の既定カラー
 };
+
+function metaTextOf(v){
+  const parts = [v.subject ? labelOf(SUBJECTS, v.subject) : null, v.unit || null].filter(Boolean);
+  return parts.length ? parts.join(' ・ ') : '啓発動画';
+}
 
 function renderResults(){
   const results = filteredVideos();
@@ -897,12 +903,12 @@ function renderResults(){
 
   grid.innerHTML = results.map(v=>`
     <button class="result-card" data-id="${v.id}">
-      <div class="result-thumb" style="background:${gradientBySubject[v.subject]}">
+      <div class="result-thumb" style="background:${gradientBySubject[v.subject] || gradientBySubject.none}">
         <span class="badge">${labelOf(GRADES, v.grade)}</span>
         <span class="result-duration">${v.duration}秒</span>
       </div>
       <p class="result-title">${v.title}</p>
-      <p class="result-meta">${labelOf(SUBJECTS, v.subject)} ・ ${v.unit}</p>
+      <p class="result-meta">${metaTextOf(v)}</p>
     </button>
   `).join('');
 
@@ -929,7 +935,8 @@ function openPlayer(id){
   const pv = document.getElementById('player-video');
   pv.src = v.long;
   document.getElementById('player-title').textContent = v.title + '(本編)';
-  document.getElementById('player-meta').textContent = `${labelOf(SUBJECTS, v.subject)} ・ ${labelOf(GRADES, v.grade)} ・ ${v.unit} ・ ${v.creator}`;
+  const metaParts = [v.subject ? labelOf(SUBJECTS, v.subject) : null, labelOf(GRADES, v.grade), v.unit || null, v.creator].filter(Boolean);
+  document.getElementById('player-meta').textContent = metaParts.join(' ・ ');
   showScreen('player');
   pv.play().catch(()=>{});
 }
@@ -957,13 +964,15 @@ document.getElementById('post-upload-icon').innerHTML = icon('plus');
 
 let postSelectedFile = null;
 let postSelectedDuration = 0;
-let postSubject = null;
+let postSubject = ''; // 空文字=「教科なし」(啓発動画など、学年ターゲットだけで教科・単元は必須にしない)
 let postGrade = null;
+
+const POST_SUBJECT_OPTIONS = [{ id:'', label:'なし' }, ...SUBJECTS];
 
 function renderPostChips(){
   const subjectWrap = document.getElementById('post-subject-chips');
   const gradeWrap = document.getElementById('post-grade-chips');
-  subjectWrap.innerHTML = chipHtml(SUBJECTS, postSubject);
+  subjectWrap.innerHTML = chipHtml(POST_SUBJECT_OPTIONS, postSubject);
   gradeWrap.innerHTML = chipHtml(GRADES, postGrade);
   subjectWrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{ postSubject=c.dataset.id; renderPostChips(); }));
   gradeWrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{ postGrade=c.dataset.id; renderPostChips(); }));
@@ -990,7 +999,7 @@ postPreviewVideo.addEventListener('loadedmetadata', ()=>{
 function resetPostForm(){
   postSelectedFile = null;
   postSelectedDuration = 0;
-  postSubject = null;
+  postSubject = '';
   postGrade = null;
   document.getElementById('post-title').value = '';
   document.getElementById('post-unit').value = '';
@@ -1009,9 +1018,7 @@ document.getElementById('post-submit').addEventListener('click', ()=>{
 
   if(!postSelectedFile){ showToast('動画を選択してください'); return; }
   if(!title){ showToast('タイトルを入力してください'); return; }
-  if(!postSubject){ showToast('教科を選択してください'); return; }
-  if(!postGrade){ showToast('学年を選択してください'); return; }
-  if(!unit){ showToast('単元を入力してください'); return; }
+  if(!postGrade){ showToast('ターゲット学年を選択してください'); return; }
 
   const videoUrl = URL.createObjectURL(postSelectedFile);
   VIDEOS.unshift({

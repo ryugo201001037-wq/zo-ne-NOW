@@ -98,6 +98,8 @@
     background:rgba(255,255,255,.14); color:#fff;
   }
   .badge.subject{ background:rgba(255,90,54,.85); }
+  .badge.kind-motivation{ background:rgba(91,110,245,.9); }
+  .badge.kind-trivia{ background:rgba(150,98,0,.92); }
 
   /* ---- 上部バー：検索・通知 ---- */
   #feed-topbar{
@@ -138,8 +140,9 @@
     display:flex; flex-direction:column; align-items:center; gap:16px;
   }
   .avatar-wrap{ position:relative; margin-bottom:2px; }
+  .avatar img{ width:100%; height:100%; object-fit:cover; }
   .avatar{
-    width:44px; height:44px; border-radius:50%;
+    width:44px; height:44px; border-radius:50%; overflow:hidden;
     background:linear-gradient(135deg, var(--cta-from), var(--cta-to));
     display:flex; align-items:center; justify-content:center;
     color:#fff; font-family:var(--font-ui); font-weight:700; font-size:17px;
@@ -321,6 +324,22 @@
   .study-btn.primary{ background:linear-gradient(135deg, var(--cta-from), var(--cta-to)); }
   .study-btn.full{ display:block; width:100%; margin-top:14px; }
   .study-btn:disabled{ opacity:.35; }
+  .study-btn.danger{ background:var(--ember); }
+  .other-input{ display:none; margin-top:10px; }
+
+  /* ---- 確認ダイアログ ---- */
+  #confirm-dialog{
+    position:absolute; inset:0; z-index:60; display:none;
+    align-items:center; justify-content:center; padding:0 28px;
+    background:rgba(0,0,0,.6);
+  }
+  #confirm-dialog.show{ display:flex; }
+  .confirm-card{
+    width:100%; max-width:320px; background:#1C2030; border:1px solid rgba(255,255,255,.1);
+    border-radius:18px; padding:22px 18px 18px; color:#fff;
+  }
+  .confirm-message{ font-family:var(--font-ui); font-size:14px; line-height:1.7; margin:0 0 20px; text-align:center; }
+  .confirm-actions{ display:flex; gap:10px; }
   .text-link{
     display:block; margin:12px auto 0; font-family:var(--font-ui); font-size:12px;
     color:rgba(255,255,255,.45); text-decoration:underline;
@@ -361,6 +380,53 @@
     font-family:var(--font-ui); font-size:11px; color:rgba(255,255,255,.35); text-align:center;
     margin:10px 0 0; line-height:1.6;
   }
+
+  /* ============================================================
+     プロフィール画面
+  ============================================================ */
+  .profile-head{ text-align:center; margin-bottom:22px; }
+  .profile-avatar{ position:relative; display:inline-block; cursor:pointer; margin-bottom:12px; }
+  .profile-avatar-img{
+    width:88px; height:88px; border-radius:50%; overflow:hidden;
+    background:linear-gradient(135deg, var(--cta-from), var(--cta-to));
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--font-ui); font-size:34px; font-weight:700; color:#fff;
+    border:2px solid rgba(255,255,255,.85);
+  }
+  .profile-avatar-img img{ width:100%; height:100%; object-fit:cover; }
+  .profile-avatar-edit{
+    position:absolute; right:-4px; bottom:0; padding:3px 8px; border-radius:99px;
+    background:#1C2030; border:1px solid rgba(255,255,255,.2);
+    font-family:var(--font-ui); font-size:10.5px; font-weight:700; color:#fff;
+  }
+  .profile-name{ font-size:21px; font-weight:700; margin:0 0 4px; word-break:break-all; }
+  .profile-grade{ font-family:var(--font-ui); font-size:13px; color:rgba(255,255,255,.6); margin:0 0 14px; }
+  .profile-edit-btn{
+    padding:8px 18px; border-radius:99px; border:1px solid rgba(255,255,255,.25); color:#fff;
+    font-family:var(--font-ui); font-size:12.5px; font-weight:700;
+  }
+  .profile-stats{
+    display:flex; margin-bottom:18px; padding:14px 0;
+    border-top:1px solid rgba(255,255,255,.08); border-bottom:1px solid rgba(255,255,255,.08);
+  }
+  .profile-stat{ flex:1; text-align:center; }
+  .profile-stat + .profile-stat{ border-left:1px solid rgba(255,255,255,.08); }
+  .profile-stat-value{ font-family:var(--font-ui); font-size:19px; font-weight:700; }
+  .profile-stat-label{ font-family:var(--font-ui); font-size:11px; color:rgba(255,255,255,.55); margin-top:3px; }
+  .profile-study{ display:flex; text-align:center; }
+  .profile-study > div{ flex:1; }
+  .profile-study-value{ font-family:var(--font-ui); font-size:22px; font-weight:700; }
+  .profile-study-label{ font-family:var(--font-ui); font-size:11px; color:rgba(255,255,255,.55); margin-top:3px; }
+  .profile-hint{ font-family:var(--font-ui); font-size:11.5px; color:rgba(255,255,255,.45); line-height:1.6; margin:14px 0 0; text-align:center; }
+  .friends-empty{ text-align:center; }
+  .friends-icon{
+    width:52px; height:52px; border-radius:50%; margin:2px auto 12px;
+    background:rgba(255,255,255,.08); display:flex; align-items:center; justify-content:center; color:#fff;
+  }
+  .friends-icon svg{ width:26px; height:26px; }
+  .friends-title{ font-size:15px; font-weight:700; margin:0 0 6px; }
+  .friends-sub{ font-family:var(--font-ui); font-size:12px; color:rgba(255,255,255,.55); line-height:1.7; margin:0 0 2px; }
+  #profile-following-list .chip{ cursor:default; }
 
   /* ============================================================
      投稿画面
@@ -502,6 +568,10 @@
     </div>
 
     <div class="filter-group">
+      <div class="filter-label">種類</div>
+      <div class="chip-row" id="kind-chips"></div>
+    </div>
+    <div class="filter-group">
       <div class="filter-label">学年</div>
       <div class="chip-row" id="grade-chips"></div>
     </div>
@@ -522,8 +592,9 @@
   <!-- ============ 初回設定画面（アカウント名・学年） ============ -->
   <section id="onboarding-screen" class="screen dark-screen">
     <div class="onboarding-wrap">
+      <button class="back-btn" id="onboarding-back" style="display:none; margin-bottom:18px;">←</button>
       <p class="onboarding-logo">ZoneNOW</p>
-      <p class="onboarding-lead">ようこそ！<br>はじめに、あなたのことを少しだけ教えてください。</p>
+      <p class="onboarding-lead" id="onboarding-lead">ようこそ！<br>はじめに、あなたのことを少しだけ教えてください。</p>
 
       <div class="post-field">
         <label class="post-label" for="onboarding-name">アカウント名</label>
@@ -533,13 +604,14 @@
       <div class="post-field">
         <label class="post-label">学年</label>
         <div class="chip-row" id="onboarding-grade-chips"></div>
+        <input type="text" class="post-input other-input" id="onboarding-grade-chips-other" placeholder="具体的に入力（例：浪人生、大学生）" />
       </div>
 
       <button class="post-submit" id="onboarding-submit">はじめる</button>
     </div>
   </section>
 
-  <!-- ============ AI / プロフィール（準備中） ============ -->
+  <!-- ============ AI（準備中） ============ -->
   <section id="ai-screen" class="screen dark-screen">
     <div class="placeholder-wrap" data-placeholder="ai"></div>
     <div class="bottom-nav solid-dark" data-active-nav="ai"></div>
@@ -572,6 +644,7 @@
         <div class="record-section-title">学習タイマー</div>
         <div class="timer-display" id="timer-display">00:00:00</div>
         <div class="chip-row" id="timer-subject-chips"></div>
+        <input type="text" class="post-input other-input" id="timer-subject-chips-other" placeholder="教科名を入力（例：情報）" />
         <div class="timer-actions">
           <button class="study-btn primary" id="timer-toggle">開始</button>
           <button class="study-btn" id="timer-finish">終了して記録</button>
@@ -583,6 +656,7 @@
       <div class="study-card">
         <div class="record-section-title">手入力で追加</div>
         <div class="chip-row" id="manual-subject-chips"></div>
+        <input type="text" class="post-input other-input" id="manual-subject-chips-other" placeholder="教科名を入力（例：情報）" />
         <div class="manual-row">
           <input type="number" class="post-input" id="manual-minutes" placeholder="分（例：90）" min="1" max="1440" inputmode="numeric" />
           <input type="date" class="post-input" id="manual-date" />
@@ -608,8 +682,68 @@
     <div class="bottom-nav solid-dark" data-active-nav="record"></div>
   </section>
 
+  <!-- ============ プロフィール画面 ============ -->
   <section id="profile-screen" class="screen dark-screen">
-    <div class="placeholder-wrap" data-placeholder="profile"></div>
+    <div class="record-wrap">
+      <div class="profile-head">
+        <label class="profile-avatar" aria-label="アイコンを変更">
+          <input type="file" id="profile-avatar-input" accept="image/*" hidden />
+          <div class="profile-avatar-img" id="profile-avatar"></div>
+          <span class="profile-avatar-edit">変更</span>
+        </label>
+        <h1 class="profile-name" id="profile-name"></h1>
+        <p class="profile-grade" id="profile-grade"></p>
+        <button class="profile-edit-btn" id="profile-edit">プロフィールを編集</button>
+      </div>
+
+      <div class="profile-stats">
+        <div class="profile-stat">
+          <div class="profile-stat-value" id="profile-following-count">0</div>
+          <div class="profile-stat-label">フォロー中</div>
+        </div>
+        <div class="profile-stat">
+          <div class="profile-stat-value" id="profile-followers-count">0</div>
+          <div class="profile-stat-label">フォロワー</div>
+        </div>
+        <div class="profile-stat">
+          <div class="profile-stat-value" id="profile-friends-count">0</div>
+          <div class="profile-stat-label">友達</div>
+        </div>
+      </div>
+
+      <div class="study-card">
+        <div class="record-section-title">あなたの勉強時間</div>
+        <div class="profile-study">
+          <div>
+            <div class="profile-study-value" id="profile-study-today">0分</div>
+            <div class="profile-study-label">今日</div>
+          </div>
+          <div>
+            <div class="profile-study-value" id="profile-study-week">0分</div>
+            <div class="profile-study-label">直近7日間</div>
+          </div>
+        </div>
+        <p class="profile-hint">友達機能ができたら、この勉強時間を友達と見せ合えるようになります。</p>
+      </div>
+
+      <div class="study-card">
+        <div class="record-section-title">友達</div>
+        <div class="friends-empty">
+          <div class="friends-icon" id="friends-icon"></div>
+          <p class="friends-title">友達と勉強時間を見せ合おう</p>
+          <p class="friends-sub">お互いに友達になると、今日・今週の勉強時間を見せ合えます。<br>一緒にがんばる仲間を作りましょう。</p>
+          <button class="study-btn full" disabled>友達を招待する（準備中）</button>
+        </div>
+      </div>
+
+      <div class="record-block">
+        <div class="record-section-title">フォロー中のクリエイター</div>
+        <div class="chip-row" id="profile-following-list"></div>
+        <p class="record-empty" id="profile-following-empty" style="padding:6px 0; text-align:left;">まだフォローしていません。気になるクリエイターのアイコンの「＋」からフォローできます。</p>
+      </div>
+
+      <p class="record-note" style="margin-top:28px;">※ プロフィールはこの端末のブラウザ内にのみ保存されます。フォロワー・友達はサーバー機能ができてから使えるようになります。</p>
+    </div>
     <div class="bottom-nav solid-dark" data-active-nav="profile"></div>
   </section>
 
@@ -637,18 +771,25 @@
       </div>
 
       <div class="post-field">
-        <label class="post-label">ターゲット学年</label>
-        <div class="chip-row" id="post-grade-chips"></div>
+        <label class="post-label">種類</label>
+        <div class="chip-row" id="post-kind-chips"></div>
       </div>
 
       <div class="post-field">
-        <label class="post-label">教科（任意・啓発動画などは未選択でOK）</label>
+        <label class="post-label">ターゲット学年</label>
+        <div class="chip-row" id="post-grade-chips"></div>
+        <input type="text" class="post-input other-input" id="post-grade-chips-other" placeholder="対象を入力（例：浪人生）" />
+      </div>
+
+      <div class="post-field">
+        <label class="post-label">教科（任意・やる気/豆知識なら「なし」でOK）</label>
         <div class="chip-row" id="post-subject-chips"></div>
+        <input type="text" class="post-input other-input" id="post-subject-chips-other" placeholder="教科名を入力（例：情報）" />
       </div>
 
       <div class="post-field">
         <label class="post-label">単元（任意）</label>
-        <input type="text" class="post-input" id="post-unit" placeholder="例：二次関数（啓発動画などは空欄でOK）" maxlength="20" />
+        <input type="text" class="post-input" id="post-unit" placeholder="例：二次関数（やる気/豆知識なら空欄でOK）" maxlength="20" />
       </div>
 
       <p class="post-note">※ 現在はデモ版です。投稿者名には最初に設定したアカウント名が使われます。投稿した動画・写真はこの端末・このタブの中だけで表示され、リロードすると消えます。</p>
@@ -658,6 +799,17 @@
     <div class="bottom-nav solid-dark" data-active-nav="create"></div>
   </section>
 
+  <!-- ============ 確認ダイアログ（ブラウザ標準のconfirmの代わり） ============ -->
+  <div id="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-message">
+    <div class="confirm-card">
+      <p class="confirm-message" id="confirm-message"></p>
+      <div class="confirm-actions">
+        <button class="study-btn" id="confirm-cancel">キャンセル</button>
+        <button class="study-btn danger" id="confirm-ok">OK</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -666,10 +818,11 @@
    ------------------------------------------------------------
    ここが「動画を追加する場所」です。他のコードには一切触れず、
    このリストに1件追加するだけで、検索・フィード両方に反映されます。
-   subject / grade は下の SUBJECTS / GRADES と対応させてください。
-   short は今はデモ用の仮動画URLです。
+   kind / subject / grade は下の KINDS / SUBJECTS / TARGETS と対応させてください。
+   short は今はデモ用の仮動画URLです（中身はタイトルと無関係のサンプル）。
    実際のコンテンツができたら、ここのURLだけ差し替えてください。
 ============================================================ */
+// ユーザー自身の学年（初回設定・プロフィールで選ぶ）
 const GRADES = [
   { id:'junior1', label:'中学1年' },
   { id:'junior2', label:'中学2年' },
@@ -679,6 +832,8 @@ const GRADES = [
   { id:'high3', label:'高校3年' },
   { id:'other', label:'その他' },
 ];
+// 動画のターゲット。学年に加えて「全学年向け」を選べる
+const TARGETS = [{ id:'everyone', label:'全学年' }, ...GRADES];
 const SUBJECTS = [
   { id:'math', label:'数学' },
   { id:'japanese', label:'国語' },
@@ -686,6 +841,12 @@ const SUBJECTS = [
   { id:'science', label:'理科' },
   { id:'social', label:'社会' },
   { id:'other', label:'その他' },
+];
+// 動画の種類。解説＝授業系 / やる気＝勉強を促す系 / 豆知識＝勉強にまつわる面白い話
+const KINDS = [
+  { id:'lesson', label:'解説' },
+  { id:'motivation', label:'やる気' },
+  { id:'trivia', label:'豆知識' },
 ];
 const IMAGE_DISPLAY_SECONDS = 8; // 写真投稿のZoneメーター表示時間(秒)
 const STUDY_NUDGE_EVERY = 15; // ショートをこの本数見るたびに勉強を促す
@@ -700,28 +861,113 @@ const DEMO_SHORT = [
 ];
 
 const VIDEOS = [
-  { id:'m1', subject:'math', grade:'high1', unit:'二次関数', title:'二次関数の最大値を10秒でつかむ', creator:'ゾーン先生', duration:24, short:DEMO_SHORT[0] },
-  { id:'m2', subject:'math', grade:'high1', unit:'因数分解', title:'たすき掛けが一瞬で見える裏ワザ', creator:'すうがく部 リナ', duration:19, short:DEMO_SHORT[1] },
-  { id:'m3', subject:'math', grade:'high2', unit:'微分', title:'微分は"変化の速さ"を測るだけ', creator:'ゾーン先生', duration:31, short:DEMO_SHORT[2] },
-  { id:'m4', subject:'math', grade:'high2', unit:'ベクトル', title:'ベクトルの内積、図で見たら一瞬', creator:'かず先輩', duration:22, short:DEMO_SHORT[3] },
-  { id:'m5', subject:'math', grade:'high3', unit:'積分', title:'積分=面積を求めるだけと知って楽になった話', creator:'ゾーン先生', duration:28, short:DEMO_SHORT[4] },
+  // ---- 高校生向け：解説 ----
+  { id:'m1', kind:'lesson', subject:'math', grade:'high1', unit:'二次関数', title:'二次関数の最大値を10秒でつかむ', creator:'ゾーン先生', duration:24, short:DEMO_SHORT[0] },
+  { id:'m2', kind:'lesson', subject:'math', grade:'high1', unit:'因数分解', title:'たすき掛けが一瞬で見える裏ワザ', creator:'すうがく部 リナ', duration:19, short:DEMO_SHORT[1] },
+  { id:'m3', kind:'lesson', subject:'math', grade:'high2', unit:'微分', title:'微分は"変化の速さ"を測るだけ', creator:'ゾーン先生', duration:31, short:DEMO_SHORT[2] },
+  { id:'m4', kind:'lesson', subject:'math', grade:'high2', unit:'ベクトル', title:'ベクトルの内積、図で見たら一瞬', creator:'かず先輩', duration:22, short:DEMO_SHORT[3] },
+  { id:'m5', kind:'lesson', subject:'math', grade:'high3', unit:'積分', title:'積分=面積を求めるだけと知って楽になった話', creator:'ゾーン先生', duration:28, short:DEMO_SHORT[4] },
+  { id:'j1', kind:'lesson', subject:'japanese', grade:'high1', unit:'現代文読解', title:'筆者の主張を10秒で見抜く読み方', creator:'国語のミナ', duration:26, short:DEMO_SHORT[0] },
+  { id:'j2', kind:'lesson', subject:'japanese', grade:'high1', unit:'古文文法', title:'助動詞「き」と「けり」の違い、一発理解', creator:'古文先生', duration:21, short:DEMO_SHORT[1] },
+  { id:'j3', kind:'lesson', subject:'japanese', grade:'high2', unit:'漢文句法', title:'漢文の「使役」はこの2文字だけ覚えればいい', creator:'古文先生', duration:18, short:DEMO_SHORT[2] },
+  { id:'j4', kind:'lesson', subject:'japanese', grade:'high3', unit:'小論文', title:'小論文が伸びない人の共通点', creator:'国語のミナ', duration:29, short:DEMO_SHORT[3] },
+  { id:'e1', kind:'lesson', subject:'english', grade:'high1', unit:'文型', title:'英語の5文型、結局これだけ覚えればいい', creator:'イングリッシュTAKU', duration:23, short:DEMO_SHORT[4] },
+  { id:'e2', kind:'lesson', subject:'english', grade:'high2', unit:'関係代名詞', title:'関係代名詞が苦手な理由、正体はこれ', creator:'イングリッシュTAKU', duration:25, short:DEMO_SHORT[0] },
+  { id:'e3', kind:'lesson', subject:'english', grade:'high2', unit:'仮定法', title:'仮定法過去は"妄想"の話だった', creator:'えいご部 モモ', duration:20, short:DEMO_SHORT[1] },
+  { id:'e4', kind:'lesson', subject:'english', grade:'high3', unit:'長文読解', title:'長文の最初の3行だけ読めば展開が読める', creator:'イングリッシュTAKU', duration:27, short:DEMO_SHORT[2] },
+  { id:'hs1', kind:'lesson', subject:'science', grade:'high1', unit:'化学基礎', title:'「モル」って結局なに？を30秒で', creator:'りかのハル', duration:30, short:DEMO_SHORT[3] },
+  { id:'hso1', kind:'lesson', subject:'social', grade:'high2', unit:'世界史', title:'世界史の流れは"4つの時代"でつかむ', creator:'しゃかい部 ケン', duration:28, short:DEMO_SHORT[4] },
 
-  { id:'j1', subject:'japanese', grade:'high1', unit:'現代文読解', title:'筆者の主張を10秒で見抜く読み方', creator:'国語のミナ', duration:26, short:DEMO_SHORT[0] },
-  { id:'j2', subject:'japanese', grade:'high1', unit:'古文文法', title:'助動詞「き」と「けり」の違い、一発理解', creator:'古文先生', duration:21, short:DEMO_SHORT[1] },
-  { id:'j3', subject:'japanese', grade:'high2', unit:'漢文句法', title:'漢文の「使役」はこの2文字だけ覚えればいい', creator:'古文先生', duration:18, short:DEMO_SHORT[2] },
-  { id:'j4', subject:'japanese', grade:'high3', unit:'小論文', title:'小論文が伸びない人の共通点', creator:'国語のミナ', duration:29, short:DEMO_SHORT[3] },
+  // ---- 中学生向け：解説 ----
+  { id:'jm1', kind:'lesson', subject:'math', grade:'junior1', unit:'正負の数', title:'マイナス×マイナスがプラスになる理由', creator:'ゾーン先生', duration:22, short:DEMO_SHORT[0] },
+  { id:'jm2', kind:'lesson', subject:'math', grade:'junior1', unit:'方程式', title:'方程式は"天びん"で考えると一瞬', creator:'すうがく部 リナ', duration:20, short:DEMO_SHORT[1] },
+  { id:'jm3', kind:'lesson', subject:'math', grade:'junior2', unit:'連立方程式', title:'連立方程式、代入法と加減法どっちを使う？', creator:'かず先輩', duration:26, short:DEMO_SHORT[2] },
+  { id:'jm4', kind:'lesson', subject:'math', grade:'junior2', unit:'一次関数', title:'一次関数のグラフは2点打てば描ける', creator:'ゾーン先生', duration:21, short:DEMO_SHORT[3] },
+  { id:'jm5', kind:'lesson', subject:'math', grade:'junior3', unit:'平方根', title:'√の計算ミスが減る3つのルール', creator:'すうがく部 リナ', duration:27, short:DEMO_SHORT[4] },
+  { id:'je1', kind:'lesson', subject:'english', grade:'junior1', unit:'be動詞', title:'be動詞と一般動詞、見分け方はこれだけ', creator:'イングリッシュTAKU', duration:19, short:DEMO_SHORT[0] },
+  { id:'je2', kind:'lesson', subject:'english', grade:'junior2', unit:'不定詞', title:'不定詞の3用法を1枚の図で整理', creator:'えいご部 モモ', duration:25, short:DEMO_SHORT[1] },
+  { id:'je3', kind:'lesson', subject:'english', grade:'junior3', unit:'現在完了', title:'現在完了は"今につながる過去"', creator:'えいご部 モモ', duration:23, short:DEMO_SHORT[2] },
+  { id:'jj1', kind:'lesson', subject:'japanese', grade:'junior2', unit:'文法', title:'品詞の見分け方、最初の一歩', creator:'国語のミナ', duration:24, short:DEMO_SHORT[3] },
+  { id:'js1', kind:'lesson', subject:'science', grade:'junior1', unit:'光の性質', title:'ストローが折れて見えるのは"光の屈折"', creator:'りかのハル', duration:22, short:DEMO_SHORT[4] },
+  { id:'js2', kind:'lesson', subject:'science', grade:'junior2', unit:'電流と電圧', title:'オームの法則は"水の流れ"でイメージ', creator:'りかのハル', duration:26, short:DEMO_SHORT[0] },
+  { id:'jso1', kind:'lesson', subject:'social', grade:'junior1', unit:'地理', title:'緯度と経度、もう迷わない覚え方', creator:'しゃかい部 ケン', duration:20, short:DEMO_SHORT[1] },
+  { id:'jso2', kind:'lesson', subject:'social', grade:'junior2', unit:'歴史', title:'江戸の三大改革を30秒で', creator:'しゃかい部 ケン', duration:30, short:DEMO_SHORT[2] },
 
-  { id:'e1', subject:'english', grade:'high1', unit:'文型', title:'英語の5文型、結局これだけ覚えればいい', creator:'イングリッシュTAKU', duration:23, short:DEMO_SHORT[4] },
-  { id:'e2', subject:'english', grade:'high2', unit:'関係代名詞', title:'関係代名詞が苦手な理由、正体はこれ', creator:'イングリッシュTAKU', duration:25, short:DEMO_SHORT[0] },
-  { id:'e3', subject:'english', grade:'high2', unit:'仮定法', title:'仮定法過去は"妄想"の話だった', creator:'えいご部 モモ', duration:20, short:DEMO_SHORT[1] },
-  { id:'e4', subject:'english', grade:'high3', unit:'長文読解', title:'長文の最初の3行だけ読めば展開が読める', creator:'イングリッシュTAKU', duration:27, short:DEMO_SHORT[2] },
+  // ---- やる気：勉強を促す動画（基本は全学年向け） ----
+  { id:'mo1', kind:'motivation', subject:'', grade:'everyone', unit:'', title:'やる気が出ないのは、あなたが悪いんじゃない', creator:'ZoneNOW公式', duration:25, short:DEMO_SHORT[3] },
+  { id:'mo2', kind:'motivation', subject:'', grade:'everyone', unit:'', title:'まず5分だけ。脳は"始めると"やる気が出る', creator:'ゾーン先生', duration:22, short:DEMO_SHORT[4] },
+  { id:'mo3', kind:'motivation', subject:'', grade:'everyone', unit:'', title:'スマホを別の部屋に置くだけで集中力が変わる', creator:'ZoneNOW公式', duration:20, short:DEMO_SHORT[0] },
+  { id:'mo4', kind:'motivation', subject:'', grade:'everyone', unit:'', title:'テスト前日に焦らないための"逆算"のコツ', creator:'かず先輩', duration:28, short:DEMO_SHORT[1] },
+  { id:'mo5', kind:'motivation', subject:'', grade:'everyone', unit:'', title:'勉強が続く人がやっている、たった1つの習慣', creator:'すうがく部 リナ', duration:24, short:DEMO_SHORT[2] },
+  { id:'mo6', kind:'motivation', subject:'', grade:'junior3', unit:'', title:'高校受験まであと少し。今日の1時間が効いてくる', creator:'ZoneNOW公式', duration:26, short:DEMO_SHORT[3] },
+  { id:'mo7', kind:'motivation', subject:'', grade:'high3', unit:'', title:'大学受験生へ：伸びるのは最後の3か月', creator:'ZoneNOW公式', duration:27, short:DEMO_SHORT[4] },
+
+  // ---- 豆知識：勉強にまつわる面白い話 ----
+  { id:'tr1', kind:'trivia', subject:'japanese', grade:'everyone', unit:'', title:'「勉強」の本来の意味は"無理をする"だった', creator:'豆知識ラボ', duration:18, short:DEMO_SHORT[0] },
+  { id:'tr2', kind:'trivia', subject:'', grade:'everyone', unit:'', title:'寝る前の暗記が覚えやすいのはなぜ？', creator:'豆知識ラボ', duration:21, short:DEMO_SHORT[1] },
+  { id:'tr3', kind:'trivia', subject:'', grade:'everyone', unit:'', title:'ガムを噛むと集中力が上がるって本当？', creator:'豆知識ラボ', duration:19, short:DEMO_SHORT[2] },
+  { id:'tr4', kind:'trivia', subject:'math', grade:'everyone', unit:'', title:'3月14日が「円周率の日」な理由', creator:'すうがく部 リナ', duration:16, short:DEMO_SHORT[3] },
+  { id:'tr5', kind:'trivia', subject:'english', grade:'everyone', unit:'', title:'英語でいちばんよく使われる単語は？', creator:'イングリッシュTAKU', duration:17, short:DEMO_SHORT[4] },
+  { id:'tr6', kind:'trivia', subject:'science', grade:'everyone', unit:'', title:'虹は本当は"まんまる"の形をしている', creator:'りかのハル', duration:20, short:DEMO_SHORT[0] },
 ];
 
 function labelOf(list, id){ const f = list.find(x=>x.id===id); return f ? f.label : id; }
 
-// ユーザーが入力した文字(タイトル・単元・アカウント名)をHTMLに埋め込む前に必ず通す
+// ユーザーが入力した文字(タイトル・単元・アカウント名・「その他」の内容)をHTMLに埋め込む前に必ず通す
 function escapeHtml(str){
   return String(str).replace(/[&<>"']/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+// 「その他」を選んで具体的に入力された内容があればそれを、なければ選択肢の名前を表示する
+function subjectLabelOf(item){
+  if(!item.subject) return '';
+  return item.subject === 'other' && item.subjectOther ? item.subjectOther : labelOf(SUBJECTS, item.subject);
+}
+function gradeLabelOf(item){
+  return item.grade === 'other' && item.gradeOther ? item.gradeOther : labelOf(TARGETS, item.grade);
+}
+function kindOf(v){ return v.kind || 'lesson'; }
+
+// 中1〜中3 / 高1〜高3 をまとめた区分（同じ区分の動画も少しだけ優先して出すため）
+function schoolLevelOf(gradeId){
+  if(!gradeId) return null;
+  if(gradeId.startsWith('junior')) return 'junior';
+  if(gradeId.startsWith('high')) return 'high';
+  return null;
+}
+
+/* ============================================================
+   ◆ 端末内の保存・プロフィール ◆
+   今はすべてlocalStorage（この端末のブラウザ内）に保存。
+   ログイン機能・サーバーができたら、ここの読み書きを差し替える。
+============================================================ */
+function loadJSON(key, fallback){
+  try{ return JSON.parse(localStorage.getItem(key)) ?? fallback; }
+  catch(e){ return fallback; }
+}
+function saveJSON(key, value){
+  try{ localStorage.setItem(key, JSON.stringify(value)); return true; }
+  catch(e){ return false; } // プライベートモード・容量オーバー等で保存できない
+}
+
+const PROFILE_KEY = 'zonenow_profile';
+const PROFILE_NAME_MAX = 20;
+const OTHER_TEXT_MAX = 20; // 「その他」の自由入力の最大文字数
+function loadProfile(){
+  const p = loadJSON(PROFILE_KEY, null);
+  return p && p.name && p.grade ? p : null;
+}
+// アイコン画像は自分でリサイズしたdata URLだけを受け付ける
+function isSafeAvatar(src){ return typeof src === 'string' && src.startsWith('data:image/'); }
+
+// フォロー中のクリエイター（今は投稿者名で管理。アカウントIDができたら置き換える）
+const FOLLOW_KEY = 'zonenow_following';
+function loadFollowing(){ return loadJSON(FOLLOW_KEY, []); }
+function isFollowing(name){ return loadFollowing().includes(name); }
+function setFollowing(name, follow){
+  const list = loadFollowing().filter(n=> n !== name);
+  if(follow) list.push(name);
+  saveJSON(FOLLOW_KEY, list);
 }
 
 /* ============================================================
@@ -744,6 +990,7 @@ const ICON_PATHS = {
   volume: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.1 5a9 9 0 0 1 0 14"/><path d="M15.5 8.5a4.5 4.5 0 0 1 0 7"/>',
   volumeOff: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>',
   clock: '<circle cx="12" cy="13" r="8"/><polyline points="12 9 12 13 14.5 15.5"/><line x1="9" y1="2" x2="15" y2="2"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-5.6 6.5-5.6s6.5 2 6.5 5.6"/><circle cx="17" cy="9" r="2.8"/><path d="M16.2 14.5c3 0 5.3 1.8 5.3 5"/>',
 };
 function icon(name){
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name] || ''}</svg>`;
@@ -763,6 +1010,72 @@ function showToast(msg){
   el.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(()=> el.classList.remove('show'), 1800);
+}
+
+/* ---- 確認ダイアログ ----
+   ブラウザ標準の confirm() は、アプリ内ブラウザや埋め込み表示(プレビュー等)では
+   ブロックされて常に「キャンセル」扱いになることがあるため、アプリ内で自前表示する */
+let confirmResolve = null;
+function confirmDialog(message, okLabel = 'OK'){
+  document.getElementById('confirm-message').textContent = message;
+  document.getElementById('confirm-ok').textContent = okLabel;
+  document.getElementById('confirm-dialog').classList.add('show');
+  return new Promise(resolve=>{ confirmResolve = resolve; });
+}
+function closeConfirm(result){
+  document.getElementById('confirm-dialog').classList.remove('show');
+  const resolve = confirmResolve;
+  confirmResolve = null;
+  if(resolve) resolve(result);
+}
+document.getElementById('confirm-ok').addEventListener('click', ()=> closeConfirm(true));
+document.getElementById('confirm-cancel').addEventListener('click', ()=> closeConfirm(false));
+document.getElementById('confirm-dialog').addEventListener('click', (e)=>{
+  if(e.target.id === 'confirm-dialog') closeConfirm(false); // 背景タップでキャンセル
+});
+
+/* ---- チップで選ぶ項目 ----
+   「その他」を選んだときだけ、すぐ下の自由入力欄（id = チップ欄のid + "-other"）を表示する。
+   initial.id が null なら未選択の状態から始まる */
+function createChoice(wrapId, options, initial = {}, onChange){
+  const wrap = document.getElementById(wrapId);
+  const otherInput = document.getElementById(wrapId + '-other');
+  const state = { id: initial.id ?? null, other: initial.other || '' };
+
+  function render(){
+    wrap.innerHTML = chipHtml(options, state.id);
+    wrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{
+      state.id = c.dataset.id;
+      render();
+      if(onChange) onChange();
+      if(state.id === 'other' && otherInput) otherInput.focus();
+    }));
+    if(otherInput){
+      otherInput.style.display = state.id === 'other' ? 'block' : 'none';
+      if(otherInput.value !== state.other) otherInput.value = state.other;
+    }
+  }
+  if(otherInput){
+    otherInput.maxLength = OTHER_TEXT_MAX;
+    otherInput.addEventListener('input', ()=>{
+      state.other = otherInput.value;
+      if(onChange) onChange();
+    });
+  }
+  render();
+
+  return {
+    get id(){ return state.id; },
+    // 「その他」以外を選んでいるときは空文字
+    get other(){ return state.id === 'other' ? state.other.trim() : ''; },
+    set(id, other = ''){ state.id = id; state.other = other; render(); },
+    // 入力に問題があればメッセージを、なければ null を返す
+    error(name){
+      if(state.id === null) return `${name}を選択してください`;
+      if(state.id === 'other' && !state.other.trim()) return `${name}の「その他」の内容を入力してください`;
+      return null;
+    },
+  };
 }
 
 /* ---- いいね・コメント・保存の表示件数(デモ用の疑似データ) ---- */
@@ -794,6 +1107,7 @@ function showScreen(name){
   Object.values(screens).forEach(s=>s.classList.remove('active'));
   screens[name].classList.add('active');
   if(name === 'record') renderRecordScreen();
+  if(name === 'profile') renderProfileScreen();
   document.querySelectorAll('[data-nav]').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.nav === name);
   });
@@ -829,7 +1143,7 @@ document.querySelectorAll('[data-nav]').forEach(btn=>{
 });
 
 // ---- ショート動画フィード ----
-// 並びは毎回ランダム。終わりが近づいたらシャッフルし直した動画を後ろに足していく（無限スクロール）
+// 並びは毎回ランダム（学年に合う動画が出やすい）。終わりが近づいたら次の分を後ろに足していく（無限スクロール）
 const feedEl = document.getElementById('feed');
 let currentSlide = null;        // 今画面に出ているショート
 let currentAudibleState = true; // ミュート状態をスライド間で引き継ぐ
@@ -838,13 +1152,13 @@ const countedSlides = new WeakSet(); // 視聴本数に数え済みのスライ�
 let viewedCount = 0;
 let lastNudgeAt = 0;
 
-function shuffled(list){
-  const a = [...list];
-  for(let i = a.length - 1; i > 0; i--){
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
+function hashtagsOf(v){
+  const tags = { lesson:['#勉強'], motivation:['#やる気', '#勉強習慣'], trivia:['#豆知識', '#雑学'] }[kindOf(v)].slice();
+  const subject = subjectLabelOf(v);
+  if(subject) tags.push('#' + subject);
+  const level = schoolLevelOf(v.grade);
+  if(level) tags.push(level === 'junior' ? '#中学生' : '#高校生');
+  return tags.join(' ');
 }
 
 function createSlide(v){
@@ -852,6 +1166,9 @@ function createSlide(v){
   const comments = demoCount(v.id + '-comment', 20, 600);
   const bookmarks = demoCount(v.id + '-bookmark', 100, 2000);
   const isImage = v.mediaType === 'image';
+  const profile = loadProfile();
+  const isOwn = !!profile && v.creator === profile.name; // 自分の投稿はフォローボタンを出さない
+  const following = !isOwn && isFollowing(v.creator);
 
   const slide = document.createElement('div');
   slide.className = 'short-slide';
@@ -863,15 +1180,16 @@ function createSlide(v){
       : `<video src="${v.short}" muted loop playsinline preload="metadata"></video>`}
 
     <div class="short-top">
-      ${v.subject ? `<span class="badge subject">${labelOf(SUBJECTS, v.subject)}</span>` : ''}
-      <span class="badge">${labelOf(GRADES, v.grade)}</span>
+      ${kindOf(v) !== 'lesson' ? `<span class="badge kind-${kindOf(v)}">${labelOf(KINDS, kindOf(v))}</span>` : ''}
+      ${v.subject ? `<span class="badge subject">${escapeHtml(subjectLabelOf(v))}</span>` : ''}
+      <span class="badge">${escapeHtml(gradeLabelOf(v))}</span>
       ${v.unit ? `<span class="badge">${escapeHtml(v.unit)}</span>` : ''}
     </div>
 
     <div class="action-rail">
       <div class="avatar-wrap">
-        <div class="avatar">${escapeHtml(v.creator.charAt(0))}</div>
-        <button class="follow-badge" data-role="follow">${icon('plus')}</button>
+        <div class="avatar">${isOwn && isSafeAvatar(profile.avatar) ? `<img src="${escapeHtml(profile.avatar)}" alt="" />` : escapeHtml(v.creator.charAt(0))}</div>
+        ${isOwn ? '' : `<button class="follow-badge ${following ? 'active' : ''}" data-role="follow" data-creator="${escapeHtml(v.creator)}">${icon(following ? 'check' : 'plus')}</button>`}
       </div>
       <button class="action-item" data-role="like">
         ${icon('heart')}
@@ -895,7 +1213,7 @@ function createSlide(v){
     <div class="caption-block">
       ${v.unit ? `<span class="caption-tag">#${escapeHtml(v.unit)}</span>` : ''}
       <p class="caption-text">${escapeHtml(v.title)}</p>
-      <p class="caption-hashtags">#勉強 #やる気 #高校生 ・ @${escapeHtml(v.creator)}</p>
+      <p class="caption-hashtags">${escapeHtml(hashtagsOf(v))} ・ @${escapeHtml(v.creator)}</p>
       <p class="caption-music">♪ オリジナル楽曲 - ZoneNOW</p>
     </div>
   `;
@@ -938,12 +1256,20 @@ function attachSlideEvents(slide, v){
     bookmarkCount.textContent = formatCount(baseBookmarks + (saved ? 1 : 0));
   });
 
-  // フォロー（ローカル表示のみ）
+  // フォロー（端末内に保存。同じクリエイターの他のスライドの表示もそろえる）
   const followBtn = slide.querySelector('[data-role="follow"]');
-  followBtn.addEventListener('click', ()=>{
-    const active = followBtn.classList.toggle('active');
-    followBtn.innerHTML = icon(active ? 'check' : 'plus');
-  });
+  if(followBtn){
+    followBtn.addEventListener('click', ()=>{
+      const follow = !isFollowing(v.creator);
+      setFollowing(v.creator, follow);
+      feedEl.querySelectorAll('[data-role="follow"]').forEach(btn=>{
+        if(btn.dataset.creator !== v.creator) return;
+        btn.classList.toggle('active', follow);
+        btn.innerHTML = icon(follow ? 'check' : 'plus');
+      });
+      showToast(follow ? `${v.creator}をフォローしました` : `${v.creator}のフォローを外しました`);
+    });
+  }
 
   // コメントはまだ未実装
   slide.querySelector('[data-role="comment"]').addEventListener('click', ()=>{
@@ -975,10 +1301,38 @@ const feedObserver = new IntersectionObserver((entries)=>{
   });
 }, { threshold:[0,0.6,1] });
 
+// ---- 学年に合わせたおすすめ ----
+// 自分の学年の動画が「出やすく」なるように重みをつけてランダムに選ぶ。
+// 重みが小さい動画も確率は0ではないので、他学年・他ジャンルの動画も混ざる
+const FEED_BATCH_SIZE = 10;
+const FEED_RECENT_AVOID = 8; // 直近に出た動画はしばらく出さない（短い間隔での重複を防ぐ）
+function feedWeight(v, userGrade){
+  if(!userGrade) return 1;
+  if(v.grade === userGrade && userGrade !== 'other') return 3; // 自分の学年向け
+  if(v.grade === 'everyone') return 2;                            // 全学年向け（やる気・豆知識など）
+  const level = schoolLevelOf(userGrade);
+  if(level && schoolLevelOf(v.grade) === level) return 1.5;       // 同じ中学/高校の別学年
+  return 1;
+}
+// 重み付きで重複なしに n 本選ぶ（Efraimidis–Spirakis法：乱数^(1/重み) が大きい順）
+function pickWeighted(pool, n, weightOf){
+  return pool
+    .map(v=>({ v, key: Math.pow(Math.random(), 1 / weightOf(v)) }))
+    .sort((a, b)=> b.key - a.key)
+    .slice(0, n)
+    .map(x=> x.v);
+}
+
 function appendFeedBatch(){
-  const lastId = feedEl.lastElementChild ? feedEl.lastElementChild.dataset.id : null;
-  const batch = shuffled(VIDEOS);
-  if(batch.length > 1 && batch[0].id === lastId) batch.push(batch.shift()); // 同じ動画が2本続かないように
+  const recentIds = [...feedEl.children].slice(-FEED_RECENT_AVOID).map(el=> el.dataset.id);
+  let pool = VIDEOS.filter(v=> !recentIds.includes(v.id));
+  if(pool.length < FEED_BATCH_SIZE){
+    // 動画が少ないときは直前の1本だけ避ける（同じ動画が2本続かないように）
+    const lastId = recentIds[recentIds.length - 1];
+    pool = VIDEOS.filter(v=> v.id !== lastId);
+  }
+  const userGrade = (loadProfile() || {}).grade;
+  const batch = pickWeighted(pool, Math.min(FEED_BATCH_SIZE, pool.length), v=> feedWeight(v, userGrade));
   batch.forEach(v=>{
     const slide = createSlide(v);
     feedEl.appendChild(slide);
@@ -1085,7 +1439,7 @@ document.getElementById('nudge-start').addEventListener('click', ()=>{
     saveTimer();
   }
   showScreen('record');
-  showToast('学習タイマーをスタートしました');
+  showToast(timerSubject.id ? '学習タイマーをスタートしました' : 'タイマーをスタート！教科も選んでおこう');
 });
 
 renderFeed();
@@ -1095,15 +1449,18 @@ document.getElementById('search-open-btn').addEventListener('click', ()=> showSc
 document.getElementById('bell-btn').addEventListener('click', ()=> showToast('通知はまだありません'));
 
 // ---- 検索画面 ----
+let activeKind = 'all';
 let activeGrade = 'all';
 let activeSubject = 'all';
 let activeUnit = 'all';
 
 function renderChips(){
+  const kindWrap = document.getElementById('kind-chips');
   const gradeWrap = document.getElementById('grade-chips');
   const subjectWrap = document.getElementById('subject-chips');
   const unitWrap = document.getElementById('unit-chips');
 
+  kindWrap.innerHTML = chipHtml([{id:'all',label:'すべて'}, ...KINDS], activeKind);
   gradeWrap.innerHTML = chipHtml([{id:'all',label:'すべて'}, ...GRADES], activeGrade);
   subjectWrap.innerHTML = chipHtml([{id:'all',label:'すべて'}, ...SUBJECTS], activeSubject);
 
@@ -1113,6 +1470,7 @@ function renderChips(){
   const unitOptions = [{id:'all', label:'すべて'}, ...unitsForSubject.map(u=>({id:u, label:u}))];
   unitWrap.innerHTML = chipHtml(unitOptions, activeUnit);
 
+  kindWrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{ activeKind=c.dataset.id; renderChips(); renderResults(); }));
   gradeWrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{ activeGrade=c.dataset.id; renderChips(); renderResults(); }));
   subjectWrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{ activeSubject=c.dataset.id; activeUnit='all'; renderChips(); renderResults(); }));
   unitWrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{ activeUnit=c.dataset.id; renderChips(); renderResults(); }));
@@ -1121,9 +1479,11 @@ function chipHtml(list, activeId){
   return list.map(item=>`<button class="chip ${item.id===activeId?'active':''}" data-id="${item.id}">${item.label}</button>`).join('');
 }
 
+// 学年で絞り込んだときも「全学年向け」の動画は含める
 function filteredVideos(){
   return VIDEOS.filter(v=>
-    (activeGrade==='all' || v.grade===activeGrade) &&
+    (activeKind==='all' || kindOf(v)===activeKind) &&
+    (activeGrade==='all' || v.grade===activeGrade || v.grade==='everyone') &&
     (activeSubject==='all' || v.subject===activeSubject) &&
     (activeUnit==='all' || v.unit===activeUnit)
   );
@@ -1136,12 +1496,20 @@ const gradientBySubject = {
   science: 'linear-gradient(160deg, #2E6B4F, #10131A)',
   social: 'linear-gradient(160deg, #6B5A2E, #10131A)',
   other: 'linear-gradient(160deg, #4A3B63, #10131A)',
-  none: 'linear-gradient(160deg, var(--cta-from), var(--cta-to))', // 教科なし(啓発動画など)の既定カラー
 };
+// 教科のない動画は種類で色分け
+const gradientByKind = {
+  lesson: 'linear-gradient(160deg, #2B2E63, #10131A)',
+  motivation: 'linear-gradient(160deg, var(--cta-from), var(--cta-to))',
+  trivia: 'linear-gradient(160deg, #8A5A00, #10131A)',
+};
+function thumbGradientOf(v){
+  return kindOf(v) === 'lesson' ? (gradientBySubject[v.subject] || gradientByKind.lesson) : gradientByKind[kindOf(v)];
+}
 
 function metaTextOf(v){
-  const parts = [v.subject ? labelOf(SUBJECTS, v.subject) : null, v.unit || null].filter(Boolean);
-  return parts.length ? parts.join(' ・ ') : '啓発動画';
+  const parts = [kindOf(v) !== 'lesson' ? labelOf(KINDS, kindOf(v)) : null, subjectLabelOf(v) || null, v.unit || null].filter(Boolean);
+  return parts.length ? parts.join(' ・ ') : labelOf(KINDS, kindOf(v));
 }
 
 function renderResults(){
@@ -1154,8 +1522,8 @@ function renderResults(){
 
   grid.innerHTML = results.map(v=>`
     <button class="result-card" data-id="${v.id}">
-      <div class="result-thumb" style="background:${gradientBySubject[v.subject] || gradientBySubject.none}">
-        <span class="badge">${labelOf(GRADES, v.grade)}</span>
+      <div class="result-thumb" style="background:${thumbGradientOf(v)}">
+        <span class="badge">${escapeHtml(gradeLabelOf(v))}</span>
         <span class="result-duration">${v.duration}秒</span>
       </div>
       <p class="result-title">${escapeHtml(v.title)}</p>
@@ -1183,14 +1551,6 @@ renderResults();
 
 // ---- 記録画面 ----
 // 記録はすべてlocalStorageに保存（この端末のブラウザ内のみ。サーバーができたら送信先を切り替える）
-function loadJSON(key, fallback){
-  try{ return JSON.parse(localStorage.getItem(key)) ?? fallback; }
-  catch(e){ return fallback; }
-}
-function saveJSON(key, value){
-  try{ localStorage.setItem(key, JSON.stringify(value)); return true; }
-  catch(e){ return false; } // プライベートモード等で保存できない
-}
 
 // 動画の視聴記録：画面にはまだ出していないが、後で「何本見たか」を表示するために溜めておく
 const WATCH_LOG_KEY = 'zonenow_watch_log';
@@ -1213,13 +1573,13 @@ const SUBJECT_COLORS = {
   other: '#008300',
   none: '#9085e9',
 };
-const STUDY_SUBJECT_OPTIONS = [{ id:'', label:'指定なし' }, ...SUBJECTS];
 const STUDY_LOG_KEY = 'zonenow_study_log';
 const STUDY_TIMER_KEY = 'zonenow_study_timer';
 const MIN_STUDY_SECONDS = 60; // 誤タップで数秒の記録が残らないように
 const MAX_MANUAL_MINUTES = 1440;
 
-function studySubjectLabel(id){ return id ? labelOf(SUBJECTS, id) : '指定なし'; }
+// 教科なしの記録は旧バージョンのデータのみ（今は教科の選択が必須）
+function studyEntryLabel(e){ return subjectLabelOf(e) || '未分類'; }
 function studyColor(id){ return SUBJECT_COLORS[id] || SUBJECT_COLORS.none; }
 
 // 端末のローカル日付を YYYY-MM-DD で（文字列のまま大小比較できる）
@@ -1234,11 +1594,11 @@ function formatStudyTime(seconds){
 }
 
 function loadStudyLog(){ return loadJSON(STUDY_LOG_KEY, []); }
-function addStudyEntry(subject, seconds, date, source){
+function addStudyEntry(subject, subjectOther, seconds, date, source){
   const log = loadStudyLog();
   log.push({
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    subject, seconds, date, source, createdAt: Date.now(),
+    subject, subjectOther, seconds, date, source, createdAt: Date.now(),
   });
   if(!saveJSON(STUDY_LOG_KEY, log)){
     showToast('この端末では記録を保存できませんでした');
@@ -1250,14 +1610,24 @@ function addStudyEntry(subject, seconds, date, source){
 // ---- 学習タイマー ----
 // 経過時間は「開始時刻」との差で計算する。画面を切り替えても、リロードしても、
 // スマホがスリープしても正しい時間になる（1秒ごとのカウントアップだとズレる）
-let timerState = loadJSON(STUDY_TIMER_KEY, null) || { subject:'', startedAt:null, accumulatedMs:0 };
+let timerState = loadJSON(STUDY_TIMER_KEY, null) || { subject:null, subjectOther:'', startedAt:null, accumulatedMs:0 };
+if(!timerState.subject) timerState.subject = null; // 旧バージョンの「指定なし」('')は未選択に戻す
+
+// 教科は前回選んだものを覚えておく（タイマーを止めてもリセットしない）
+const timerSubject = createChoice('timer-subject-chips', SUBJECTS,
+  { id: timerState.subject, other: timerState.subjectOther },
+  ()=>{
+    timerState.subject = timerSubject.id;
+    timerState.subjectOther = timerSubject.other;
+    saveTimer();
+  });
 
 function timerElapsedMs(){
   return timerState.accumulatedMs + (timerState.startedAt ? Date.now() - timerState.startedAt : 0);
 }
 function saveTimer(){ saveJSON(STUDY_TIMER_KEY, timerState); }
 function resetTimer(){
-  timerState = { subject: timerState.subject, startedAt:null, accumulatedMs:0 };
+  timerState = { subject: timerState.subject, subjectOther: timerState.subjectOther, startedAt:null, accumulatedMs:0 };
   saveTimer();
 }
 function formatClock(ms){
@@ -1278,14 +1648,6 @@ function renderTimer(){
   document.getElementById('timer-toggle').textContent = running ? '一時停止' : (hasTime ? '再開' : '開始');
   document.getElementById('timer-finish').disabled = !hasTime;
   document.getElementById('timer-discard').style.display = hasTime ? 'block' : 'none';
-
-  const wrap = document.getElementById('timer-subject-chips');
-  wrap.innerHTML = chipHtml(STUDY_SUBJECT_OPTIONS, timerState.subject);
-  wrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{
-    timerState.subject = c.dataset.id;
-    saveTimer();
-    renderTimer();
-  }));
 }
 
 document.getElementById('timer-toggle').addEventListener('click', ()=>{
@@ -1305,14 +1667,16 @@ document.getElementById('timer-finish').addEventListener('click', ()=>{
     showToast('1分未満の学習は記録されません');
     return;
   }
-  if(!addStudyEntry(timerState.subject, seconds, localDateKey(), 'timer')) return;
+  const subjectError = timerSubject.error('教科');
+  if(subjectError){ showToast(subjectError); return; }
+  if(!addStudyEntry(timerSubject.id, timerSubject.other, seconds, localDateKey(), 'timer')) return;
   resetTimer();
   renderRecordScreen();
   showToast(`${formatStudyTime(seconds)}を記録しました`);
 });
 
-document.getElementById('timer-discard').addEventListener('click', ()=>{
-  if(!confirm('計測中のタイマーを記録せずに破棄します。よろしいですか？')) return;
+document.getElementById('timer-discard').addEventListener('click', async ()=>{
+  if(!await confirmDialog('計測中のタイマーを記録せずに破棄します。よろしいですか？', '破棄する')) return;
   resetTimer();
   renderTimer();
 });
@@ -1320,7 +1684,7 @@ document.getElementById('timer-discard').addEventListener('click', ()=>{
 setInterval(()=>{ if(timerState.startedAt) renderTimerDisplay(); }, 1000);
 
 // ---- 手入力 ----
-let manualSubject = '';
+const manualSubject = createChoice('manual-subject-chips', SUBJECTS);
 const manualDateInput = document.getElementById('manual-date');
 const manualMinutesInput = document.getElementById('manual-minutes');
 
@@ -1328,15 +1692,11 @@ function renderManualForm(){
   const today = localDateKey();
   manualDateInput.max = today;
   if(!manualDateInput.value) manualDateInput.value = today;
-  const wrap = document.getElementById('manual-subject-chips');
-  wrap.innerHTML = chipHtml(STUDY_SUBJECT_OPTIONS, manualSubject);
-  wrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{
-    manualSubject = c.dataset.id;
-    renderManualForm();
-  }));
 }
 
 document.getElementById('manual-add').addEventListener('click', ()=>{
+  const subjectError = manualSubject.error('教科');
+  if(subjectError){ showToast(subjectError); return; }
   const minutes = Number(manualMinutesInput.value);
   const date = manualDateInput.value;
   if(!Number.isInteger(minutes) || minutes < 1 || minutes > MAX_MANUAL_MINUTES){
@@ -1347,40 +1707,53 @@ document.getElementById('manual-add').addEventListener('click', ()=>{
     showToast('日付は今日以前の日付を選んでください');
     return;
   }
-  if(!addStudyEntry(manualSubject, minutes * 60, date, 'manual')) return;
+  if(!addStudyEntry(manualSubject.id, manualSubject.other, minutes * 60, date, 'manual')) return;
   manualMinutesInput.value = '';
   renderRecordScreen();
   showToast(`${formatStudyTime(minutes * 60)}を記録しました`);
 });
 
 // ---- 集計・一覧 ----
-function renderRecordScreen(){
-  const log = loadStudyLog();
+// 今日 / 直近7日間 / 累計の勉強時間（秒）。記録画面とプロフィールで共通
+function studyTotals(log = loadStudyLog()){
   const today = localDateKey();
   const now = new Date();
   const weekStart = localDateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6));
   const sum = entries=> entries.reduce((s, e)=> s + e.seconds, 0);
+  return {
+    today: sum(log.filter(e=> e.date === today)),
+    week: sum(log.filter(e=> e.date >= weekStart && e.date <= today)),
+    total: sum(log),
+  };
+}
 
-  document.getElementById('study-today').textContent = formatStudyTime(sum(log.filter(e=> e.date === today)));
-  document.getElementById('study-week').textContent = formatStudyTime(sum(log.filter(e=> e.date >= weekStart && e.date <= today)));
-  document.getElementById('study-total').textContent = formatStudyTime(sum(log));
+function renderRecordScreen(){
+  const log = loadStudyLog();
+  const totals = studyTotals(log);
+  document.getElementById('study-today').textContent = formatStudyTime(totals.today);
+  document.getElementById('study-week').textContent = formatStudyTime(totals.week);
+  document.getElementById('study-total').textContent = formatStudyTime(totals.total);
 
-  const bySubject = {};
+  // 「その他」は入力された教科名ごとに分けて集計する（例：情報・美術）
+  const groups = new Map();
   log.forEach(e=>{
-    const key = SUBJECT_COLORS[e.subject] ? e.subject : 'none';
-    bySubject[key] = (bySubject[key] || 0) + e.seconds;
+    const subject = SUBJECT_COLORS[e.subject] ? e.subject : 'none';
+    const key = subject === 'other' ? `other:${e.subjectOther || ''}` : subject;
+    const g = groups.get(key) || { subject, label: studyEntryLabel(e), seconds: 0 };
+    g.seconds += e.seconds;
+    groups.set(key, g);
   });
-  const maxSeconds = Math.max(1, ...Object.values(bySubject));
-  document.getElementById('study-bars').innerHTML = [...SUBJECTS.map(s=>s.id), 'none']
-    .filter(key=> bySubject[key])
-    .map(key=>`
+  const order = [...SUBJECTS.map(s=>s.id), 'none'];
+  const rows = [...groups.values()].sort((a, b)=> order.indexOf(a.subject) - order.indexOf(b.subject) || b.seconds - a.seconds);
+  const maxSeconds = Math.max(1, ...rows.map(r=> r.seconds));
+  document.getElementById('study-bars').innerHTML = rows.map(r=>`
       <div class="record-bar-row">
         <div class="record-bar-head">
-          <span class="label">${key === 'none' ? '指定なし' : labelOf(SUBJECTS, key)}</span>
-          <span class="count">${formatStudyTime(bySubject[key])}</span>
+          <span class="label">${escapeHtml(r.label)}</span>
+          <span class="count">${formatStudyTime(r.seconds)}</span>
         </div>
         <div class="record-bar-track">
-          <div class="record-bar-fill" style="width:${Math.round(bySubject[key] / maxSeconds * 100)}%; background:${SUBJECT_COLORS[key]};"></div>
+          <div class="record-bar-fill" style="width:${Math.round(r.seconds / maxSeconds * 100)}%; background:${SUBJECT_COLORS[r.subject]};"></div>
         </div>
       </div>
     `).join('');
@@ -1394,7 +1767,7 @@ function renderRecordScreen(){
       <div class="study-row">
         <span class="study-dot" style="background:${studyColor(e.subject)}"></span>
         <div class="study-row-main">
-          <div class="study-row-subject">${studySubjectLabel(e.subject)}</div>
+          <div class="study-row-subject">${escapeHtml(studyEntryLabel(e))}</div>
           <div class="study-row-meta">${Number(m)}/${Number(d)} ・ ${e.source === 'timer' ? 'タイマー' : '手入力'}</div>
         </div>
         <div class="study-row-time">${formatStudyTime(e.seconds)}</div>
@@ -1411,24 +1784,23 @@ function renderRecordScreen(){
   renderManualForm();
 }
 
-document.getElementById('study-list').addEventListener('click', (e)=>{
+document.getElementById('study-list').addEventListener('click', async (e)=>{
   const btn = e.target.closest('.study-row-delete');
-  if(!btn || !confirm('この記録を削除しますか？')) return;
+  if(!btn || !await confirmDialog('この記録を削除しますか？', '削除する')) return;
   saveJSON(STUDY_LOG_KEY, loadStudyLog().filter(entry=> entry.id !== btn.dataset.id));
   renderRecordScreen();
 });
 
-document.getElementById('record-reset').addEventListener('click', ()=>{
-  if(!confirm('勉強時間の記録をすべて削除します。よろしいですか？')) return;
+document.getElementById('record-reset').addEventListener('click', async ()=>{
+  if(!await confirmDialog('勉強時間の記録をすべて削除します。元に戻せません。よろしいですか？', 'すべて削除')) return;
   try{ localStorage.removeItem(STUDY_LOG_KEY); }catch(e){}
   renderRecordScreen();
   showToast('勉強記録を削除しました');
 });
 
-// ---- AI / プロフィール：準備中プレースホルダーの中身 ----
+// ---- AI：準備中プレースホルダーの中身 ----
 const PLACEHOLDER_CONTENT = {
   ai: { iconName:'sparkle', title:'AIコーチ', sub:'あなた専用の学習アドバイスを準備中です' },
-  profile: { iconName:'user', title:'プロフィール', sub:'アカウント機能は準備中です' },
 };
 document.querySelectorAll('[data-placeholder]').forEach(el=>{
   const c = PLACEHOLDER_CONTENT[el.dataset.placeholder];
@@ -1447,20 +1819,12 @@ document.getElementById('post-upload-icon').innerHTML = icon('plus');
 let postSelectedFile = null;
 let postSelectedDuration = 0;
 let postMediaType = 'video';
-let postSubject = ''; // 空文字=「教科なし」(啓発動画など、学年ターゲットだけで教科・単元は必須にしない)
-let postGrade = null;
 
+// 教科は任意（''=なし）。やる気・豆知識の動画は教科なしで投稿できる
 const POST_SUBJECT_OPTIONS = [{ id:'', label:'なし' }, ...SUBJECTS];
-
-function renderPostChips(){
-  const subjectWrap = document.getElementById('post-subject-chips');
-  const gradeWrap = document.getElementById('post-grade-chips');
-  subjectWrap.innerHTML = chipHtml(POST_SUBJECT_OPTIONS, postSubject);
-  gradeWrap.innerHTML = chipHtml(GRADES, postGrade);
-  subjectWrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{ postSubject=c.dataset.id; renderPostChips(); }));
-  gradeWrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{ postGrade=c.dataset.id; renderPostChips(); }));
-}
-renderPostChips();
+const postKind = createChoice('post-kind-chips', KINDS, { id:'lesson' });
+const postTarget = createChoice('post-grade-chips', TARGETS);
+const postSubject = createChoice('post-subject-chips', POST_SUBJECT_OPTIONS, { id:'' });
 
 const postFileInput = document.getElementById('post-file-input');
 const postUploadLabel = document.getElementById('post-upload-label');
@@ -1498,8 +1862,9 @@ function resetPostForm(){
   postSelectedFile = null;
   postSelectedDuration = 0;
   postMediaType = 'video';
-  postSubject = '';
-  postGrade = null;
+  postKind.set('lesson');
+  postTarget.set(null);
+  postSubject.set('');
   document.getElementById('post-title').value = '';
   document.getElementById('post-unit').value = '';
   postFileInput.value = '';
@@ -1509,7 +1874,6 @@ function resetPostForm(){
   postPreviewImage.removeAttribute('src');
   postPreviewImage.style.display = 'none';
   postUploadLabel.classList.remove('has-media');
-  renderPostChips();
 }
 
 document.getElementById('post-submit').addEventListener('click', ()=>{
@@ -1518,12 +1882,16 @@ document.getElementById('post-submit').addEventListener('click', ()=>{
 
   if(!postSelectedFile){ showToast('動画か写真を選択してください'); return; }
   if(!title){ showToast('タイトルを入力してください'); return; }
-  if(!postGrade){ showToast('ターゲット学年を選択してください'); return; }
+  const choiceError = postTarget.error('ターゲット学年') || postSubject.error('教科');
+  if(choiceError){ showToast(choiceError); return; }
 
   const newPost = {
     id: 'u' + Date.now(),
-    subject: postSubject,
-    grade: postGrade,
+    kind: postKind.id,
+    subject: postSubject.id,
+    subjectOther: postSubject.other,
+    grade: postTarget.id,
+    gradeOther: postTarget.other,
     unit,
     title,
     creator: (loadProfile() || {}).name || 'あなた',
@@ -1542,43 +1910,122 @@ document.getElementById('post-submit').addEventListener('click', ()=>{
 
 document.getElementById('post-back').addEventListener('click', ()=> showScreen('home'));
 
-// ---- 初回設定（アカウント名・学年） ----
+// ---- 初回設定・プロフィール編集（同じ画面を使い回す） ----
 // 今は端末内に保存するだけ。ログイン機能ができたらアカウント情報としてサーバーに送る
-const PROFILE_KEY = 'zonenow_profile';
-const PROFILE_NAME_MAX = 20;
-let onboardingGrade = null;
+const onboardingGrade = createChoice('onboarding-grade-chips', GRADES);
+let profileEditMode = false;
 
-function loadProfile(){
-  const p = loadJSON(PROFILE_KEY, null);
-  return p && p.name && p.grade ? p : null;
+function openProfileEditor(){
+  const p = loadProfile();
+  profileEditMode = true;
+  document.getElementById('onboarding-name').value = p.name;
+  onboardingGrade.set(p.grade, p.gradeOther || '');
+  document.getElementById('onboarding-lead').textContent = 'アカウント名と学年を変更できます。';
+  document.getElementById('onboarding-submit').textContent = '保存する';
+  document.getElementById('onboarding-back').style.display = 'flex';
+  showScreen('onboarding');
 }
 
-function renderOnboardingChips(){
-  const wrap = document.getElementById('onboarding-grade-chips');
-  wrap.innerHTML = chipHtml(GRADES, onboardingGrade);
-  wrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{
-    onboardingGrade = c.dataset.id;
-    renderOnboardingChips();
-  }));
-}
+document.getElementById('onboarding-back').addEventListener('click', ()=> showScreen('profile'));
 
 document.getElementById('onboarding-submit').addEventListener('click', ()=>{
   const name = document.getElementById('onboarding-name').value.trim();
   if(!name){ showToast('アカウント名を入力してください'); return; }
   if(name.length > PROFILE_NAME_MAX){ showToast(`アカウント名は${PROFILE_NAME_MAX}文字以内にしてください`); return; }
-  if(!onboardingGrade){ showToast('学年を選択してください'); return; }
-  if(!saveJSON(PROFILE_KEY, { name, grade: onboardingGrade, createdAt: Date.now() })){
+  const gradeError = onboardingGrade.error('学年');
+  if(gradeError){ showToast(gradeError); return; }
+
+  const prev = loadProfile() || {};
+  const gradeChanged = prev.grade !== onboardingGrade.id;
+  const profile = { ...prev, name, grade: onboardingGrade.id, gradeOther: onboardingGrade.other, createdAt: prev.createdAt || Date.now() };
+  if(!saveJSON(PROFILE_KEY, profile)){
     showToast('この端末では保存できませんでした');
     return;
   }
-  showScreen('home');
-  showToast(`ようこそ、${name}さん`);
+
+  if(profileEditMode){
+    if(gradeChanged) renderFeed(); // おすすめの学年を切り替える
+    showScreen('profile');
+    showToast('プロフィールを保存しました');
+  } else {
+    renderFeed(); // 学年に合わせたおすすめで作り直す
+    showScreen('home');
+    showToast(`ようこそ、${name}さん`);
+  }
 });
 
-if(!loadProfile()){
-  renderOnboardingChips();
-  showScreen('onboarding');
+// ---- プロフィール画面 ----
+document.getElementById('friends-icon').innerHTML = icon('users');
+document.getElementById('profile-edit').addEventListener('click', openProfileEditor);
+
+function renderProfileScreen(){
+  const p = loadProfile();
+  if(!p) return;
+
+  const avatarEl = document.getElementById('profile-avatar');
+  avatarEl.textContent = '';
+  if(isSafeAvatar(p.avatar)){
+    const img = document.createElement('img');
+    img.src = p.avatar;
+    img.alt = '';
+    avatarEl.appendChild(img);
+  } else {
+    avatarEl.textContent = p.name.charAt(0);
+  }
+  document.getElementById('profile-name').textContent = p.name;
+  document.getElementById('profile-grade').textContent = gradeLabelOf(p);
+
+  const following = loadFollowing();
+  document.getElementById('profile-following-count').textContent = following.length;
+  document.getElementById('profile-followers-count').textContent = 0; // サーバー機能ができるまでは常に0
+  document.getElementById('profile-friends-count').textContent = 0;
+  document.getElementById('profile-following-list').innerHTML = following.map(n=> `<span class="chip">${escapeHtml(n)}</span>`).join('');
+  document.getElementById('profile-following-empty').style.display = following.length ? 'none' : 'block';
+
+  const totals = studyTotals();
+  document.getElementById('profile-study-today').textContent = formatStudyTime(totals.today);
+  document.getElementById('profile-study-week').textContent = formatStudyTime(totals.week);
 }
+
+// アイコン画像：中央を正方形に切り抜き、小さく縮小してから端末内に保存する（容量対策）
+const AVATAR_SIZE = 192;
+function resizeImageToDataUrl(file, size){
+  return new Promise((resolve, reject)=>{
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = ()=>{
+      const side = Math.min(img.naturalWidth, img.naturalHeight);
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = size;
+      canvas.getContext('2d').drawImage(
+        img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('image load failed')); };
+    img.src = url;
+  });
+}
+
+document.getElementById('profile-avatar-input').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+  if(!file.type.startsWith('image/')){ showToast('画像ファイルを選んでください'); return; }
+  try{
+    const avatar = await resizeImageToDataUrl(file, AVATAR_SIZE);
+    if(!saveJSON(PROFILE_KEY, { ...loadProfile(), avatar })){
+      showToast('この端末では保存できませんでした');
+      return;
+    }
+    renderProfileScreen();
+    showToast('アイコンを変更しました');
+  }catch(err){
+    showToast('この画像は読み込めませんでした');
+  }
+});
+
+if(!loadProfile()) showScreen('onboarding');
 
 // ---- PWA: ホーム画面追加バナー ----
 let deferredPrompt = null;

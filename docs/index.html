@@ -458,6 +458,7 @@
       <button id="btn-go-gacha" class="btn btn-primary" style="display:none;">🎁 ガチャを回す</button>
       <button id="btn-done-home" class="btn btn-primary">ホームに戻る</button>
       <button id="btn-view-collection" class="btn btn-text">📖 図鑑を見る</button>
+      <button id="btn-enable-notifications" class="btn btn-text" style="display:none;">🔔 お知らせ通知を受け取る</button>
     </div>
   </section>
 
@@ -567,7 +568,22 @@ const CONFIG = {
   ],
   FIRST_PROMPT_AFTER: 15,        // 15本見たら最初のプロンプト
   PROMPT_INTERVAL_AFTER_FIRST: 10, // その後は10本ごとにプロンプト
-  LOG_ENDPOINT_URL: "https://script.google.com/macros/s/AKfycbw-lxIN21S855TfWsZ5d5iuemgBKPY5hxTcWkQP7iQZ3r-f0hqnn0JsqV4Ly4sRmp3Mxg/exec"
+  LOG_ENDPOINT_URL: "https://script.google.com/macros/s/AKfycbw-lxIN21S855TfWsZ5d5iuemgBKPY5hxTcWkQP7iQZ3r-f0hqnn0JsqV4Ly4sRmp3Mxg/exec",
+
+  // ★プッシュ通知(Firebase Cloud Messaging)用の設定。
+  //   ここに入っている値は「クライアント側の公開設定」で、Firebase公式も
+  //   このまま画面のコード等に埋め込む想定の値なので、GitHubに載せても問題ない
+  //   （サーバー側だけが使う秘密鍵は、別途Apps Script側にだけ保存してある）。
+  FIREBASE_CONFIG: {
+    apiKey: "AIzaSyBG6ESfeASNy00Lw0sHRsZkePP1U3krIV8",
+    authDomain: "zonenow1-13eab.firebaseapp.com",
+    projectId: "zonenow1-13eab",
+    storageBucket: "zonenow1-13eab.firebasestorage.app",
+    messagingSenderId: "133713143621",
+    appId: "1:133713143621:web:41070d555bfa0b9f03002c",
+    measurementId: "G-RVN3GQHRT1"
+  },
+  FCM_VAPID_KEY: "BNTMttCbhr8jc-H8Lcvu4T8JfJJyINcN2KOfop-Lzuthi-KL4JdVOZw8uAi4eO47ui6q1Yq1qYlgXpjSHO0NFoo"
 };
 
 // 今回のセッション（アプリを開いてから、次に裏に回す/閉じるまで）の行動記録。
@@ -1894,6 +1910,7 @@ function stopStopwatch(){
 
   maybeAwardGachaSpin(stopwatchSec); // リセットする前の経過時間で、ガチャの権利を判定する
   renderDoneGachaStatus();
+  renderNotificationButton(); // 完了画面を表示するたびに、通知ボタンの要・不要を見直す
 
   stopwatchSec = 0;
   stopwatchStartedAt = null;
@@ -2476,10 +2493,100 @@ if ("serviceWorker" in navigator){
     });
   });
 }
+
+/* ============================================================
+   ⑧ プッシュ通知(Firebase Cloud Messaging)
+   ------------------------------------------------------------
+   「アプリを開かなくなってきた人に、思い出してもらうきっかけを送る」
+   ための仕組み。通知を許可してもらった端末の識別情報(トークン)を
+   スプレッドシートに保存しておき、Apps Script側の定期実行が
+   「しばらく開いていない人」にだけ送信する(送信自体はApps Script側の
+   仕事で、ここではその送り先の登録だけを行う)。
+   対応していないブラウザ(古いSafariなど)では、ボタン自体を出さない。
+============================================================ */
+const PUSH_TOKEN_SAVED_KEY = "zonenow_mvp_push_token_saved";
+const btnEnableNotifications = document.getElementById("btn-enable-notifications");
+
+function isPushSupported(){
+  return "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
+}
+
+// 完了画面を表示するたびに、通知ボタンを出すべきかどうかを判断する
+// (すでに登録済み／ブラウザが拒否した／そもそも対応していない、のいずれかなら出さない)
+function renderNotificationButton(){
+  if (!btnEnableNotifications) return;
+  if (!isPushSupported()){
+    btnEnableNotifications.style.display = "none";
+    return;
+  }
+  const alreadySaved = localStorage.getItem(PUSH_TOKEN_SAVED_KEY) === "true";
+  if (Notification.permission === "denied" || alreadySaved){
+    btnEnableNotifications.style.display = "none";
+    return;
+  }
+  btnEnableNotifications.style.display = "";
+}
+
+async function enablePushNotifications(){
+  if (!isPushSupported() || !CONFIG.LOG_ENDPOINT_URL) return;
+
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted"){
+      renderNotificationButton(); // 拒否された場合は、以後ボタンを出さなくなる
+      return;
+    }
+
+    // 通知の受信・表示を担当する、専用のService Workerを登録する
+    // (アプリ本体のsw.js(=画面のキャッシュ担当)とは別ファイル)
+    const registration = await navigator.serviceWorker.register("firebase-messaging-sw.js");
+
+    if (!firebase.apps || firebase.apps.length === 0){
+      firebase.initializeApp(CONFIG.FIREBASE_CONFIG);
+    }
+    const messaging = firebase.messaging();
+    const token = await messaging.getToken({
+      vapidKey: CONFIG.FCM_VAPID_KEY,
+      serviceWorkerRegistration: registration
+    });
+
+    if (!token){
+      debugLog("FCMトークンを取得できなかった");
+      return;
+    }
+
+    // このトークン(端末の宛先情報)をApps Script側に保存してもらう
+    fetch(CONFIG.LOG_ENDPOINT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        type: "register_push_token",
+        name: getUserName(),
+        token: token
+      })
+    }).catch(() => {});
+
+    localStorage.setItem(PUSH_TOKEN_SAVED_KEY, "true");
+    recordEvent("通知を許可");
+    btnEnableNotifications.textContent = "🔔 通知の設定ができました";
+    setTimeout(() => { btnEnableNotifications.style.display = "none"; }, 2000);
+  } catch (err){
+    debugLog("通知の設定でエラー: " + err.toString());
+  }
+}
+
+if (btnEnableNotifications){
+  btnEnableNotifications.addEventListener("click", enablePushNotifications);
+}
 </script>
 
 <!-- YouTube IFrame Player APIの本体を読み込む -->
 <script src="https://www.youtube.com/iframe_api" onload="debugLog('iframe_apiスクリプトの読み込み成功')" onerror="debugLog('★iframe_apiスクリプトの読み込み自体に失敗')"></script>
+
+<!-- プッシュ通知(Firebase Cloud Messaging)用のSDK。ビルド不要のcompat版を使う -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js"></script>
 
 </body>
 </html>

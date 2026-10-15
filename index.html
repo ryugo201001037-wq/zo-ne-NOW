@@ -71,6 +71,23 @@
   .short-slide video, .short-slide .short-media-image{
     position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
   }
+  /* 複数枚の写真：横スワイプで切り替え */
+  .photo-track{
+    position:absolute; inset:0; display:flex; overflow-x:auto; overflow-y:hidden;
+    scroll-snap-type:x mandatory; overscroll-behavior-x:contain;
+  }
+  .photo-page{ position:relative; flex:0 0 100%; height:100%; scroll-snap-align:start; scroll-snap-stop:always; }
+  .photo-dots{
+    position:absolute; left:0; right:0; bottom:calc(var(--safe-bottom) + 78px); z-index:5;
+    display:flex; justify-content:center; gap:6px; pointer-events:none;
+  }
+  .photo-dots span{ width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.4); transition:background .2s, width .2s; }
+  .photo-dots span.active{ width:16px; border-radius:99px; background:#fff; }
+  .photo-count{
+    position:absolute; top:calc(var(--safe-top) + 68px); right:16px; z-index:5;
+    padding:4px 10px; border-radius:99px; background:rgba(0,0,0,.45); backdrop-filter:blur(6px);
+    font-family:var(--font-ui); font-size:11.5px; font-weight:700; color:#fff;
+  }
   .short-slide::after{
     content:''; position:absolute; inset:0;
     background:linear-gradient(180deg, rgba(0,0,0,.35) 0%, rgba(0,0,0,0) 22%, rgba(0,0,0,0) 55%, rgba(0,0,0,.75) 100%);
@@ -165,11 +182,6 @@
   /* ---- 下部キャプション：タグ・説明・音源 ---- */
   .caption-block{
     position:absolute; left:16px; right:78px; bottom:calc(var(--safe-bottom) + 96px); z-index:4;
-  }
-  .caption-tag{
-    display:inline-block; font-family:var(--font-ui); font-size:11.5px; font-weight:700;
-    background:rgba(255,255,255,.16); backdrop-filter:blur(4px);
-    padding:4px 10px; border-radius:99px; margin-bottom:8px;
   }
   .caption-text{ font-size:15px; font-weight:500; line-height:1.5; margin:0 0 6px; text-shadow:0 1px 6px rgba(0,0,0,.4); }
   .caption-hashtags{ font-family:var(--font-ui); font-size:12px; color:rgba(255,255,255,.8); margin:0 0 4px; }
@@ -491,7 +503,16 @@
     border-radius:16px; background:rgba(255,255,255,.06); border:1.5px dashed rgba(255,255,255,.25);
     overflow:hidden; margin:0 auto 22px; cursor:pointer;
   }
-  .post-upload video, .post-upload img{ width:100%; height:100%; object-fit:cover; display:none; }
+  .post-upload video{ width:100%; height:100%; object-fit:cover; display:none; }
+  .post-preview-images{
+    position:absolute; inset:0; display:none; overflow-x:auto; scroll-snap-type:x mandatory;
+  }
+  .post-preview-images img{ flex:0 0 100%; width:100%; height:100%; object-fit:cover; scroll-snap-align:start; }
+  .post-preview-count{
+    position:absolute; top:8px; right:8px; display:none; padding:3px 9px; border-radius:99px;
+    background:rgba(0,0,0,.55); font-family:var(--font-ui); font-size:11px; font-weight:700; color:#fff;
+  }
+  .post-upload-hint{ font-size:11px; color:rgba(255,255,255,.4); }
   .post-upload.has-media .post-upload-empty{ display:none; }
   .post-upload-empty{
     position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -513,6 +534,13 @@
     border:1px solid rgba(255,255,255,.14); color:#fff; font-family:var(--font-ui); font-size:14px;
   }
   .post-input::placeholder{ color:rgba(255,255,255,.35); }
+  .tag-input-row{ display:flex; gap:8px; }
+  .tag-input-row .post-input{ flex:1; min-width:0; }
+  .tag-add-btn{ flex:0 0 auto; padding:0 18px; }
+  .tag-list{ margin-top:10px; }
+  .tag-list:empty{ display:none; }
+  .tag-chip{ display:inline-flex; align-items:center; gap:4px; padding:7px 8px 7px 13px; }
+  .tag-chip button{ color:rgba(255,255,255,.55); font-size:15px; line-height:1; padding:0 4px; }
   .dark-screen .chip{ background:rgba(255,255,255,.07); border-color:rgba(255,255,255,.16); color:#fff; }
   .dark-screen .chip.active{
     background:linear-gradient(135deg, var(--cta-from), var(--cta-to));
@@ -854,16 +882,17 @@
     <div class="post-form-wrap">
       <div class="post-form-header">
         <button class="back-btn" id="post-back">←</button>
-        <h1 class="post-form-title">動画を投稿</h1>
+        <h1 class="post-form-title">動画・写真を投稿</h1>
       </div>
 
       <label class="post-upload" id="post-upload-label">
-        <input type="file" id="post-file-input" accept="video/*,image/*" hidden />
+        <input type="file" id="post-file-input" accept="video/*,image/*" multiple hidden />
         <video id="post-preview-video" muted playsinline></video>
-        <img id="post-preview-image" alt="" />
+        <div class="post-preview-images" id="post-preview-images"></div>
+        <span class="post-preview-count" id="post-preview-count"></span>
         <div class="post-upload-empty">
           <div class="post-upload-icon" id="post-upload-icon"></div>
-          <p>タップして動画・写真を選択</p>
+          <p>タップして動画・写真を選択<br><span class="post-upload-hint">写真は最大10枚まで選べます</span></p>
         </div>
       </label>
 
@@ -890,8 +919,17 @@
       </div>
 
       <div class="post-field">
-        <label class="post-label">単元（任意）</label>
-        <input type="text" class="post-input" id="post-unit" placeholder="例：二次関数（やる気/豆知識なら空欄でOK）" maxlength="20" />
+        <label class="post-label">単元（任意・検索用）</label>
+        <input type="text" class="post-input" id="post-unit" placeholder="例：二次関数（ホームには表示されません）" maxlength="20" />
+      </div>
+
+      <div class="post-field">
+        <label class="post-label" for="post-tag-input">ハッシュタグ（任意・最大5個）</label>
+        <div class="tag-input-row">
+          <input type="text" class="post-input" id="post-tag-input" placeholder="例：テスト対策" maxlength="40" enterkeyhint="done" />
+          <button class="study-btn tag-add-btn" id="post-tag-add">追加</button>
+        </div>
+        <div class="chip-row tag-list" id="post-tag-list"></div>
       </div>
 
       <p class="post-note">※ 現在はデモ版です。投稿者名には最初に設定したアカウント名が使われます。投稿した動画・写真はこの端末・このタブの中だけで表示され、リロードすると消えます。</p>
@@ -1263,7 +1301,9 @@ const countedSlides = new WeakSet(); // 視聴本数に数え済みのスライ�
 let viewedCount = 0;
 let lastNudgeAt = 0;
 
+// 投稿者が付けたハッシュタグがあればそれを、なければ種類・教科・学年から自動で付ける
 function hashtagsOf(v){
+  if(v.hashtags && v.hashtags.length) return v.hashtags.map(t=> '#' + t).join(' ');
   const tags = { lesson:['#勉強'], motivation:['#やる気', '#勉強習慣'], trivia:['#豆知識', '#雑学'] }[kindOf(v)].slice();
   const subject = subjectLabelOf(v);
   if(subject) tags.push('#' + subject);
@@ -1286,15 +1326,12 @@ function createSlide(v){
   slide.dataset.id = v.id;
   slide.innerHTML = `
     <div class="zone-meter"><div class="zone-meter-fill"></div></div>
-    ${isImage
-      ? `<img class="short-media-image" src="${v.short}" alt="" />`
-      : `<video src="${v.short}" muted loop playsinline preload="metadata"></video>`}
+    ${isImage ? photoMediaHtml(v) : `<video src="${v.short}" muted loop playsinline preload="metadata"></video>`}
 
     <div class="short-top">
       ${kindOf(v) !== 'lesson' ? `<span class="badge kind-${kindOf(v)}">${labelOf(KINDS, kindOf(v))}</span>` : ''}
       ${v.subject ? `<span class="badge subject">${escapeHtml(subjectLabelOf(v))}</span>` : ''}
       <span class="badge">${escapeHtml(gradeLabelOf(v))}</span>
-      ${v.unit ? `<span class="badge">${escapeHtml(v.unit)}</span>` : ''}
     </div>
 
     <div class="action-rail">
@@ -1322,7 +1359,6 @@ function createSlide(v){
     </div>
 
     <div class="caption-block">
-      ${v.unit ? `<span class="caption-tag">#${escapeHtml(v.unit)}</span>` : ''}
       <p class="caption-text">${escapeHtml(v.title)}</p>
       <p class="caption-hashtags">${escapeHtml(hashtagsOf(v))} ・ @${escapeHtml(v.creator)}</p>
       <p class="caption-music">♪ オリジナル楽曲 - ゾーンNOW</p>
@@ -1332,8 +1368,33 @@ function createSlide(v){
   return slide;
 }
 
+// 写真1枚ならそのまま、複数枚なら横スワイプのカルーセルにする
+function photoMediaHtml(v){
+  const urls = v.images && v.images.length ? v.images : [v.short];
+  if(urls.length === 1) return `<img class="short-media-image" src="${urls[0]}" alt="" />`;
+  return `
+    <div class="photo-track">
+      ${urls.map(u=> `<div class="photo-page"><img class="short-media-image" src="${u}" alt="" /></div>`).join('')}
+    </div>
+    <div class="photo-dots">${urls.map((_, i)=> `<span class="${i === 0 ? 'active' : ''}"></span>`).join('')}</div>
+    <div class="photo-count">1/${urls.length}</div>
+  `;
+}
+
 function attachSlideEvents(slide, v){
   const video = slide.querySelector('video');
+
+  // 写真カルーセル：今何枚目かをドットと「1/3」表示に反映
+  const track = slide.querySelector('.photo-track');
+  if(track){
+    const dots = slide.querySelectorAll('.photo-dots span');
+    const count = slide.querySelector('.photo-count');
+    track.addEventListener('scroll', ()=>{
+      const index = Math.round(track.scrollLeft / track.clientWidth);
+      dots.forEach((d, i)=> d.classList.toggle('active', i === index));
+      count.textContent = `${index + 1}/${dots.length}`;
+    }, { passive:true });
+  }
 
   // 音のON/OFF（フィード内のスライドをまたいで状態を引き継ぐ。写真投稿には音がないのでボタン自体がない）
   const muteBtn = slide.querySelector('[data-role="mute"]');
@@ -2044,9 +2105,16 @@ document.querySelectorAll('[data-placeholder]').forEach(el=>{
 // 保持するだけで、リロードすると消えます。保存先ができたら送信処理をここに追加します。
 document.getElementById('post-upload-icon').innerHTML = icon('plus');
 
-let postSelectedFile = null;
+const MAX_POST_PHOTOS = 10;
+const PHOTO_SECONDS_EACH = 5; // 複数枚の写真は1枚あたりこの秒数でZoneメーターを進める
+const MAX_HASHTAGS = 5;
+const HASHTAG_MAX_LENGTH = 20;
+
+let postMediaType = null;   // 'video' | 'image'
+let postMediaUrls = [];     // 選んだファイルのプレビュー用URL（投稿時もそのまま使う）
 let postSelectedDuration = 0;
-let postMediaType = 'video';
+let postHashtags = [];
+let postSubmitting = false;
 
 // 教科は任意（''=なし）。やる気・豆知識の動画は教科なしで投稿できる
 const POST_SUBJECT_OPTIONS = [{ id:'', label:'なし' }, ...SUBJECTS];
@@ -2057,28 +2125,49 @@ const postSubject = createChoice('post-subject-chips', POST_SUBJECT_OPTIONS, { i
 const postFileInput = document.getElementById('post-file-input');
 const postUploadLabel = document.getElementById('post-upload-label');
 const postPreviewVideo = document.getElementById('post-preview-video');
-const postPreviewImage = document.getElementById('post-preview-image');
+const postPreviewImages = document.getElementById('post-preview-images');
+const postPreviewCount = document.getElementById('post-preview-count');
 
-postFileInput.addEventListener('change', ()=>{
-  const file = postFileInput.files[0];
-  if(!file) return;
-  postSelectedFile = file;
+function clearPostMedia(){
+  postMediaType = null;
+  postMediaUrls = [];
   postSelectedDuration = 0;
-  postMediaType = file.type.startsWith('image/') ? 'image' : 'video';
-  const url = URL.createObjectURL(file);
+  postPreviewVideo.pause();
+  postPreviewVideo.removeAttribute('src');
+  postPreviewVideo.style.display = 'none';
+  postPreviewImages.innerHTML = '';
+  postPreviewImages.style.display = 'none';
+  postPreviewCount.style.display = 'none';
+  postUploadLabel.classList.remove('has-media');
+}
 
-  if(postMediaType === 'image'){
-    postPreviewVideo.pause();
-    postPreviewVideo.removeAttribute('src');
-    postPreviewVideo.style.display = 'none';
-    postPreviewImage.src = url;
-    postPreviewImage.style.display = 'block';
-  } else {
-    postPreviewImage.removeAttribute('src');
-    postPreviewImage.style.display = 'none';
-    postPreviewVideo.src = url;
+// 選べるのは「動画1本」か「写真1〜10枚」。混ぜたり多すぎたりしたら選び直してもらう
+postFileInput.addEventListener('change', ()=>{
+  const files = [...postFileInput.files];
+  postFileInput.value = ''; // 同じファイルを選び直しても反応するように
+  if(!files.length) return;
+  const videos = files.filter(f=> f.type.startsWith('video/'));
+  const images = files.filter(f=> f.type.startsWith('image/'));
+  if(videos.length + images.length !== files.length){ showToast('動画か写真のファイルを選んでください'); return; }
+  if(videos.length && (videos.length > 1 || images.length)){ showToast('動画は1本だけ、写真とは別々に投稿してください'); return; }
+  if(images.length > MAX_POST_PHOTOS){ showToast(`写真は${MAX_POST_PHOTOS}枚まで選べます`); return; }
+
+  clearPostMedia();
+  if(videos.length){
+    postMediaType = 'video';
+    postMediaUrls = [URL.createObjectURL(videos[0])];
+    postPreviewVideo.src = postMediaUrls[0];
     postPreviewVideo.style.display = 'block';
     postPreviewVideo.play().catch(()=>{});
+  } else {
+    postMediaType = 'image';
+    postMediaUrls = images.map(f=> URL.createObjectURL(f));
+    postPreviewImages.innerHTML = postMediaUrls.map(u=> `<img src="${u}" alt="" />`).join('');
+    postPreviewImages.style.display = 'flex';
+    if(postMediaUrls.length > 1){
+      postPreviewCount.textContent = `${postMediaUrls.length}枚`;
+      postPreviewCount.style.display = 'block';
+    }
   }
   postUploadLabel.classList.add('has-media');
 });
@@ -2086,33 +2175,67 @@ postPreviewVideo.addEventListener('loadedmetadata', ()=>{
   if(isFinite(postPreviewVideo.duration)) postSelectedDuration = Math.round(postPreviewVideo.duration);
 });
 
+// ---- ハッシュタグ（最大5個） ----
+const postTagInput = document.getElementById('post-tag-input');
+function renderPostTags(){
+  document.getElementById('post-tag-list').innerHTML = postHashtags.map((t, i)=>
+    `<span class="chip tag-chip">#${escapeHtml(t)}<button data-remove-tag="${i}" aria-label="#${escapeHtml(t)}を削除">×</button></span>`
+  ).join('');
+}
+// 「#英語 #単語」のようにまとめて入力しても1つずつ追加する
+function addPostTags(text){
+  const words = text.split(/[\s,、#＃]+/).map(w=> w.trim()).filter(Boolean);
+  for(const word of words){
+    if(postHashtags.length >= MAX_HASHTAGS){ showToast(`ハッシュタグは${MAX_HASHTAGS}個までです`); break; }
+    const tag = word.slice(0, HASHTAG_MAX_LENGTH);
+    if(!postHashtags.includes(tag)) postHashtags.push(tag);
+  }
+  postTagInput.value = '';
+  renderPostTags();
+}
+document.getElementById('post-tag-add').addEventListener('click', ()=> addPostTags(postTagInput.value));
+postTagInput.addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter' && !e.isComposing){ // 日本語の変換確定のEnterでは追加しない
+    e.preventDefault();
+    addPostTags(postTagInput.value);
+  }
+});
+document.getElementById('post-tag-list').addEventListener('click', (e)=>{
+  const btn = e.target.closest('[data-remove-tag]');
+  if(!btn) return;
+  postHashtags.splice(Number(btn.dataset.removeTag), 1);
+  renderPostTags();
+});
+
 function resetPostForm(){
-  postSelectedFile = null;
-  postSelectedDuration = 0;
-  postMediaType = 'video';
+  clearPostMedia();
   postKind.set('lesson');
   postTarget.set(null);
   postSubject.set('');
+  postHashtags = [];
+  renderPostTags();
+  postTagInput.value = '';
   document.getElementById('post-title').value = '';
   document.getElementById('post-unit').value = '';
-  postFileInput.value = '';
-  postPreviewVideo.pause();
-  postPreviewVideo.removeAttribute('src');
-  postPreviewVideo.style.display = 'none';
-  postPreviewImage.removeAttribute('src');
-  postPreviewImage.style.display = 'none';
-  postUploadLabel.classList.remove('has-media');
 }
 
-document.getElementById('post-submit').addEventListener('click', ()=>{
+document.getElementById('post-submit').addEventListener('click', async ()=>{
+  if(postSubmitting) return;
   const title = document.getElementById('post-title').value.trim();
   const unit = document.getElementById('post-unit').value.trim();
 
-  if(!postSelectedFile){ showToast('動画か写真を選択してください'); return; }
+  if(!postMediaUrls.length){ showToast('動画か写真を選択してください'); return; }
   if(!title){ showToast('タイトルを入力してください'); return; }
   const choiceError = postTarget.error('ターゲット学年') || postSubject.error('教科');
   if(choiceError){ showToast(choiceError); return; }
+  if(postTagInput.value.trim()) addPostTags(postTagInput.value); // 入力したまま「追加」を押し忘れた分も拾う
 
+  postSubmitting = true;
+  const ok = await confirmDialog('本当に投稿しますか？', '投稿する');
+  postSubmitting = false;
+  if(!ok) return;
+
+  const isImage = postMediaType === 'image';
   const newPost = {
     id: 'u' + Date.now(),
     kind: postKind.id,
@@ -2120,16 +2243,21 @@ document.getElementById('post-submit').addEventListener('click', ()=>{
     subjectOther: postSubject.other,
     grade: postTarget.id,
     gradeOther: postTarget.other,
-    unit,
+    unit,           // ホームには出さず、検索の絞り込みに使う
+    hashtags: [...postHashtags],
     title,
     creator: (loadProfile() || {}).name || 'あなた',
-    duration: postMediaType === 'image' ? IMAGE_DISPLAY_SECONDS : postSelectedDuration,
+    duration: isImage
+      ? (postMediaUrls.length > 1 ? postMediaUrls.length * PHOTO_SECONDS_EACH : IMAGE_DISPLAY_SECONDS)
+      : postSelectedDuration,
     mediaType: postMediaType,
-    short: URL.createObjectURL(postSelectedFile),
+    short: postMediaUrls[0],
+    images: isImage ? [...postMediaUrls] : undefined,
   };
   VIDEOS.unshift(newPost);
 
   renderFeed(newPost);
+  renderChips();
   renderResults();
   resetPostForm();
   showToast('投稿しました（この端末内のみ・保存はされません）');

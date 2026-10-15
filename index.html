@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-<title>ZoneNOW - 勉強を始めるきっかけを</title>
+<title>ゾーンNOW - 勉強を始めるきっかけを</title>
 
 <!-- ▼ PWA(ホーム画面追加)のための設定 -->
 <link rel="manifest" href="manifest.json" />
@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="ZoneNOW" />
+<meta name="apple-mobile-web-app-title" content="ゾーンNOW" />
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -53,7 +53,7 @@
   #app{ position:fixed; inset:0; overflow:hidden; }
 
   /* ============================================================
-     画面切り替え（home / search / ai / record / profile / create / onboarding）
+     画面切り替え（home / search / ai / record / profile / notifications / create / onboarding）
   ============================================================ */
   .screen{ position:absolute; inset:0; opacity:0; pointer-events:none; transition:opacity .35s ease; }
   .screen.active{ opacity:1; pointer-events:auto; }
@@ -101,7 +101,7 @@
   .badge.kind-motivation{ background:rgba(91,110,245,.9); }
   .badge.kind-trivia{ background:rgba(150,98,0,.92); }
 
-  /* ---- 上部バー：検索・通知 ---- */
+  /* ---- 上部バー：検索（通知は気が散らないようプロフィール画面に置いている） ---- */
   #feed-topbar{
     position:absolute; top:calc(var(--safe-top) + 18px); left:16px; right:16px; z-index:12;
     display:flex; justify-content:space-between; align-items:center;
@@ -112,10 +112,6 @@
     display:flex; align-items:center; justify-content:center; color:#fff;
   }
   .icon-btn svg{ width:19px; height:19px; }
-  .notif-dot{
-    position:absolute; top:6px; right:7px; width:8px; height:8px; border-radius:50%;
-    background:var(--ember); border:1.5px solid var(--ink);
-  }
 
   /* ---- 勉強の催促（ショートを一定本数見るたびに表示） ---- */
   #study-nudge{
@@ -384,7 +380,9 @@
   /* ============================================================
      プロフィール画面
   ============================================================ */
-  .profile-head{ text-align:center; margin-bottom:22px; }
+  .profile-head{ position:relative; text-align:center; margin-bottom:22px; }
+  .profile-bell{ position:absolute; top:0; right:0; }
+  .notifications-header{ display:flex; align-items:center; gap:12px; padding:calc(var(--safe-top) + 16px) 20px 0; }
   .profile-avatar{ position:relative; display:inline-block; cursor:pointer; margin-bottom:12px; }
   .profile-avatar-img{
     width:88px; height:88px; border-radius:50%; overflow:hidden;
@@ -528,10 +526,6 @@
       <button class="icon-btn" id="search-open-btn" aria-label="検索">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       </button>
-      <button class="icon-btn" id="bell-btn" aria-label="通知">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
-        <span class="notif-dot"></span>
-      </button>
     </div>
 
     <div class="bottom-nav" data-active-nav="home"></div>
@@ -549,7 +543,7 @@
     <div id="install-banner">
       <div class="ib-icon">Z</div>
       <div class="ib-text">
-        <p class="ib-title">ZoneNOWをホーム画面に追加</p>
+        <p class="ib-title">ゾーンNOWをホーム画面に追加</p>
         <p class="ib-sub">アプリのようにワンタップで起動できます</p>
       </div>
       <button class="ib-cta" id="install-btn">追加</button>
@@ -593,7 +587,7 @@
   <section id="onboarding-screen" class="screen dark-screen">
     <div class="onboarding-wrap">
       <button class="back-btn" id="onboarding-back" style="display:none; margin-bottom:18px;">←</button>
-      <p class="onboarding-logo">ZoneNOW</p>
+      <p class="onboarding-logo">ゾーンNOW</p>
       <p class="onboarding-lead" id="onboarding-lead">ようこそ！<br>はじめに、あなたのことを少しだけ教えてください。</p>
 
       <div class="post-field">
@@ -686,6 +680,7 @@
   <section id="profile-screen" class="screen dark-screen">
     <div class="record-wrap">
       <div class="profile-head">
+        <button class="icon-btn profile-bell" id="profile-bell" aria-label="通知"></button>
         <label class="profile-avatar" aria-label="アイコンを変更">
           <input type="file" id="profile-avatar-input" accept="image/*" hidden />
           <div class="profile-avatar-img" id="profile-avatar"></div>
@@ -744,6 +739,16 @@
 
       <p class="record-note" style="margin-top:28px;">※ プロフィールはこの端末のブラウザ内にのみ保存されます。フォロワー・友達はサーバー機能ができてから使えるようになります。</p>
     </div>
+    <div class="bottom-nav solid-dark" data-active-nav="profile"></div>
+  </section>
+
+  <!-- ============ 通知画面（プロフィールから開く） ============ -->
+  <section id="notifications-screen" class="screen dark-screen">
+    <div class="notifications-header">
+      <button class="back-btn" id="notifications-back">←</button>
+      <h1 class="post-form-title">通知</h1>
+    </div>
+    <div class="placeholder-wrap" data-placeholder="notifications"></div>
     <div class="bottom-nav solid-dark" data-active-nav="profile"></div>
   </section>
 
@@ -894,13 +899,13 @@ const VIDEOS = [
   { id:'jso2', kind:'lesson', subject:'social', grade:'junior2', unit:'歴史', title:'江戸の三大改革を30秒で', creator:'しゃかい部 ケン', duration:30, short:DEMO_SHORT[2] },
 
   // ---- やる気：勉強を促す動画（基本は全学年向け） ----
-  { id:'mo1', kind:'motivation', subject:'', grade:'everyone', unit:'', title:'やる気が出ないのは、あなたが悪いんじゃない', creator:'ZoneNOW公式', duration:25, short:DEMO_SHORT[3] },
+  { id:'mo1', kind:'motivation', subject:'', grade:'everyone', unit:'', title:'やる気が出ないのは、あなたが悪いんじゃない', creator:'ゾーンNOW公式', duration:25, short:DEMO_SHORT[3] },
   { id:'mo2', kind:'motivation', subject:'', grade:'everyone', unit:'', title:'まず5分だけ。脳は"始めると"やる気が出る', creator:'ゾーン先生', duration:22, short:DEMO_SHORT[4] },
-  { id:'mo3', kind:'motivation', subject:'', grade:'everyone', unit:'', title:'スマホを別の部屋に置くだけで集中力が変わる', creator:'ZoneNOW公式', duration:20, short:DEMO_SHORT[0] },
+  { id:'mo3', kind:'motivation', subject:'', grade:'everyone', unit:'', title:'スマホを別の部屋に置くだけで集中力が変わる', creator:'ゾーンNOW公式', duration:20, short:DEMO_SHORT[0] },
   { id:'mo4', kind:'motivation', subject:'', grade:'everyone', unit:'', title:'テスト前日に焦らないための"逆算"のコツ', creator:'かず先輩', duration:28, short:DEMO_SHORT[1] },
   { id:'mo5', kind:'motivation', subject:'', grade:'everyone', unit:'', title:'勉強が続く人がやっている、たった1つの習慣', creator:'すうがく部 リナ', duration:24, short:DEMO_SHORT[2] },
-  { id:'mo6', kind:'motivation', subject:'', grade:'junior3', unit:'', title:'高校受験まであと少し。今日の1時間が効いてくる', creator:'ZoneNOW公式', duration:26, short:DEMO_SHORT[3] },
-  { id:'mo7', kind:'motivation', subject:'', grade:'high3', unit:'', title:'大学受験生へ：伸びるのは最後の3か月', creator:'ZoneNOW公式', duration:27, short:DEMO_SHORT[4] },
+  { id:'mo6', kind:'motivation', subject:'', grade:'junior3', unit:'', title:'高校受験まであと少し。今日の1時間が効いてくる', creator:'ゾーンNOW公式', duration:26, short:DEMO_SHORT[3] },
+  { id:'mo7', kind:'motivation', subject:'', grade:'high3', unit:'', title:'大学受験生へ：伸びるのは最後の3か月', creator:'ゾーンNOW公式', duration:27, short:DEMO_SHORT[4] },
 
   // ---- 豆知識：勉強にまつわる面白い話 ----
   { id:'tr1', kind:'trivia', subject:'japanese', grade:'everyone', unit:'', title:'「勉強」の本来の意味は"無理をする"だった', creator:'豆知識ラボ', duration:18, short:DEMO_SHORT[0] },
@@ -990,6 +995,7 @@ const ICON_PATHS = {
   volume: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.1 5a9 9 0 0 1 0 14"/><path d="M15.5 8.5a4.5 4.5 0 0 1 0 7"/>',
   volumeOff: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>',
   clock: '<circle cx="12" cy="13" r="8"/><polyline points="12 9 12 13 14.5 15.5"/><line x1="9" y1="2" x2="15" y2="2"/>',
+  bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-5.6 6.5-5.6s6.5 2 6.5 5.6"/><circle cx="17" cy="9" r="2.8"/><path d="M16.2 14.5c3 0 5.3 1.8 5.3 5"/>',
 };
 function icon(name){
@@ -1102,14 +1108,18 @@ const screens = {
   profile: document.getElementById('profile-screen'),
   create: document.getElementById('create-screen'),
   onboarding: document.getElementById('onboarding-screen'),
+  notifications: document.getElementById('notifications-screen'),
 };
+// ボトムナビに無い画面は、どのタブの中の画面かを決めておく（そのタブを点灯させる）
+const NAV_PARENT = { search:'home', notifications:'profile' };
 function showScreen(name){
   Object.values(screens).forEach(s=>s.classList.remove('active'));
   screens[name].classList.add('active');
   if(name === 'record') renderRecordScreen();
   if(name === 'profile') renderProfileScreen();
+  const activeTab = NAV_PARENT[name] || name;
   document.querySelectorAll('[data-nav]').forEach(btn=>{
-    btn.classList.toggle('active', btn.dataset.nav === name);
+    btn.classList.toggle('active', btn.dataset.nav === activeTab);
   });
   // ホームを離れたら再生を止め、戻ってきたら今のショートを頭から再生する
   if(name === 'home') resumeFeed();
@@ -1214,7 +1224,7 @@ function createSlide(v){
       ${v.unit ? `<span class="caption-tag">#${escapeHtml(v.unit)}</span>` : ''}
       <p class="caption-text">${escapeHtml(v.title)}</p>
       <p class="caption-hashtags">${escapeHtml(hashtagsOf(v))} ・ @${escapeHtml(v.creator)}</p>
-      <p class="caption-music">♪ オリジナル楽曲 - ZoneNOW</p>
+      <p class="caption-music">♪ オリジナル楽曲 - ゾーンNOW</p>
     </div>
   `;
   attachSlideEvents(slide, v);
@@ -1446,7 +1456,6 @@ renderFeed();
 
 // ---- 上部バーの操作 ----
 document.getElementById('search-open-btn').addEventListener('click', ()=> showScreen('search'));
-document.getElementById('bell-btn').addEventListener('click', ()=> showToast('通知はまだありません'));
 
 // ---- 検索画面 ----
 let activeKind = 'all';
@@ -1798,9 +1807,10 @@ document.getElementById('record-reset').addEventListener('click', async ()=>{
   showToast('勉強記録を削除しました');
 });
 
-// ---- AI：準備中プレースホルダーの中身 ----
+// ---- AI・通知：準備中プレースホルダーの中身 ----
 const PLACEHOLDER_CONTENT = {
   ai: { iconName:'sparkle', title:'AIコーチ', sub:'あなた専用の学習アドバイスを準備中です' },
+  notifications: { iconName:'bell', title:'まだ通知はありません', sub:'フォローや友達の機能ができると、ここにお知らせが届きます' },
 };
 document.querySelectorAll('[data-placeholder]').forEach(el=>{
   const c = PLACEHOLDER_CONTENT[el.dataset.placeholder];
@@ -1957,6 +1967,9 @@ document.getElementById('onboarding-submit').addEventListener('click', ()=>{
 // ---- プロフィール画面 ----
 document.getElementById('friends-icon').innerHTML = icon('users');
 document.getElementById('profile-edit').addEventListener('click', openProfileEditor);
+document.getElementById('profile-bell').innerHTML = icon('bell');
+document.getElementById('profile-bell').addEventListener('click', ()=> showScreen('notifications'));
+document.getElementById('notifications-back').addEventListener('click', ()=> showScreen('profile'));
 
 function renderProfileScreen(){
   const p = loadProfile();

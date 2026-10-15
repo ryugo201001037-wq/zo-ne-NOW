@@ -1,6 +1,6 @@
 {
-  "name": "ZoneNOW - 勉強を始めるきっかけを",
-  "short_name": "ZoneNOW",
+  "name": "ゾーンNOW - 勉強を始めるきっかけを",
+  "short_name": "ゾーンNOW",
   "description": "ショート動画で勉強へのやる気に火をつける学習プラットフォーム",
   "start_url": "./index.html",
   "scope": "./",

@@ -117,6 +117,7 @@
   .badge.subject{ background:rgba(255,90,54,.85); }
   .badge.kind-motivation{ background:rgba(91,110,245,.9); }
   .badge.kind-trivia{ background:rgba(150,98,0,.92); }
+  .badge.kind-other{ background:rgba(30,120,110,.9); }
 
   /* ---- 上部バー：検索（通知は気が散らないようプロフィール画面に置いている） ---- */
   #feed-topbar{
@@ -561,6 +562,18 @@
     color:rgba(255,255,255,.45); border-bottom:2px solid transparent; margin-bottom:-1px;
   }
   .people-tab.active{ color:#fff; border-bottom-color:var(--cta-from); }
+  /* プロフィールの「投稿／保存」タブ（見た目は一覧画面のタブと同じ） */
+  .profile-tabs{ display:flex; border-bottom:1px solid rgba(255,255,255,.1); margin-bottom:14px; }
+  .profile-tab{
+    flex:1; padding:12px 0; font-family:var(--font-ui); font-size:13px; font-weight:700;
+    color:rgba(255,255,255,.45); border-bottom:2px solid transparent; margin-bottom:-1px;
+  }
+  .profile-tab.active{ color:#fff; border-bottom-color:var(--cta-from); }
+  .card-wrap{ position:relative; }
+  .card-delete{
+    position:absolute; top:8px; right:8px; padding:4px 10px; border-radius:99px;
+    background:rgba(0,0,0,.55); color:#fff; font-family:var(--font-ui); font-size:11px; font-weight:700;
+  }
   .people-row{ display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid rgba(255,255,255,.07); }
   .people-row .avatar{ width:42px; height:42px; font-size:16px; border-width:1.5px; flex-shrink:0; }
   .people-name{ flex:1; min-width:0; font-family:var(--font-ui); font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -911,6 +924,15 @@
         </button>
       </div>
 
+      <div class="record-block" style="margin-top:0; margin-bottom:22px;">
+        <div class="profile-tabs" role="tablist">
+          <button class="profile-tab active" role="tab" data-profile-tab="posts">投稿 <span id="profile-posts-count"></span></button>
+          <button class="profile-tab" role="tab" data-profile-tab="saved">保存 <span id="profile-saved-count"></span></button>
+        </div>
+        <div class="result-grid saved-grid" id="profile-grid"></div>
+        <p class="record-empty" id="profile-grid-empty" style="padding:18px 0 6px;"></p>
+      </div>
+
       <div class="study-card">
         <div class="record-section-title">あなたの勉強時間</div>
         <div class="profile-study">
@@ -936,11 +958,6 @@
         </div>
       </div>
 
-      <div class="record-block">
-        <div class="record-section-title">保存した動画</div>
-        <div class="result-grid saved-grid" id="profile-saved"></div>
-        <p class="record-empty" id="profile-saved-empty" style="padding:6px 0; text-align:left;">まだ保存した動画はありません。動画の右側の保存ボタンで、あとで見返したい動画を保存できます。</p>
-      </div>
 
       <p class="record-note" style="margin-top:28px;">※ プロフィールはこの端末のブラウザ内にのみ保存されます。フォロワー・友達はサーバー機能ができてから使えるようになります。</p>
     </div>
@@ -1006,6 +1023,7 @@
       <div class="post-field">
         <label class="post-label">種類</label>
         <div class="chip-row" id="post-kind-chips"></div>
+        <input type="text" class="post-input other-input" id="post-kind-chips-other" placeholder="種類を入力（例：体験談、勉強法）" />
       </div>
 
       <div class="post-field">
@@ -1041,7 +1059,7 @@
         <div class="chip-row tag-list" id="post-tag-list"></div>
       </div>
 
-      <p class="post-note">※ 現在はデモ版です。投稿者名には最初に設定したアカウント名が使われます。投稿した動画・写真はこの端末・このタブの中だけで表示され、リロードすると消えます。</p>
+      <p class="post-note">※ 現在はデモ版です。投稿者名には最初に設定したアカウント名が使われます。投稿した動画・写真はこの端末の中にだけ保存され、他の人には見えません（サーバー対応後に公開されます）。</p>
 
       <button class="post-submit" id="post-next">次へ</button>
     </div>
@@ -1148,11 +1166,12 @@ const SUBJECTS = [
   { id:'social', label:'社会' },
   { id:'other', label:'その他' },
 ];
-// 動画の種類。解説＝授業系 / やる気＝勉強を促す系 / 豆知識＝勉強にまつわる面白い話
+// 動画の種類。解説＝授業系 / やる気＝勉強を促す系 / 豆知識＝勉強にまつわる面白い話 / その他＝自由入力（例：体験談）
 const KINDS = [
   { id:'lesson', label:'解説' },
   { id:'motivation', label:'やる気' },
   { id:'trivia', label:'豆知識' },
+  { id:'other', label:'その他' },
 ];
 const IMAGE_DISPLAY_SECONDS = 8; // 写真投稿のZoneメーター表示時間(秒)
 const STUDY_NUDGE_EVERY = 15; // ショートをこの本数見るたびに勉強を促す
@@ -1339,6 +1358,7 @@ function gradeLabelOf(item){
   return item.grade === 'other' && item.gradeOther ? item.gradeOther : labelOf(TARGETS, item.grade);
 }
 function kindOf(v){ return v.kind || 'lesson'; }
+function kindLabelOf(v){ return kindOf(v) === 'other' && v.kindOther ? v.kindOther : labelOf(KINDS, kindOf(v)); }
 
 // 中1〜中3 / 高1〜高3 をまとめた区分（同じ区分の動画も少しだけ優先して出すため）
 function schoolLevelOf(gradeId){
@@ -1380,6 +1400,30 @@ function setFollowing(name, follow){
   const list = loadFollowing().filter(n=> n !== name);
   if(follow) list.push(name);
   saveJSON(FOLLOW_KEY, list);
+}
+
+// 自分の投稿：動画・写真のファイルごと IndexedDB（ブラウザ内の大きめの保存場所）に入れておき、
+// リロードしても消えないようにする。ここもサーバーができたらアップロードに置き換える
+const POST_DB_NAME = 'zonenow';
+const POST_STORE = 'posts';
+function openPostDb(){
+  return new Promise((resolve, reject)=>{
+    if(!window.indexedDB){ reject(new Error('IndexedDB not supported')); return; }
+    const req = indexedDB.open(POST_DB_NAME, 1);
+    req.onupgradeneeded = ()=> req.result.createObjectStore(POST_STORE, { keyPath:'id' });
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function postDb(mode, action){
+  const db = await openPostDb();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(POST_STORE, mode);
+    const req = action(tx.objectStore(POST_STORE));
+    tx.oncomplete = ()=>{ db.close(); resolve(req.result); };
+    tx.onerror = ()=>{ db.close(); reject(tx.error); };
+    tx.onabort = ()=>{ db.close(); reject(tx.error); };
+  });
 }
 
 // いいね・保存・コメント（今はこの端末のあなたの分だけ。サーバーができたら全員分の数に置き換える）
@@ -1600,7 +1644,7 @@ let lastNudgeAt = 0;
 // 投稿者が付けたハッシュタグがあればそれを、なければ種類・教科・学年から自動で付ける
 function hashtagsOf(v){
   if(v.hashtags && v.hashtags.length) return v.hashtags.map(t=> '#' + t).join(' ');
-  const tags = { lesson:['#勉強'], motivation:['#やる気', '#勉強習慣'], trivia:['#豆知識', '#雑学'] }[kindOf(v)].slice();
+  const tags = { lesson:['#勉強'], motivation:['#やる気', '#勉強習慣'], trivia:['#豆知識', '#雑学'], other:['#' + kindLabelOf(v)] }[kindOf(v)].slice();
   const subject = subjectLabelOf(v);
   if(subject) tags.push('#' + subject);
   const level = schoolLevelOf(v.grade);
@@ -1630,7 +1674,7 @@ function createSlide(v){
     <div class="pause-indicator" aria-hidden="true">${icon('play')}</div>
 
     <div class="short-top">
-      ${kindOf(v) !== 'lesson' ? `<span class="badge kind-${kindOf(v)}">${labelOf(KINDS, kindOf(v))}</span>` : ''}
+      ${kindOf(v) !== 'lesson' ? `<span class="badge kind-${kindOf(v)}">${escapeHtml(kindLabelOf(v))}</span>` : ''}
       ${v.subject ? `<span class="badge subject">${escapeHtml(subjectLabelOf(v))}</span>` : ''}
       <span class="badge">${escapeHtml(gradeLabelOf(v))}</span>
     </div>
@@ -2224,14 +2268,23 @@ const gradientByKind = {
   lesson: 'linear-gradient(160deg, #2B2E63, #10131A)',
   motivation: 'linear-gradient(160deg, var(--cta-from), var(--cta-to))',
   trivia: 'linear-gradient(160deg, #8A5A00, #10131A)',
+  other: 'linear-gradient(160deg, #1E6B62, #10131A)',
 };
 function thumbGradientOf(v){
   return kindOf(v) === 'lesson' ? (gradientBySubject[v.subject] || gradientByKind.lesson) : gradientByKind[kindOf(v)];
 }
 
+// 写真の投稿は1枚目をサムネイルに、それ以外は種類・教科の色
+function thumbBackgroundOf(v){
+  const photo = v.mediaType === 'image' ? (v.images && v.images[0]) || v.short : null;
+  return photo && /^(blob:|data:image\/|https?:)/.test(photo)
+    ? `url('${encodeURI(photo).replace(/'/g, '%27')}') center/cover no-repeat, ${thumbGradientOf(v)}`
+    : thumbGradientOf(v);
+}
+
 function metaTextOf(v){
-  const parts = [kindOf(v) !== 'lesson' ? labelOf(KINDS, kindOf(v)) : null, subjectLabelOf(v) || null, v.unit || null].filter(Boolean);
-  return parts.length ? parts.join(' ・ ') : labelOf(KINDS, kindOf(v));
+  const parts = [kindOf(v) !== 'lesson' ? kindLabelOf(v) : null, subjectLabelOf(v) || null, v.unit || null].filter(Boolean);
+  return parts.length ? parts.join(' ・ ') : kindLabelOf(v);
 }
 
 function renderResults(){
@@ -2252,7 +2305,7 @@ function renderResults(){
 function resultCardHtml(v){
   return `
     <button class="result-card" data-id="${escapeHtml(v.id)}">
-      <div class="result-thumb" style="background:${thumbGradientOf(v)}">
+      <div class="result-thumb" style="background:${thumbBackgroundOf(v)}">
         <span class="badge">${escapeHtml(gradeLabelOf(v))}</span>
         <span class="result-duration">${v.duration}秒</span>
       </div>
@@ -2632,6 +2685,7 @@ const HASHTAG_MAX_LENGTH = 20;
 
 let postMediaType = null;   // 'video' | 'image'
 let postMediaUrls = [];     // 選んだファイルのプレビュー用URL（投稿時もそのまま使う）
+let postMediaFiles = [];    // 選んだファイル本体（端末内に保存するため）
 let postSelectedDuration = 0;
 let postHashtags = [];
 let postMusicId = null;
@@ -2642,6 +2696,9 @@ let postSubmitting = false;
 // 教科は任意（''=なし）。やる気・豆知識の動画は教科なしで投稿できる
 const POST_SUBJECT_OPTIONS = [{ id:'', label:'なし' }, ...SUBJECTS];
 const postKind = createChoice('post-kind-chips', KINDS, { id:'lesson' });
+// 投稿の中身のうち、端末内に保存する項目（ファイルのURLは毎回作り直すので保存しない）
+const POST_META_FIELDS = ['id', 'kind', 'kindOther', 'subject', 'subjectOther', 'grade', 'gradeOther', 'unit',
+  'hashtags', 'musicId', 'title', 'creator', 'duration', 'mediaType', 'createdAt'];
 const postTarget = createChoice('post-grade-chips', TARGETS);
 const postSubject = createChoice('post-subject-chips', POST_SUBJECT_OPTIONS, { id:'' });
 
@@ -2654,6 +2711,7 @@ const postPreviewCount = document.getElementById('post-preview-count');
 function clearPostMedia(){
   postMediaType = null;
   postMediaUrls = [];
+  postMediaFiles = [];
   postSelectedDuration = 0;
   postPreviewVideo.pause();
   postPreviewVideo.removeAttribute('src');
@@ -2678,12 +2736,14 @@ postFileInput.addEventListener('change', ()=>{
   clearPostMedia();
   if(videos.length){
     postMediaType = 'video';
+    postMediaFiles = [videos[0]];
     postMediaUrls = [URL.createObjectURL(videos[0])];
     postPreviewVideo.src = postMediaUrls[0];
     postPreviewVideo.style.display = 'block';
     postPreviewVideo.play().catch(()=>{});
   } else {
     postMediaType = 'image';
+    postMediaFiles = images;
     postMediaUrls = images.map(f=> URL.createObjectURL(f));
     postPreviewImages.innerHTML = postMediaUrls.map(u=> `<img src="${u}" alt="" />`).join('');
     postPreviewImages.style.display = 'flex';
@@ -2815,14 +2875,18 @@ document.getElementById('post-next').addEventListener('click', ()=>{
 
   if(!postMediaUrls.length){ showToast('動画か写真を選択してください'); return; }
   if(!title){ showToast('タイトルを入力してください'); return; }
-  const choiceError = postTarget.error('ターゲット学年') || postSubject.error('教科');
+  const choiceError = postKind.error('種類') || postTarget.error('ターゲット学年') || postSubject.error('教科');
   if(choiceError){ showToast(choiceError); return; }
   if(postTagInput.value.trim()) addPostTags(postTagInput.value); // 入力したまま「追加」を押し忘れた分も拾う
 
   const isImage = postMediaType === 'image';
   postDraft = {
     id: 'u' + Date.now(),
+    own: true,
+    createdAt: Date.now(),
+    files: [...postMediaFiles],
     kind: postKind.id,
+    kindOther: postKind.other,
     subject: postSubject.id,
     subjectOther: postSubject.other,
     grade: postTarget.id,
@@ -2867,14 +2931,61 @@ document.getElementById('preview-post').addEventListener('click', async ()=>{
   if(!ok) return;
 
   const newPost = postDraft;
+  let stored = true;
+  try{
+    const record = Object.fromEntries(POST_META_FIELDS.map(k=> [k, newPost[k]]));
+    record.files = newPost.files;
+    await postDb('readwrite', store=> store.put(record));
+  }catch(e){ stored = false; } // 容量不足・プライベートモードなど
+  delete newPost.files;
+
   VIDEOS.unshift(newPost);
   renderFeed(newPost);
   renderChips();
   renderResults();
   resetPostForm();
   showScreen('home');
-  showToast('投稿しました（この端末内のみ・保存はされません）');
+  showToast(stored ? '投稿しました（今はこの端末の中だけに保存されます）' : '投稿しました（この端末に保存できなかったため、リロードすると消えます）');
 });
+
+// 起動時：端末内に保存しておいた自分の投稿を読み込み直す
+async function restoreOwnPosts(){
+  let records = [];
+  try{ records = await postDb('readonly', store=> store.getAll()); }
+  catch(e){ return; }
+  records
+    .sort((a, b)=> a.createdAt - b.createdAt)
+    .forEach(r=>{
+      if(VIDEOS.some(v=> v.id === r.id) || !r.files || !r.files.length) return;
+      const urls = r.files.map(f=> URL.createObjectURL(f));
+      const post = { ...r, own: true, short: urls[0], images: r.mediaType === 'image' ? urls : undefined };
+      delete post.files;
+      VIDEOS.unshift(post);
+    });
+  if(!records.length) return;
+  renderChips();
+  renderResults();
+  if(screens.profile.classList.contains('active')) renderProfileScreen();
+}
+
+// 自分の投稿を削除（端末内の保存・フィード上のスライドからも消す）
+async function deleteOwnPost(id){
+  const index = VIDEOS.findIndex(v=> v.id === id && v.own);
+  if(index < 0) return;
+  try{ await postDb('readwrite', store=> store.delete(id)); }catch(e){}
+  const [post] = VIDEOS.splice(index, 1);
+  feedEl.querySelectorAll('.short-slide').forEach(slide=>{
+    if(slide.dataset.id !== id) return;
+    if(slide === currentSlide) currentSlide = null;
+    feedObserver.unobserve(slide);
+    deactivateSlide(slide);
+    slide.remove();
+  });
+  (post.images || [post.short]).forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} });
+  saveComments(id, []);
+  renderChips();
+  renderResults();
+}
 
 document.getElementById('post-back').addEventListener('click', ()=> showScreen('home'));
 
@@ -2950,18 +3061,57 @@ function renderProfileScreen(){
   document.getElementById('profile-followers-count').textContent = 0; // サーバー機能ができるまでは常に0
   document.getElementById('profile-friends-count').textContent = 0;
 
-  // 保存した動画（新しく保存した順）。消えた投稿は除く
-  const savedVideos = loadIdList(SAVES_KEY).slice().reverse().map(id=> VIDEOS.find(v=> v.id === id)).filter(Boolean);
-  const savedGrid = document.getElementById('profile-saved');
-  savedGrid.innerHTML = savedVideos.map(resultCardHtml).join('');
-  savedGrid.style.display = savedVideos.length ? 'grid' : 'none';
-  savedGrid.querySelectorAll('.result-card').forEach(card=> card.addEventListener('click', ()=> jumpToShort(card.dataset.id)));
-  document.getElementById('profile-saved-empty').style.display = savedVideos.length ? 'none' : 'block';
+  renderProfileGrid();
 
   const totals = studyTotals();
   document.getElementById('profile-study-today').textContent = formatStudyTime(totals.today);
   document.getElementById('profile-study-week').textContent = formatStudyTime(totals.week);
 }
+
+// ---- プロフィールの「投稿／保存」タブ ----
+let profileTab = 'posts';
+function ownPosts(){ return VIDEOS.filter(v=> v.own).sort((a, b)=> b.createdAt - a.createdAt); }
+function savedVideos(){ return loadIdList(SAVES_KEY).slice().reverse().map(id=> VIDEOS.find(v=> v.id === id)).filter(Boolean); }
+
+function renderProfileGrid(){
+  const posts = ownPosts(), saved = savedVideos();
+  document.getElementById('profile-posts-count').textContent = posts.length;
+  document.getElementById('profile-saved-count').textContent = saved.length;
+  document.querySelectorAll('.profile-tab').forEach(btn=>{
+    const active = btn.dataset.profileTab === profileTab;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active);
+  });
+
+  const list = profileTab === 'posts' ? posts : saved;
+  const grid = document.getElementById('profile-grid');
+  grid.innerHTML = list.map(v=> profileTab === 'posts'
+    ? `<div class="card-wrap">${resultCardHtml(v)}<button class="card-delete" data-delete-post="${escapeHtml(v.id)}">削除</button></div>`
+    : resultCardHtml(v)
+  ).join('');
+  grid.style.display = list.length ? 'grid' : 'none';
+  const empty = document.getElementById('profile-grid-empty');
+  empty.style.display = list.length ? 'none' : 'block';
+  empty.textContent = profileTab === 'posts'
+    ? 'まだ投稿はありません。下の「＋」から動画や写真を投稿できます。'
+    : 'まだ保存した動画はありません。動画の右側の保存ボタンで、あとで見返したい動画を保存できます。';
+}
+
+document.querySelectorAll('.profile-tab').forEach(btn=>{
+  btn.addEventListener('click', ()=>{ profileTab = btn.dataset.profileTab; renderProfileGrid(); });
+});
+document.getElementById('profile-grid').addEventListener('click', async (e)=>{
+  const del = e.target.closest('[data-delete-post]');
+  if(del){
+    if(!await confirmDialog('この投稿を削除しますか？元に戻せません。', '削除する')) return;
+    await deleteOwnPost(del.dataset.deletePost);
+    renderProfileGrid();
+    showToast('投稿を削除しました');
+    return;
+  }
+  const card = e.target.closest('.result-card');
+  if(card) jumpToShort(card.dataset.id);
+});
 
 // ---- フォロー中・フォロワー・友達の一覧 ----
 // フォロワーと友達は、サーバー機能（アカウント同士のつながり）ができるまで空のまま
@@ -3059,6 +3209,7 @@ document.getElementById('profile-avatar-input').addEventListener('change', async
 });
 
 if(!loadProfile()) showScreen('onboarding');
+restoreOwnPosts();
 
 // ---- PWA: ホーム画面追加バナー ----
 let deferredPrompt = null;

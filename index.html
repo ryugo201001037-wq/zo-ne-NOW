@@ -251,6 +251,46 @@
   .empty-state{ text-align:center; padding:70px 30px; color:var(--muted); font-family:var(--font-ui); font-size:14px; line-height:1.7; }
 
   /* ============================================================
+     AIコーチ
+  ============================================================ */
+  .ai-wrap{
+    flex:1; min-height:0; display:flex; flex-direction:column;
+    padding:calc(var(--safe-top) + 18px) 16px calc(78px + var(--safe-bottom));
+  }
+  .ai-header{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:0 4px 10px; }
+  .ai-status{ font-family:var(--font-ui); font-size:11.5px; color:rgba(255,255,255,.5); margin:4px 0 0; }
+  .ai-status.on{ color:var(--mint); }
+  .ai-messages{ flex:1; min-height:0; overflow-y:auto; padding:6px 4px 10px; display:flex; flex-direction:column; gap:12px; }
+  .ai-msg{ display:flex; gap:8px; align-items:flex-end; max-width:100%; }
+  .ai-msg.user{ justify-content:flex-end; }
+  .ai-avatar{
+    width:30px; height:30px; border-radius:50%; flex-shrink:0; align-self:flex-start;
+    background:linear-gradient(135deg, var(--cta-from), var(--cta-to));
+    display:flex; align-items:center; justify-content:center; font-family:var(--font-ui); font-size:11px; font-weight:800;
+  }
+  .ai-bubble{
+    max-width:82%; padding:10px 13px; border-radius:16px; font-family:var(--font-ui); font-size:14px; line-height:1.65;
+    white-space:pre-wrap; word-break:break-word; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.08);
+  }
+  .ai-msg.coach .ai-bubble{ border-top-left-radius:6px; }
+  .ai-msg.user .ai-bubble{ background:linear-gradient(135deg, var(--cta-from), var(--cta-to)); border:none; border-bottom-right-radius:6px; }
+  .ai-bubble.thinking{ color:rgba(255,255,255,.55); }
+  .ai-note{ display:block; margin-top:6px; font-size:11.5px; color:rgba(255,255,255,.45); }
+  .ai-action{ margin-top:10px; }
+  .ai-plan{ margin-top:10px; white-space:normal; }
+  .ai-plan .chip-row{ margin-bottom:10px; }
+  .ai-plan .chip{ padding:6px 12px; font-size:12px; }
+  .ai-plan-row{ display:flex; align-items:center; gap:8px; padding:6px 0 0; }
+  .ai-plan-label{ flex:1; font-weight:700; }
+  .ai-plan-min{ font-weight:700; }
+  .ai-plan-reason{ font-size:11.5px; color:rgba(255,255,255,.5); padding:0 0 4px 18px; }
+  .ai-suggestions{ display:flex; gap:8px; overflow-x:auto; padding:8px 4px; flex-shrink:0; }
+  .ai-suggestions .chip{ flex-shrink:0; padding:8px 13px; font-size:12.5px; }
+  .ai-input-row{ display:flex; gap:8px; padding:4px 0 0; flex-shrink:0; }
+  .ai-input-row .post-input{ flex:1; min-width:0; }
+  .ai-input-row .study-btn{ flex:0 0 auto; padding:0 18px; }
+
+  /* ============================================================
      初回設定画面（アカウント名・学年）
   ============================================================ */
   #onboarding-screen{ z-index:40; }
@@ -792,9 +832,28 @@
     </div>
   </section>
 
-  <!-- ============ AI（準備中） ============ -->
+  <!-- ============ AIコーチ ============ -->
   <section id="ai-screen" class="screen dark-screen">
-    <div class="placeholder-wrap" data-placeholder="ai"></div>
+    <div class="ai-wrap">
+      <div class="ai-header">
+        <div>
+          <h1 class="record-title" style="margin:0;">AIコーチ</h1>
+          <p class="ai-status" id="ai-status">AI：確認中…</p>
+        </div>
+        <button class="text-link" id="ai-clear" style="margin:0; white-space:nowrap; flex-shrink:0;">会話をリセット</button>
+      </div>
+      <div class="ai-messages" id="ai-messages" aria-live="polite"></div>
+      <div class="ai-suggestions" id="ai-suggestions">
+        <button class="chip" data-ai-suggest="今日の勉強プランを作って">今日の勉強プラン</button>
+        <button class="chip" data-ai-suggest="1週間の勉強を振り返って">1週間の振り返り</button>
+        <button class="chip" data-ai-suggest="やる気が出ない…">やる気が出ない…</button>
+        <button class="chip" data-ai-suggest="集中が続くコツを教えて">集中のコツ</button>
+      </div>
+      <div class="ai-input-row">
+        <input type="text" class="post-input" id="ai-input" placeholder="勉強のこと、なんでも聞いてね" maxlength="500" enterkeyhint="send" aria-label="AIコーチへのメッセージ" />
+        <button class="study-btn primary" id="ai-send">送信</button>
+      </div>
+    </div>
     <div class="bottom-nav solid-dark" data-active-nav="ai"></div>
   </section>
 
@@ -1595,6 +1654,7 @@ function showScreen(name){
   if(name === 'profile') renderProfileScreen();
   if(name === 'history') renderHistoryScreen();
   if(name === 'people') renderPeopleScreen();
+  if(name === 'ai') renderAiScreen();
   const activeTab = NAV_PARENT[name] || name;
   document.querySelectorAll('[data-nav]').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.nav === activeTab);
@@ -2659,9 +2719,8 @@ document.getElementById('record-reset').addEventListener('click', async ()=>{
   showToast('勉強記録を削除しました');
 });
 
-// ---- AI・通知：準備中プレースホルダーの中身 ----
+// ---- 通知：準備中プレースホルダーの中身 ----
 const PLACEHOLDER_CONTENT = {
-  ai: { iconName:'sparkle', title:'AIコーチ', sub:'あなた専用の学習アドバイスを準備中です' },
   notifications: { iconName:'bell', title:'まだ通知はありません', sub:'フォローや友達の機能ができると、ここにお知らせが届きます' },
 };
 document.querySelectorAll('[data-placeholder]').forEach(el=>{
@@ -2988,6 +3047,315 @@ async function deleteOwnPost(id){
 }
 
 document.getElementById('post-back').addEventListener('click', ()=> showScreen('home'));
+
+// ---- AIコーチ ----
+// ・「今日の勉強プラン」「1週間の振り返り」は、端末内の記録から計算するのでいつでも使える
+// ・自由な質問・相談は AI（Claude）が答える。今はプレビュー（claude.ai）上でだけ動き、
+//   見ている人の Claude の利用枠を使う。本番では自前のサーバー経由で AI を呼ぶ形に置き換える
+const AI_CHAT_KEY = 'zonenow_ai_chat';
+const AI_HISTORY_MAX = 40;      // 端末に残す会話の数
+const AI_CONTEXT_TURNS = 12;    // AIに渡す直近の会話の数
+const PLAN_MINUTES = [30, 60, 90, 120];
+const PLAN_STUDY_MIN = 25, PLAN_BREAK_MIN = 5;
+const PLAN_SUBJECTS = SUBJECTS.filter(s=> s.id !== 'other');
+
+let aiHistory = loadJSON(AI_CHAT_KEY, []).filter(m=> !m.pending);
+let aiSample = null;          // AIを呼ぶ関数（使えない環境では null）
+let aiState = 'checking';     // 'checking' | 'on' | 'off'
+let aiController = null;      // 回答中の停止用
+
+function saveAiHistory(){ saveJSON(AI_CHAT_KEY, aiHistory.slice(-AI_HISTORY_MAX)); }
+
+// AIが使える環境か確認（プレビュー以外では window.claude が無いので「オフ」）
+(async ()=>{
+  try{ aiSample = window.claude && window.claude.use ? await window.claude.use('sample') : null; }
+  catch(e){ aiSample = null; }
+  aiState = aiSample ? 'on' : 'off';
+  renderAiStatus();
+})();
+
+function renderAiStatus(){
+  const el = document.getElementById('ai-status');
+  el.textContent = aiState === 'on' ? 'AI：オン（質問・相談に答えます）'
+    : aiState === 'off' ? 'AI：この環境ではオフ（プラン作成・振り返りは使えます）'
+    : 'AI：確認中…';
+  el.classList.toggle('on', aiState === 'on');
+}
+
+// ---- 学習データのまとめ（プラン・振り返り・AIへの説明で共通） ----
+function dateKeyDaysAgo(n){
+  const d = new Date();
+  return localDateKey(new Date(d.getFullYear(), d.getMonth(), d.getDate() - n));
+}
+function studyStats(){
+  const log = loadStudyLog();
+  const today = localDateKey(), weekStart = dateKeyDaysAgo(6), prevStart = dateKeyDaysAgo(13);
+  const thisWeek = log.filter(e=> e.date >= weekStart && e.date <= today);
+  const prevWeek = log.filter(e=> e.date >= prevStart && e.date < weekStart);
+  const sum = es=> es.reduce((s, e)=> s + e.seconds, 0);
+  const bySubject = {};
+  PLAN_SUBJECTS.forEach(s=>{ bySubject[s.id] = 0; });
+  thisWeek.forEach(e=>{ if(e.subject in bySubject) bySubject[e.subject] += e.seconds; });
+  const days = new Set(log.map(e=> e.date));
+  let streak = 0;
+  for(let i = days.has(today) ? 0 : 1; days.has(dateKeyDaysAgo(i)); i++) streak++;
+  return {
+    hasAny: log.length > 0,
+    today: sum(log.filter(e=> e.date === today)),
+    week: sum(thisWeek), prevWeek: sum(prevWeek),
+    weekDays: new Set(thisWeek.map(e=> e.date)).size,
+    streak, bySubject,
+  };
+}
+
+// ---- 今日の勉強プラン：今週の勉強時間が少ない教科から順に、25分勉強＋5分休憩で組む ----
+function buildStudyPlan(minutes){
+  const st = studyStats();
+  const order = [...PLAN_SUBJECTS].sort((a, b)=> st.bySubject[a.id] - st.bySubject[b.id]);
+  const count = Math.max(1, Math.round(minutes / (PLAN_STUDY_MIN + PLAN_BREAK_MIN)));
+  const blocks = Array.from({ length: count }, (_, i)=>{
+    const subject = order[i % order.length].id;
+    const sec = st.bySubject[subject];
+    return { subject, minutes: PLAN_STUDY_MIN, reason: sec ? `今週は${formatStudyTime(sec)}。少なめなので優先` : '今週はまだ0分。まずはここから' };
+  });
+  return { minutes, blocks };
+}
+function planMessage(minutes){
+  const plan = buildStudyPlan(minutes);
+  const total = plan.blocks.length * PLAN_STUDY_MIN + (plan.blocks.length - 1) * PLAN_BREAK_MIN;
+  return {
+    role:'coach', plan,
+    text:`今週の記録から、勉強時間が少ない教科を優先した${minutes}分のプランだよ。\n${PLAN_STUDY_MIN}分勉強＋${PLAN_BREAK_MIN}分休憩で進めよう（合計 約${total}分）。`,
+  };
+}
+
+// ---- 1週間の振り返り ----
+function reviewMessage(){
+  const st = studyStats();
+  if(!st.hasAny){
+    return { role:'coach', text:'まだ勉強の記録がないみたい。\nまずは5分だけタイマーを回してみよう。始めてしまえば、やる気はあとからついてくるよ。',
+      action:{ type:'start-timer', label:'5分だけやってみる' } };
+  }
+  const diff = st.week - st.prevWeek;
+  const diffText = st.prevWeek === 0 && st.week > 0 ? '（前の7日間は記録なし）'
+    : diff >= 60 ? `（前の7日間より +${formatStudyTime(diff)}）`
+    : diff <= -60 ? `（前の7日間より -${formatStudyTime(-diff)}）` : '（前の7日間とほぼ同じ）';
+  const ranked = Object.entries(st.bySubject).sort((a, b)=> b[1] - a[1]);
+  const top = ranked[0], low = ranked[ranked.length - 1];
+  const lines = [
+    `直近7日間の勉強時間：${formatStudyTime(st.week)}${diffText}`,
+    `・勉強した日：7日中${st.weekDays}日${st.streak >= 2 ? `（今${st.streak}日連続！）` : ''}`,
+    top[1] > 0 ? `・いちばん多い教科：${labelOf(SUBJECTS, top[0])}（${formatStudyTime(top[1])}）` : null,
+    `・少なめの教科：${labelOf(SUBJECTS, low[0])}（${formatStudyTime(low[1])}）`,
+    '',
+    diff < 0 ? 'ペースが少し落ちてるかも。今日は短くてもいいから、1コマだけやってみよう。'
+      : st.streak >= 3 ? 'いい流れ！この調子で続けよう。'
+      : '少しずつ積み上がってるよ。',
+    `次は「${labelOf(SUBJECTS, low[0])}」を25分やってみるのがおすすめ。`,
+  ].filter(l=> l !== null);
+  return { role:'coach', text: lines.join('\n'), action:{ type:'start-subject', subject: low[0], label:`${labelOf(SUBJECTS, low[0])}でタイマー開始` } };
+}
+
+// ---- AIへの指示（毎回いちばん最初に渡す） ----
+function aiInstructions(){
+  const p = loadProfile() || {};
+  const st = studyStats();
+  const subjects = PLAN_SUBJECTS.map(s=> `${s.label} ${formatStudyTime(st.bySubject[s.id])}`).join('、');
+  return [
+    'あなたは中高生向けの学習アプリ「ゾーンNOW」のAIコーチです。次のルールで答えてください。',
+    `・相手は${gradeLabelOf(p) || '中高生'}の生徒です。やさしく前向きな口調で、200〜300字くらいにまとめてください。`,
+    '・勉強の質問には、いきなり答えを全部言わず「考え方 → ヒント → 答え」の順で説明してください。',
+    '・やる気や悩みの相談には、まず気持ちに寄りそってから、今すぐできる小さな行動を1つだけ提案してください。',
+    '・Markdown記法（#、**、表）は使わず、ふつうの文章と「・」の箇条書きで書いてください。',
+    '・本名・住所・学校名などの個人情報は聞かないでください。危険なこと・不適切なことには答えず、深刻な悩みには信頼できる大人や相談窓口に話すようすすめてください。',
+    '',
+    '【この生徒の学習データ（アプリ内の記録）】',
+    `・今日の勉強時間：${formatStudyTime(st.today)}　直近7日間：${formatStudyTime(st.week)}（前の7日間：${formatStudyTime(st.prevWeek)}）`,
+    `・直近7日間の教科別：${subjects}`,
+    `・勉強した日：直近7日中${st.weekDays}日`,
+  ].join('\n');
+}
+
+const AI_ERROR_TEXT = {
+  rate_limited: '今は混み合っているみたい。少し時間をおいてから、もう一度送ってみてね。',
+  refused: 'ごめんね、その内容には答えられないよ。勉強のことなら、なんでも聞いてね。',
+  session_expired: 'ログインの有効期限が切れたみたい。claude.ai にログインし直してから試してね。',
+  prompt_too_large: '会話が長くなりすぎたみたい。「会話をリセット」してから聞き直してね。',
+};
+const AI_OFF_CODES = ['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'capability_removed'];
+
+function aiUnavailableMessage(intent){
+  const msg = {
+    role:'coach',
+    text:'ごめんね、自由な質問に答えるAIは、この環境ではまだ使えないんだ（アプリのサーバーができたら使えるようになるよ）。\n今は「今日の勉強プラン」と「1週間の振り返り」が使えるよ。',
+  };
+  if(intent === 'motivation'){
+    const m = pickNudgeMessage();
+    msg.text = `${m.title}\n${m.sub}\n\nまずは5分だけ、一緒に始めてみよう。`;
+    msg.action = { type:'start-timer', label:'5分だけやってみる' };
+  }
+  return msg;
+}
+
+function detectIntent(text){
+  if(/プラン|計画|スケジュール|何から/.test(text)) return 'plan';
+  if(/振り返|ふりかえ|分析|どれくらい勉強/.test(text)) return 'review';
+  if(/やる気|だる|めんど|面倒|しんどい|疲れ|集中でき|やりたくない/.test(text)) return 'motivation';
+  return 'chat';
+}
+
+// ---- 表示 ----
+function welcomeMessage(){
+  const p = loadProfile();
+  return { role:'coach', text:`こんにちは${p ? '、' + p.name + 'さん' : ''}！AIコーチだよ。\n今日の勉強プランを作ったり、1週間の勉強を振り返ったりできるよ。わからない問題や勉強の悩みも、気軽に聞いてね。` };
+}
+function aiMessageHtml(m, i){
+  if(m.role === 'user') return `<div class="ai-msg user"><div class="ai-bubble">${escapeHtml(m.text)}</div></div>`;
+  let extra = '';
+  if(m.plan){
+    const p = m.plan;
+    extra += `<div class="ai-plan">
+      <div class="chip-row">${PLAN_MINUTES.map(min=> `<button class="chip ${min === p.minutes ? 'active' : ''}" data-plan-minutes="${min}" data-i="${i}">${min}分</button>`).join('')}</div>
+      ${p.blocks.map((b, k)=> `
+        <div class="ai-plan-row"><span class="study-dot" style="background:${studyColor(b.subject)}"></span><span class="ai-plan-label">${k + 1}コマ目　${labelOf(SUBJECTS, b.subject)}</span><span class="ai-plan-min">${b.minutes}分</span></div>
+        <div class="ai-plan-reason">${escapeHtml(b.reason)}</div>`).join('')}
+      <button class="study-btn primary full" data-ai-action="start-subject" data-subject="${p.blocks[0].subject}">1コマ目（${labelOf(SUBJECTS, p.blocks[0].subject)}）でタイマー開始</button>
+    </div>`;
+  }
+  if(m.action){
+    extra += `<button class="study-btn primary full ai-action" data-ai-action="${m.action.type}" data-subject="${m.action.subject || ''}">${escapeHtml(m.action.label)}</button>`;
+  }
+  const body = m.pending && !m.text ? '考え中…（少し時間がかかることがあります）' : escapeHtml(m.text);
+  const note = m.note ? `<span class="ai-note">${escapeHtml(m.note)}</span>` : '';
+  return `<div class="ai-msg coach"><div class="ai-avatar">AI</div><div class="ai-bubble ${m.pending && !m.text ? 'thinking' : ''}">${body}${note}${extra}</div></div>`;
+}
+function renderAiMessages(){
+  const el = document.getElementById('ai-messages');
+  const msgs = [welcomeMessage(), ...aiHistory];
+  el.innerHTML = msgs.map((m, i)=> aiMessageHtml(m, i - 1)).join('');
+  el.scrollTop = el.scrollHeight;
+  document.getElementById('ai-send').textContent = aiController ? '停止' : '送信';
+}
+function renderAiScreen(){ renderAiStatus(); renderAiMessages(); }
+
+// ---- 送信 ----
+async function sendToAiCoach(text){
+  text = text.trim();
+  if(!text || aiController) return;
+  const intent = detectIntent(text);
+  aiHistory.push({ role:'user', text });
+
+  if(intent === 'plan'){ aiHistory.push(planMessage(60)); }
+  else if(intent === 'review'){ aiHistory.push(reviewMessage()); }
+  else if(aiState !== 'on'){ aiHistory.push(aiUnavailableMessage(intent)); }
+  else {
+    await askAi();
+    return;
+  }
+  saveAiHistory();
+  renderAiMessages();
+}
+
+async function askAi(){
+  const reply = { role:'coach', text:'', pending:true };
+  aiHistory.push(reply);
+  aiController = new AbortController();
+  renderAiMessages();
+
+  const turns = aiHistory
+    .filter(m=> m !== reply && m.text)
+    .slice(-AI_CONTEXT_TURNS)
+    .map(m=> ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }));
+  while(turns.length && turns[0].role !== 'user') turns.shift();
+
+  try{
+    const { text, truncated } = await aiSample([{ role:'user', content: aiInstructions() }, ...turns], {
+      cache:false,
+      signal: aiController.signal,
+      onText: ({ text })=>{ reply.text = text; renderAiMessages(); },
+    });
+    reply.text = text;
+    if(truncated) reply.note = '（長くなったので途中までです。続きは「続きを教えて」と聞いてね）';
+  }catch(e){
+    const code = e && e.code;
+    reply.text = e && e.text && code !== 'refused' ? e.text : '';
+    if(code === 'cancelled'){ reply.note = '（停止しました）'; }
+    else if(AI_OFF_CODES.includes(code)){
+      aiState = 'off';
+      renderAiStatus();
+      reply.text = 'AIの利用が許可されていないので、今は使えないよ。\n「今日の勉強プラン」と「1週間の振り返り」はいつでも使えるよ。';
+    } else {
+      reply.text = (reply.text ? reply.text + '\n\n' : '') + (AI_ERROR_TEXT[code] || 'うまくつながらなかったみたい。もう一度送ってみてね。');
+    }
+    if(!reply.text) reply.text = '（回答を停止しました）';
+  }finally{
+    reply.pending = false;
+    aiController = null;
+    saveAiHistory();
+    renderAiMessages();
+  }
+}
+
+// 勉強タイマーを（教科を決めて）スタートして記録画面へ
+function startStudyTimerFromCoach(subject){
+  if(timerState.startedAt){
+    showScreen('record');
+    showToast('タイマーはもう動いています');
+    return;
+  }
+  if(subject){
+    timerSubject.set(subject);
+    timerState.subject = subject;
+    timerState.subjectOther = '';
+  }
+  timerState.startedAt = Date.now();
+  saveTimer();
+  showScreen('record');
+  showToast(subject ? `${labelOf(SUBJECTS, subject)}のタイマーをスタートしました` : 'タイマーをスタート！教科も選んでおこう');
+}
+
+const aiInput = document.getElementById('ai-input');
+document.getElementById('ai-send').addEventListener('click', ()=>{
+  if(aiController){ aiController.abort(); return; } // 回答中は「停止」ボタン
+  const text = aiInput.value;
+  aiInput.value = '';
+  sendToAiCoach(text);
+});
+aiInput.addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter' && !e.isComposing){
+    e.preventDefault();
+    if(aiController) return;
+    const text = aiInput.value;
+    aiInput.value = '';
+    sendToAiCoach(text);
+  }
+});
+document.getElementById('ai-suggestions').addEventListener('click', (e)=>{
+  const chip = e.target.closest('[data-ai-suggest]');
+  if(chip) sendToAiCoach(chip.dataset.aiSuggest);
+});
+document.getElementById('ai-messages').addEventListener('click', (e)=>{
+  const minutesBtn = e.target.closest('[data-plan-minutes]');
+  if(minutesBtn){
+    const i = Number(minutesBtn.dataset.i);
+    if(aiHistory[i] && aiHistory[i].plan){
+      aiHistory[i] = planMessage(Number(minutesBtn.dataset.planMinutes));
+      saveAiHistory();
+      renderAiMessages();
+    }
+    return;
+  }
+  const action = e.target.closest('[data-ai-action]');
+  if(action) startStudyTimerFromCoach(action.dataset.subject || null);
+});
+document.getElementById('ai-clear').addEventListener('click', async ()=>{
+  if(!aiHistory.length) return;
+  if(!await confirmDialog('AIコーチとの会話を消しますか？', '消す')) return;
+  if(aiController) aiController.abort();
+  aiHistory = [];
+  saveAiHistory();
+  renderAiMessages();
+});
 
 // ---- 初回設定・プロフィール編集（同じ画面を使い回す） ----
 // 今は端末内に保存するだけ。ログイン機能ができたらアカウント情報としてサーバーに送る

@@ -334,6 +334,50 @@
   .study-btn:disabled{ opacity:.35; }
   .other-input{ display:none; margin-top:10px; }
 
+  /* ---- 楽曲を選ぶ（下から出るシート） ---- */
+  #music-sheet{
+    position:absolute; inset:0; z-index:55; display:none; align-items:flex-end;
+    background:rgba(16,19,26,.6); backdrop-filter:blur(6px);
+  }
+  #music-sheet.show{ display:flex; }
+  .sheet-card{
+    width:100%; max-height:80%; overflow-y:auto; background:#1A1E2B; color:#fff;
+    border-radius:20px 20px 0 0; border-top:1px solid rgba(255,255,255,.1);
+    padding:18px 18px calc(22px + var(--safe-bottom));
+  }
+  .sheet-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+  .sheet-title{ font-size:17px; font-weight:700; margin:0; }
+  .sheet-close{ color:rgba(255,255,255,.6); font-size:22px; padding:4px 8px; }
+  .sheet-note{ font-family:var(--font-ui); font-size:11.5px; color:rgba(255,255,255,.45); line-height:1.6; margin:14px 0 0; }
+  .music-row{ display:flex; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid rgba(255,255,255,.07); }
+  .music-play{
+    width:40px; height:40px; border-radius:50%; flex-shrink:0; color:#fff; font-size:13px;
+    background:linear-gradient(135deg, var(--cta-from), var(--cta-to));
+  }
+  .music-play.none{ background:rgba(255,255,255,.08); font-size:15px; }
+  .music-pick{ flex:1; min-width:0; text-align:left; color:#fff; padding:2px 0; }
+  .music-title{ font-family:var(--font-ui); font-size:14px; font-weight:700; }
+  .music-meta{ font-family:var(--font-ui); font-size:11.5px; color:rgba(255,255,255,.5); margin-top:2px; }
+  .music-check{ width:22px; color:var(--mint); font-weight:900; text-align:center; }
+
+  /* ---- 投稿のプレビュー ---- */
+  #preview-screen{ background:#000; z-index:20; }
+  #preview-stage{ position:absolute; inset:0; }
+  .preview-topbar{
+    position:absolute; top:calc(var(--safe-top) + 18px); left:16px; right:16px; z-index:12;
+    display:flex; align-items:center; gap:10px;
+  }
+  .preview-topbar .icon-btn{ font-size:17px; }
+  .preview-label{
+    padding:7px 12px; border-radius:99px; background:rgba(0,0,0,.45); backdrop-filter:blur(6px);
+    font-family:var(--font-ui); font-size:12px; font-weight:700; color:#fff;
+  }
+  .preview-bottom{
+    position:absolute; left:0; right:0; bottom:0; z-index:12;
+    padding:12px 20px calc(14px + var(--safe-bottom));
+    background:linear-gradient(180deg, rgba(16,19,26,0), rgba(16,19,26,.9));
+  }
+
   /* ---- 確認ダイアログ ---- */
   #confirm-dialog{
     position:absolute; inset:0; z-index:60; display:none;
@@ -534,8 +578,22 @@
     border:1px solid rgba(255,255,255,.14); color:#fff; font-family:var(--font-ui); font-size:14px;
   }
   .post-input::placeholder{ color:rgba(255,255,255,.35); }
-  .tag-input-row{ display:flex; gap:8px; }
-  .tag-input-row .post-input{ flex:1; min-width:0; }
+  .post-tools{ display:flex; gap:8px; }
+  .tool-btn{
+    flex:1; min-width:0; display:flex; align-items:center; justify-content:center; gap:7px;
+    padding:11px 10px; border-radius:12px; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.14);
+    color:#fff; font-family:var(--font-ui); font-size:13px; font-weight:700;
+  }
+  .tool-btn > span:last-child{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tool-btn.active{ border-color:transparent; background:linear-gradient(135deg, rgba(79,140,255,.35), rgba(139,92,246,.35)); }
+  .tool-mark{ font-size:16px; font-weight:900; }
+  .tag-input-row{ display:flex; gap:8px; margin-top:10px; }
+  .tag-input-wrap{ position:relative; flex:1; min-width:0; }
+  .tag-prefix{
+    position:absolute; left:14px; top:50%; transform:translateY(-50%);
+    font-family:var(--font-ui); font-size:15px; font-weight:700; color:rgba(255,255,255,.55); pointer-events:none;
+  }
+  .tag-input-wrap .post-input{ padding-left:30px; }
   .tag-add-btn{ flex:0 0 auto; padding:0 18px; }
   .tag-list{ margin-top:10px; }
   .tag-list:empty{ display:none; }
@@ -924,9 +982,16 @@
       </div>
 
       <div class="post-field">
-        <label class="post-label" for="post-tag-input">ハッシュタグ（任意・最大5個）</label>
-        <div class="tag-input-row">
-          <input type="text" class="post-input" id="post-tag-input" placeholder="例：テスト対策" maxlength="40" enterkeyhint="done" />
+        <label class="post-label">ハッシュタグ・楽曲（任意）</label>
+        <div class="post-tools">
+          <button class="tool-btn" id="post-tag-open"><span class="tool-mark">#</span><span id="post-tag-label">ハッシュタグ</span></button>
+          <button class="tool-btn" id="post-music-open"><span class="tool-mark">♪</span><span id="post-music-label">楽曲を選ぶ</span></button>
+        </div>
+        <div class="tag-input-row" id="post-tag-row" style="display:none;">
+          <div class="tag-input-wrap">
+            <span class="tag-prefix">#</span>
+            <input type="text" class="post-input" id="post-tag-input" placeholder="例：テスト対策（最大5個）" maxlength="40" enterkeyhint="done" aria-label="ハッシュタグ" />
+          </div>
           <button class="study-btn tag-add-btn" id="post-tag-add">追加</button>
         </div>
         <div class="chip-row tag-list" id="post-tag-list"></div>
@@ -934,9 +999,33 @@
 
       <p class="post-note">※ 現在はデモ版です。投稿者名には最初に設定したアカウント名が使われます。投稿した動画・写真はこの端末・このタブの中だけで表示され、リロードすると消えます。</p>
 
-      <button class="post-submit" id="post-submit">投稿する</button>
+      <button class="post-submit" id="post-next">次へ</button>
     </div>
     <div class="bottom-nav solid-dark" data-active-nav="create"></div>
+  </section>
+
+  <!-- ============ 楽曲を選ぶ（投稿画面から開く） ============ -->
+  <div id="music-sheet" role="dialog" aria-modal="true" aria-labelledby="music-sheet-title">
+    <div class="sheet-card">
+      <div class="sheet-head">
+        <h2 class="sheet-title" id="music-sheet-title">楽曲を選ぶ</h2>
+        <button class="sheet-close" id="music-sheet-close" aria-label="閉じる">×</button>
+      </div>
+      <div id="music-list"></div>
+      <p class="sheet-note">いまはゾーンNOWオリジナルのデモ音源です（アプリ内で作っているので著作権の心配はありません）。▶で試聴できます。</p>
+    </div>
+  </div>
+
+  <!-- ============ 投稿のプレビュー（ホームでの見え方を確認） ============ -->
+  <section id="preview-screen" class="screen">
+    <div id="preview-stage"></div>
+    <div class="preview-topbar">
+      <button class="icon-btn" id="preview-back" aria-label="編集に戻る">←</button>
+      <span class="preview-label">プレビュー：ホームではこう流れます</span>
+    </div>
+    <div class="preview-bottom">
+      <button class="post-submit" id="preview-post">投稿する</button>
+    </div>
   </section>
 
   <!-- ============ 確認ダイアログ（ブラウザ標準のconfirmの代わり） ============ -->
@@ -1050,6 +1139,112 @@ const VIDEOS = [
   { id:'tr5', kind:'trivia', subject:'english', grade:'everyone', unit:'', title:'英語でいちばんよく使われる単語は？', creator:'イングリッシュTAKU', duration:17, short:DEMO_SHORT[4] },
   { id:'tr6', kind:'trivia', subject:'science', grade:'everyone', unit:'', title:'虹は本当は"まんまる"の形をしている', creator:'りかのハル', duration:20, short:DEMO_SHORT[0] },
 ];
+
+/* ============================================================
+   ◆ 楽曲ライブラリ ◆
+   ------------------------------------------------------------
+   投稿に付けられるBGM。今は権利の心配がない「アプリ内で合成するデモ音源」だけ。
+   本物の楽曲を入れるときは src に音声ファイルのURLを書けば、合成の代わりにそれが流れる。
+   ※入れてよいのは「アプリ内でユーザーが選んで投稿に付ける」使い方まで許可された楽曲だけ
+     （CC0などのパブリックドメイン、またはその用途を許可する契約を結んだもの）。
+============================================================ */
+const MUSIC_LIBRARY = [
+  { id:'focus',   title:'Focus Lo-fi',   artist:'ゾーンNOW', mood:'落ち着いたローファイ', bpm:72,  wave:'triangle',
+    chords:[[48,55,64,71],[45,52,60,67],[41,48,57,64],[43,50,59,65]] },
+  { id:'morning', title:'Morning Light', artist:'ゾーンNOW', mood:'明るく前向き',       bpm:96,  wave:'sine',
+    chords:[[48,55,64,67],[43,50,59,67],[45,52,60,64],[41,48,57,65]] },
+  { id:'night',   title:'Night Study',   artist:'ゾーンNOW', mood:'夜の集中に',         bpm:64,  wave:'sine',
+    chords:[[45,52,60,64],[41,48,57,60],[48,55,64,67],[43,50,59,62]] },
+  { id:'energy',  title:'Energy Up',     artist:'ゾーンNOW', mood:'テンポ速めでやる気UP', bpm:124, wave:'square',
+    chords:[[45,52,57,64],[41,48,53,60],[48,55,60,67],[43,50,55,62]] },
+];
+function musicById(id){ return MUSIC_LIBRARY.find(m=> m.id === id) || null; }
+
+// ---- 楽曲の再生（同時に流れるのは1曲だけ） ----
+// owner：その曲を流しているもの（フィードのスライドなど）。別のものが止めようとしても止めない
+let audioCtx = null;
+const music = { track:null, owner:null, timer:null, gain:null, audio:null, nextTime:0, step:0 };
+
+function getAudioCtx(){
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if(!Ctx) return null;
+  if(!audioCtx) audioCtx = new Ctx();
+  if(audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
+  return audioCtx;
+}
+// ブラウザは「ユーザーが画面に触れるまで音を出さない」ので、最初のタップで音を出せる状態にする
+document.addEventListener('pointerdown', ()=>{ if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{}); });
+
+function midiToFreq(n){ return 440 * Math.pow(2, (n - 69) / 12); }
+function playTone(ctx, dest, freq, start, duration, type, peak, attack){
+  const osc = ctx.createOscillator();
+  const env = ctx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  env.gain.setValueAtTime(0.0001, start);
+  env.gain.exponentialRampToValueAtTime(peak, start + attack);
+  env.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  osc.connect(env);
+  env.connect(dest);
+  osc.start(start);
+  osc.stop(start + duration + 0.05);
+}
+// 少し先の分までの音を予約していく（8分音符単位：和音・ベース・アルペジオ）
+function scheduleMusic(){
+  const ctx = audioCtx, t = music.track;
+  const eighth = 60 / t.bpm / 2;
+  while(music.nextTime < ctx.currentTime + 0.3){
+    const step = music.step, time = music.nextTime;
+    const chord = t.chords[Math.floor(step / 8) % t.chords.length];
+    if(step % 8 === 0) chord.forEach(n=> playTone(ctx, music.gain, midiToFreq(n), time, eighth * 8, 'sine', 0.045, 0.3));
+    if(step % 4 === 0) playTone(ctx, music.gain, midiToFreq(chord[0] - 12), time, eighth * 3, 'triangle', 0.12, 0.02);
+    playTone(ctx, music.gain, midiToFreq(chord[(step * 3) % chord.length] + 12), time, eighth * 0.9, t.wave, t.wave === 'square' ? 0.02 : 0.055, 0.01);
+    music.nextTime += eighth;
+    music.step++;
+  }
+}
+
+function startMusic(trackId, owner = null){
+  const track = musicById(trackId);
+  if(!track) return;
+  stopMusic();
+  music.track = track;
+  music.owner = owner;
+  if(track.src){ // 本物の音声ファイル
+    music.audio = new Audio(track.src);
+    music.audio.loop = true;
+    music.audio.volume = 0.6;
+    music.audio.play().catch(()=>{});
+    return;
+  }
+  const ctx = getAudioCtx();
+  if(!ctx) return;
+  const gain = ctx.createGain();
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 2400;
+  gain.connect(filter);
+  filter.connect(ctx.destination);
+  music.gain = gain;
+  music.nextTime = ctx.currentTime + 0.05;
+  music.step = 0;
+  scheduleMusic();
+  music.timer = setInterval(scheduleMusic, 60);
+}
+function stopMusic(owner){
+  if(owner && music.owner !== owner) return;
+  clearInterval(music.timer);
+  music.timer = null;
+  if(music.gain){
+    const g = music.gain;
+    try{ g.gain.setTargetAtTime(0, audioCtx.currentTime, 0.04); }catch(e){}
+    setTimeout(()=> g.disconnect(), 300);
+    music.gain = null;
+  }
+  if(music.audio){ music.audio.pause(); music.audio = null; }
+  music.track = null;
+  music.owner = null;
+}
 
 function labelOf(list, id){ const f = list.find(x=>x.id===id); return f ? f.label : id; }
 
@@ -1246,9 +1441,10 @@ const screens = {
   notifications: document.getElementById('notifications-screen'),
   history: document.getElementById('history-screen'),
   people: document.getElementById('people-screen'),
+  preview: document.getElementById('preview-screen'),
 };
 // ボトムナビに無い画面は、どのタブの中の画面かを決めておく（そのタブを点灯させる）
-const NAV_PARENT = { search:'home', notifications:'profile', history:'record', people:'profile' };
+const NAV_PARENT = { search:'home', notifications:'profile', history:'record', people:'profile', preview:'create' };
 function showScreen(name){
   Object.values(screens).forEach(s=>s.classList.remove('active'));
   screens[name].classList.add('active');
@@ -1263,6 +1459,7 @@ function showScreen(name){
   // ホームを離れたら再生を止め、戻ってきたら今のショートを頭から再生する
   if(name === 'home') resumeFeed();
   else deactivateSlide(currentSlide);
+  if(name !== 'preview') closePreview();
 }
 
 // ---- ボトムナビ：5項目(ホーム/AI/＋/記録/プロフィール)を共通生成 ----
@@ -1321,9 +1518,14 @@ function createSlide(v){
   const isOwn = !!profile && v.creator === profile.name; // 自分の投稿はフォローボタンを出さない
   const following = !isOwn && isFollowing(v.creator);
 
+  const track = musicById(v.musicId);
+  const musicLine = track ? `♪ ${track.title} - ${track.artist}` : (isImage ? '' : `♪ オリジナル音源 - ${v.creator}`);
+
   const slide = document.createElement('div');
   slide.className = 'short-slide';
   slide.dataset.id = v.id;
+  slide.dataset.duration = v.duration || '';
+  slide.dataset.music = track ? track.id : '';
   slide.innerHTML = `
     <div class="zone-meter"><div class="zone-meter-fill"></div></div>
     ${isImage ? photoMediaHtml(v) : `<video src="${v.short}" muted loop playsinline preload="metadata"></video>`}
@@ -1355,13 +1557,13 @@ function createSlide(v){
         ${icon('share')}
         <span class="action-label">シェア</span>
       </button>
-      ${isImage ? '' : `<button class="action-item mute-item" data-role="mute">${icon('volumeOff')}</button>`}
+      ${isImage && !track ? '' : `<button class="action-item mute-item" data-role="mute">${icon('volumeOff')}</button>`}
     </div>
 
     <div class="caption-block">
       <p class="caption-text">${escapeHtml(v.title)}</p>
       <p class="caption-hashtags">${escapeHtml(hashtagsOf(v))} ・ @${escapeHtml(v.creator)}</p>
-      <p class="caption-music">♪ オリジナル楽曲 - ゾーンNOW</p>
+      ${musicLine ? `<p class="caption-music">${escapeHtml(musicLine)}</p>` : ''}
     </div>
   `;
   attachSlideEvents(slide, v);
@@ -1396,13 +1598,12 @@ function attachSlideEvents(slide, v){
     }, { passive:true });
   }
 
-  // 音のON/OFF（フィード内のスライドをまたいで状態を引き継ぐ。写真投稿には音がないのでボタン自体がない）
+  // 音のON/OFF（スライドをまたいで状態を引き継ぐ。音のない写真投稿にはボタン自体がない）
   const muteBtn = slide.querySelector('[data-role="mute"]');
-  if(muteBtn && video){
+  if(muteBtn){
     muteBtn.addEventListener('click', ()=>{
-      video.muted = !video.muted;
-      currentAudibleState = !video.muted;
-      muteBtn.innerHTML = icon(video.muted ? 'volumeOff' : 'volume');
+      currentAudibleState = !currentAudibleState;
+      applySlideAudio(slide);
     });
   }
 
@@ -1553,35 +1754,64 @@ function enterSlide(slide){
 }
 function resumeFeed(){ enterSlide(currentSlide); }
 
+// 音の出し方：楽曲付きの投稿は楽曲を流し、動画そのものの音は消す。楽曲なしの動画は動画の音
+function applySlideAudio(slide){
+  const video = slide.querySelector('video');
+  const trackId = slide.dataset.music;
+  if(trackId){
+    if(video) video.muted = true;
+    if(currentAudibleState){ if(!music.track || music.owner !== slide) startMusic(trackId, slide); }
+    else stopMusic(slide);
+  } else if(video){
+    video.muted = !currentAudibleState;
+  }
+  const muteBtn = slide.querySelector('[data-role="mute"]');
+  if(muteBtn) muteBtn.innerHTML = icon(currentAudibleState ? 'volume' : 'volumeOff');
+}
+
+// スライドを再生状態にする（フィードとプレビューで共通）
 function activateSlide(slide){
+  slide.classList.add('is-active');
   const video = slide.querySelector('video');
   const meter = slide.querySelector('.zone-meter-fill');
-  // Zoneメーターが満タン=最後まで見た。視聴記録に残す
+  // Zoneメーターが満タン=最後まで見た。視聴記録に残す（プレビューは記録しない）
   const onComplete = ()=>{ if(currentSlide === slide) recordWatch(slide.dataset.id); };
   if(video){
     video.currentTime = 0;
-    video.muted = !currentAudibleState;
     video.play().catch(()=>{});
-    const muteBtn = slide.querySelector('[data-role="mute"]');
-    if(muteBtn) muteBtn.innerHTML = icon(video.muted ? 'volumeOff' : 'volume');
     const start = ()=> runZoneMeter(slide, meter, video.duration && isFinite(video.duration) ? video.duration : 20, onComplete);
     if(video.readyState >= 1) start();
-    else video.addEventListener('loadedmetadata', ()=>{ if(currentSlide === slide) start(); }, { once:true });
+    else video.addEventListener('loadedmetadata', ()=>{ if(slide.classList.contains('is-active')) start(); }, { once:true });
   } else {
-    const v = VIDEOS.find(x=>x.id===slide.dataset.id);
-    runZoneMeter(slide, meter, (v && v.duration) || IMAGE_DISPLAY_SECONDS, onComplete);
+    runZoneMeter(slide, meter, Number(slide.dataset.duration) || IMAGE_DISPLAY_SECONDS, onComplete);
   }
+  applySlideAudio(slide);
 }
 
 function deactivateSlide(slide){
   if(!slide) return;
+  slide.classList.remove('is-active');
   const video = slide.querySelector('video');
   const meter = slide.querySelector('.zone-meter-fill');
   if(video) video.pause();
+  stopMusic(slide);
   clearTimeout(meterTimers.get(slide));
   meter.style.transition = 'none';
   meter.style.width = '0%';
 }
+
+// アプリが裏に回ったら音と再生を止め、戻ってきたら再開する
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){
+    deactivateSlide(currentSlide);
+    if(previewSlide) deactivateSlide(previewSlide);
+    stopMusic();
+  } else if(screens.home.classList.contains('active')){
+    resumeFeed();
+  } else if(screens.preview.classList.contains('active') && previewSlide){
+    activateSlide(previewSlide);
+  }
+});
 
 // フィードの動画はloop再生でendedイベントが発火しないため、動画・写真ともに
 // メーターと同じ秒数のタイマーで「最後まで見た」を判定する
@@ -2114,6 +2344,9 @@ let postMediaType = null;   // 'video' | 'image'
 let postMediaUrls = [];     // 選んだファイルのプレビュー用URL（投稿時もそのまま使う）
 let postSelectedDuration = 0;
 let postHashtags = [];
+let postMusicId = null;
+let postDraft = null;      // 「次へ」で作った投稿内容（プレビューで確認してから投稿する）
+let previewSlide = null;   // プレビュー画面に出しているスライド
 let postSubmitting = false;
 
 // 教科は任意（''=なし）。やる気・豆知識の動画は教科なしで投稿できる
@@ -2175,13 +2408,21 @@ postPreviewVideo.addEventListener('loadedmetadata', ()=>{
   if(isFinite(postPreviewVideo.duration)) postSelectedDuration = Math.round(postPreviewVideo.duration);
 });
 
-// ---- ハッシュタグ（最大5個） ----
+// ---- ハッシュタグ（最大5個）：「#」ボタンで入力欄を開く ----
 const postTagInput = document.getElementById('post-tag-input');
+const postTagRow = document.getElementById('post-tag-row');
 function renderPostTags(){
   document.getElementById('post-tag-list').innerHTML = postHashtags.map((t, i)=>
     `<span class="chip tag-chip">#${escapeHtml(t)}<button data-remove-tag="${i}" aria-label="#${escapeHtml(t)}を削除">×</button></span>`
   ).join('');
+  document.getElementById('post-tag-label').textContent = postHashtags.length ? `ハッシュタグ ${postHashtags.length}/${MAX_HASHTAGS}` : 'ハッシュタグ';
+  document.getElementById('post-tag-open').classList.toggle('active', postHashtags.length > 0);
 }
+document.getElementById('post-tag-open').addEventListener('click', ()=>{
+  const open = postTagRow.style.display === 'none';
+  postTagRow.style.display = open ? 'flex' : 'none';
+  if(open) postTagInput.focus();
+});
 // 「#英語 #単語」のようにまとめて入力しても1つずつ追加する
 function addPostTags(text){
   const words = text.split(/[\s,、#＃]+/).map(w=> w.trim()).filter(Boolean);
@@ -2207,6 +2448,60 @@ document.getElementById('post-tag-list').addEventListener('click', (e)=>{
   renderPostTags();
 });
 
+// ---- 楽曲を選ぶ ----
+const musicSheet = document.getElementById('music-sheet');
+let musicPreviewId = null; // シートで試聴中の曲
+
+function renderPostMusicButton(){
+  const track = musicById(postMusicId);
+  document.getElementById('post-music-label').textContent = track ? track.title : '楽曲を選ぶ';
+  document.getElementById('post-music-open').classList.toggle('active', !!track);
+}
+function renderMusicSheet(){
+  const rows = [{ id:null, title:'楽曲なし', mood:'動画の元の音のまま（写真は無音）' }, ...MUSIC_LIBRARY];
+  document.getElementById('music-list').innerHTML = rows.map(m=>`
+    <div class="music-row">
+      ${m.id
+        ? `<button class="music-play" data-preview="${m.id}" aria-label="${escapeHtml(m.title)}を試聴">${musicPreviewId === m.id ? '■' : '▶'}</button>`
+        : `<button class="music-play none" data-pick="" aria-label="楽曲なしにする">−</button>`}
+      <button class="music-pick" data-pick="${m.id || ''}">
+        <div class="music-title">${escapeHtml(m.title)}</div>
+        <div class="music-meta">${escapeHtml(m.mood)}${m.artist ? ' ・ ' + escapeHtml(m.artist) : ''}</div>
+      </button>
+      <span class="music-check">${(postMusicId || null) === m.id ? '✓' : ''}</span>
+    </div>
+  `).join('');
+}
+function closeMusicSheet(){
+  musicSheet.classList.remove('show');
+  musicPreviewId = null;
+  stopMusic('sheet');
+}
+document.getElementById('post-music-open').addEventListener('click', ()=>{
+  renderMusicSheet();
+  musicSheet.classList.add('show');
+});
+document.getElementById('music-sheet-close').addEventListener('click', closeMusicSheet);
+musicSheet.addEventListener('click', (e)=>{
+  if(e.target === musicSheet){ closeMusicSheet(); return; } // 背景タップで閉じる
+  const preview = e.target.closest('[data-preview]');
+  if(preview){
+    const id = preview.dataset.preview;
+    if(musicPreviewId === id){ musicPreviewId = null; stopMusic('sheet'); }
+    else { musicPreviewId = id; startMusic(id, 'sheet'); }
+    renderMusicSheet();
+    return;
+  }
+  const pick = e.target.closest('[data-pick]');
+  if(pick){
+    postMusicId = pick.dataset.pick || null;
+    renderPostMusicButton();
+    closeMusicSheet();
+    const track = musicById(postMusicId);
+    showToast(track ? `「${track.title}」を選びました` : '楽曲なしにしました');
+  }
+});
+
 function resetPostForm(){
   clearPostMedia();
   postKind.set('lesson');
@@ -2215,12 +2510,16 @@ function resetPostForm(){
   postHashtags = [];
   renderPostTags();
   postTagInput.value = '';
+  postTagRow.style.display = 'none';
+  postMusicId = null;
+  renderPostMusicButton();
+  postDraft = null;
   document.getElementById('post-title').value = '';
   document.getElementById('post-unit').value = '';
 }
 
-document.getElementById('post-submit').addEventListener('click', async ()=>{
-  if(postSubmitting) return;
+// ---- 「次へ」→ プレビュー → 「投稿する」 ----
+document.getElementById('post-next').addEventListener('click', ()=>{
   const title = document.getElementById('post-title').value.trim();
   const unit = document.getElementById('post-unit').value.trim();
 
@@ -2230,13 +2529,8 @@ document.getElementById('post-submit').addEventListener('click', async ()=>{
   if(choiceError){ showToast(choiceError); return; }
   if(postTagInput.value.trim()) addPostTags(postTagInput.value); // 入力したまま「追加」を押し忘れた分も拾う
 
-  postSubmitting = true;
-  const ok = await confirmDialog('本当に投稿しますか？', '投稿する');
-  postSubmitting = false;
-  if(!ok) return;
-
   const isImage = postMediaType === 'image';
-  const newPost = {
+  postDraft = {
     id: 'u' + Date.now(),
     kind: postKind.id,
     subject: postSubject.id,
@@ -2245,6 +2539,7 @@ document.getElementById('post-submit').addEventListener('click', async ()=>{
     gradeOther: postTarget.other,
     unit,           // ホームには出さず、検索の絞り込みに使う
     hashtags: [...postHashtags],
+    musicId: postMusicId,
     title,
     creator: (loadProfile() || {}).name || 'あなた',
     duration: isImage
@@ -2254,14 +2549,41 @@ document.getElementById('post-submit').addEventListener('click', async ()=>{
     short: postMediaUrls[0],
     images: isImage ? [...postMediaUrls] : undefined,
   };
-  VIDEOS.unshift(newPost);
+  showScreen('preview');
+  openPreview(postDraft);
+});
 
+// プレビュー：ホームのフィードと同じ部品でスライドを作って流す（見え方がずれないように）
+function openPreview(post){
+  closePreview();
+  previewSlide = createSlide(post);
+  document.getElementById('preview-stage').appendChild(previewSlide);
+  activateSlide(previewSlide);
+}
+function closePreview(){
+  if(!previewSlide) return;
+  deactivateSlide(previewSlide);
+  previewSlide.remove();
+  previewSlide = null;
+}
+
+document.getElementById('preview-back').addEventListener('click', ()=> showScreen('create'));
+
+document.getElementById('preview-post').addEventListener('click', async ()=>{
+  if(postSubmitting || !postDraft) return;
+  postSubmitting = true;
+  const ok = await confirmDialog('本当に投稿しますか？', '投稿する');
+  postSubmitting = false;
+  if(!ok) return;
+
+  const newPost = postDraft;
+  VIDEOS.unshift(newPost);
   renderFeed(newPost);
   renderChips();
   renderResults();
   resetPostForm();
-  showToast('投稿しました（この端末内のみ・保存はされません）');
   showScreen('home');
+  showToast('投稿しました（この端末内のみ・保存はされません）');
 });
 
 document.getElementById('post-back').addEventListener('click', ()=> showScreen('home'));

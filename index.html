@@ -335,11 +335,11 @@
   .other-input{ display:none; margin-top:10px; }
 
   /* ---- 楽曲を選ぶ（下から出るシート） ---- */
-  #music-sheet{
+  .sheet-overlay{
     position:absolute; inset:0; z-index:55; display:none; align-items:flex-end;
     background:rgba(16,19,26,.6); backdrop-filter:blur(6px);
   }
-  #music-sheet.show{ display:flex; }
+  .sheet-overlay.show{ display:flex; }
   .sheet-card{
     width:100%; max-height:80%; overflow-y:auto; background:#1A1E2B; color:#fff;
     border-radius:20px 20px 0 0; border-top:1px solid rgba(255,255,255,.1);
@@ -359,6 +359,44 @@
   .music-title{ font-family:var(--font-ui); font-size:14px; font-weight:700; }
   .music-meta{ font-family:var(--font-ui); font-size:11.5px; color:rgba(255,255,255,.5); margin-top:2px; }
   .music-check{ width:22px; color:var(--mint); font-weight:900; text-align:center; }
+
+  /* ---- コメント ---- */
+  .comment-card{ display:flex; flex-direction:column; height:70%; max-height:70%; overflow:hidden; }
+  .comment-list{ flex:1; overflow-y:auto; margin:0 -4px; padding:0 4px; }
+  .comment-row{ display:flex; gap:10px; padding:10px 0; }
+  .comment-row .avatar{ width:34px; height:34px; font-size:13px; border-width:1.5px; flex-shrink:0; }
+  .comment-body{ flex:1; min-width:0; }
+  .comment-meta{ font-family:var(--font-ui); font-size:11.5px; color:rgba(255,255,255,.5); display:flex; gap:8px; align-items:center; }
+  .comment-meta b{ color:rgba(255,255,255,.85); font-weight:700; }
+  .comment-text{ font-family:var(--font-ui); font-size:14px; line-height:1.55; margin-top:2px; white-space:pre-wrap; word-break:break-word; }
+  .comment-delete{ color:rgba(255,255,255,.4); font-size:11.5px; text-decoration:underline; }
+  .comment-empty{ flex:1; text-align:center; font-family:var(--font-ui); font-size:13px; color:rgba(255,255,255,.5); line-height:1.8; padding-top:40px; margin:0; }
+  .comment-form{ display:flex; gap:8px; padding-top:12px; border-top:1px solid rgba(255,255,255,.08); }
+  .comment-form .post-input{ flex:1; min-width:0; }
+  .comment-form .study-btn{ flex:0 0 auto; padding:0 18px; }
+
+  /* ---- シェア ---- */
+  .share-options{ display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin:6px 0 4px; }
+  .share-option{ display:flex; flex-direction:column; align-items:center; gap:7px; color:#fff; font-family:var(--font-ui); font-size:11.5px; font-weight:600; }
+  .share-icon{
+    width:52px; height:52px; border-radius:50%; background:rgba(255,255,255,.1);
+    display:flex; align-items:center; justify-content:center; font-family:var(--font-ui); font-weight:900; font-size:12px; color:#fff;
+  }
+  .share-icon svg{ width:22px; height:22px; }
+  .share-icon.line{ background:#06C755; font-size:11px; }
+  .share-icon.x{ background:#000; border:1px solid rgba(255,255,255,.25); font-size:20px; }
+
+  /* ---- 一時停止の表示 ---- */
+  .pause-indicator{
+    position:absolute; top:50%; left:50%; z-index:6; width:76px; height:76px; border-radius:50%;
+    background:rgba(0,0,0,.38); display:flex; align-items:center; justify-content:center; color:#fff;
+    transform:translate(-50%,-50%) scale(.85); opacity:0; pointer-events:none; transition:opacity .15s ease, transform .15s ease;
+  }
+  .pause-indicator svg{ width:32px; height:32px; margin-left:5px; fill:currentColor; }
+  .short-slide.is-paused .pause-indicator{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+
+  .saved-grid{ padding:0; }
+  .saved-grid .result-title{ color:#fff; }
 
   /* ---- 投稿のプレビュー ---- */
   #preview-screen{ background:#000; z-index:20; }
@@ -898,6 +936,12 @@
         </div>
       </div>
 
+      <div class="record-block">
+        <div class="record-section-title">保存した動画</div>
+        <div class="result-grid saved-grid" id="profile-saved"></div>
+        <p class="record-empty" id="profile-saved-empty" style="padding:6px 0; text-align:left;">まだ保存した動画はありません。動画の右側の保存ボタンで、あとで見返したい動画を保存できます。</p>
+      </div>
+
       <p class="record-note" style="margin-top:28px;">※ プロフィールはこの端末のブラウザ内にのみ保存されます。フォロワー・友達はサーバー機能ができてから使えるようになります。</p>
     </div>
     <div class="bottom-nav solid-dark" data-active-nav="profile"></div>
@@ -1005,7 +1049,7 @@
   </section>
 
   <!-- ============ 楽曲を選ぶ（投稿画面から開く） ============ -->
-  <div id="music-sheet" role="dialog" aria-modal="true" aria-labelledby="music-sheet-title">
+  <div id="music-sheet" class="sheet-overlay" role="dialog" aria-modal="true" aria-labelledby="music-sheet-title">
     <div class="sheet-card">
       <div class="sheet-head">
         <h2 class="sheet-title" id="music-sheet-title">楽曲を選ぶ</h2>
@@ -1013,6 +1057,39 @@
       </div>
       <div id="music-list"></div>
       <p class="sheet-note">いまはゾーンNOWオリジナルのデモ音源です（アプリ内で作っているので著作権の心配はありません）。▶で試聴できます。</p>
+    </div>
+  </div>
+
+  <!-- ============ コメント（動画の💬から開く） ============ -->
+  <div id="comment-sheet" class="sheet-overlay" role="dialog" aria-modal="true" aria-labelledby="comment-sheet-title">
+    <div class="sheet-card comment-card">
+      <div class="sheet-head">
+        <h2 class="sheet-title" id="comment-sheet-title">コメント</h2>
+        <button class="sheet-close" id="comment-sheet-close" aria-label="閉じる">×</button>
+      </div>
+      <div class="comment-list" id="comment-list"></div>
+      <p class="comment-empty" id="comment-empty">まだコメントはありません。<br>最初のコメントを書いてみよう。</p>
+      <div class="comment-form">
+        <input type="text" class="post-input" id="comment-input" placeholder="コメントを書く…" maxlength="200" enterkeyhint="send" aria-label="コメント" />
+        <button class="study-btn primary" id="comment-send">送信</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ シェア（動画の↗から開く） ============ -->
+  <div id="share-sheet" class="sheet-overlay" role="dialog" aria-modal="true" aria-labelledby="share-sheet-title">
+    <div class="sheet-card">
+      <div class="sheet-head">
+        <h2 class="sheet-title" id="share-sheet-title">シェア</h2>
+        <button class="sheet-close" id="share-sheet-close" aria-label="閉じる">×</button>
+      </div>
+      <div class="share-options">
+        <button class="share-option" data-share="line"><span class="share-icon line">LINE</span>LINE</button>
+        <button class="share-option" data-share="x"><span class="share-icon x">X</span>X</button>
+        <button class="share-option" data-share="copy"><span class="share-icon" id="share-copy-icon"></span>リンクをコピー</button>
+        <button class="share-option" data-share="native" id="share-native"><span class="share-icon" id="share-native-icon"></span>その他</button>
+      </div>
+      <p class="sheet-note" id="share-note"></p>
     </div>
   </div>
 
@@ -1305,6 +1382,31 @@ function setFollowing(name, follow){
   saveJSON(FOLLOW_KEY, list);
 }
 
+// いいね・保存・コメント（今はこの端末のあなたの分だけ。サーバーができたら全員分の数に置き換える）
+const LIKES_KEY = 'zonenow_likes';
+const SAVES_KEY = 'zonenow_saves';
+const COMMENTS_KEY = 'zonenow_comments';
+const COMMENT_MAX_LENGTH = 200;
+function loadIdList(key){ return loadJSON(key, []); }
+function toggleIdInList(key, id){
+  const list = loadIdList(key);
+  const on = !list.includes(id);
+  saveJSON(key, on ? [...list, id] : list.filter(x=> x !== id));
+  return on;
+}
+function isLiked(id){ return loadIdList(LIKES_KEY).includes(id); }
+function isSaved(id){ return loadIdList(SAVES_KEY).includes(id); }
+function loadComments(id){ return (loadJSON(COMMENTS_KEY, {})[id]) || []; }
+function saveComments(id, list){
+  const all = loadJSON(COMMENTS_KEY, {});
+  if(list.length) all[id] = list; else delete all[id];
+  return saveJSON(COMMENTS_KEY, all);
+}
+// 表示する数：いいね・保存は「あなたが押したか」の0/1、コメントは実際の件数
+function engagementOf(id){
+  return { likes: isLiked(id) ? 1 : 0, saves: isSaved(id) ? 1 : 0, comments: loadComments(id).length };
+}
+
 /* ============================================================
    ◆ アイコン ◆
    ------------------------------------------------------------
@@ -1325,6 +1427,8 @@ const ICON_PATHS = {
   volume: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.1 5a9 9 0 0 1 0 14"/><path d="M15.5 8.5a4.5 4.5 0 0 1 0 7"/>',
   volumeOff: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>',
   clock: '<circle cx="12" cy="13" r="8"/><polyline points="12 9 12 13 14.5 15.5"/><line x1="9" y1="2" x2="15" y2="2"/>',
+  play: '<polygon points="7 4 20 12 7 20 7 4"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7.1-7.1l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7.1 7.1l1.7-1.7"/>',
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-5.6 6.5-5.6s6.5 2 6.5 5.6"/><circle cx="17" cy="9" r="2.8"/><path d="M16.2 14.5c3 0 5.3 1.8 5.3 5"/>',
 };
@@ -1414,12 +1518,7 @@ function createChoice(wrapId, options, initial = {}, onChange){
   };
 }
 
-/* ---- いいね・コメント・保存の表示件数(デモ用の疑似データ) ---- */
-function demoCount(seed, min, max){
-  let hash = 0;
-  for(let i=0;i<seed.length;i++){ hash = (hash * 31 + seed.charCodeAt(i)) >>> 0; }
-  return min + (hash % (max - min));
-}
+/* ---- いいね・コメント・保存の数の表示（1000以上は 1.2K のように短く） ---- */
 function formatCount(n){
   if(n >= 1000) return (n/1000).toFixed(1).replace(/\.0$/,'') + 'K';
   return String(n);
@@ -1510,9 +1609,7 @@ function hashtagsOf(v){
 }
 
 function createSlide(v){
-  const likes = demoCount(v.id + '-like', 800, 15000);
-  const comments = demoCount(v.id + '-comment', 20, 600);
-  const bookmarks = demoCount(v.id + '-bookmark', 100, 2000);
+  const counts = engagementOf(v.id);
   const isImage = v.mediaType === 'image';
   const profile = loadProfile();
   const isOwn = !!profile && v.creator === profile.name; // 自分の投稿はフォローボタンを出さない
@@ -1530,6 +1627,8 @@ function createSlide(v){
     <div class="zone-meter"><div class="zone-meter-fill"></div></div>
     ${isImage ? photoMediaHtml(v) : `<video src="${v.short}" muted loop playsinline preload="metadata"></video>`}
 
+    <div class="pause-indicator" aria-hidden="true">${icon('play')}</div>
+
     <div class="short-top">
       ${kindOf(v) !== 'lesson' ? `<span class="badge kind-${kindOf(v)}">${labelOf(KINDS, kindOf(v))}</span>` : ''}
       ${v.subject ? `<span class="badge subject">${escapeHtml(subjectLabelOf(v))}</span>` : ''}
@@ -1541,19 +1640,19 @@ function createSlide(v){
         <div class="avatar">${isOwn && isSafeAvatar(profile.avatar) ? `<img src="${escapeHtml(profile.avatar)}" alt="" />` : escapeHtml(v.creator.charAt(0))}</div>
         ${isOwn ? '' : `<button class="follow-badge ${following ? 'active' : ''}" data-role="follow" data-creator="${escapeHtml(v.creator)}">${icon(following ? 'check' : 'plus')}</button>`}
       </div>
-      <button class="action-item" data-role="like">
+      <button class="action-item ${counts.likes ? 'active' : ''}" data-role="like" aria-label="いいね">
         ${icon('heart')}
-        <span class="action-count">${formatCount(likes)}</span>
+        <span class="action-count">${formatCount(counts.likes)}</span>
       </button>
-      <button class="action-item" data-role="comment">
+      <button class="action-item" data-role="comment" aria-label="コメント">
         ${icon('comment')}
-        <span class="action-count">${formatCount(comments)}</span>
+        <span class="action-count">${formatCount(counts.comments)}</span>
       </button>
-      <button class="action-item" data-role="bookmark">
+      <button class="action-item ${counts.saves ? 'active' : ''}" data-role="bookmark" aria-label="保存">
         ${icon('bookmark')}
-        <span class="action-count">${formatCount(bookmarks)}</span>
+        <span class="action-count">${formatCount(counts.saves)}</span>
       </button>
-      <button class="action-item" data-role="share">
+      <button class="action-item" data-role="share" aria-label="シェア">
         ${icon('share')}
         <span class="action-label">シェア</span>
       </button>
@@ -1607,26 +1706,21 @@ function attachSlideEvents(slide, v){
     });
   }
 
-  // いいね（ローカル表示のみ。サーバー保存は未実装）
-  const likeBtn = slide.querySelector('[data-role="like"]');
-  const likeCount = likeBtn.querySelector('.action-count');
-  const baseLikes = demoCount(v.id + '-like', 800, 15000);
-  let liked = false;
-  likeBtn.addEventListener('click', ()=>{
-    liked = !liked;
-    likeBtn.classList.toggle('active', liked);
-    likeCount.textContent = formatCount(baseLikes + (liked ? 1 : 0));
+  // 画面をタップで一時停止／再生（ボタン類のタップは除く）
+  slide.addEventListener('click', (e)=>{
+    if(e.target.closest('button, .action-rail')) return;
+    togglePause(slide);
   });
 
-  // 保存（ローカル表示のみ）
-  const bookmarkBtn = slide.querySelector('[data-role="bookmark"]');
-  const bookmarkCount = bookmarkBtn.querySelector('.action-count');
-  const baseBookmarks = demoCount(v.id + '-bookmark', 100, 2000);
-  let saved = false;
-  bookmarkBtn.addEventListener('click', ()=>{
-    saved = !saved;
-    bookmarkBtn.classList.toggle('active', saved);
-    bookmarkCount.textContent = formatCount(baseBookmarks + (saved ? 1 : 0));
+  // いいね・保存（端末内に保存。同じ動画の他のスライドの表示もそろえる）
+  slide.querySelector('[data-role="like"]').addEventListener('click', ()=>{
+    toggleIdInList(LIKES_KEY, v.id);
+    syncEngagement(v.id);
+  });
+  slide.querySelector('[data-role="bookmark"]').addEventListener('click', ()=>{
+    const saved = toggleIdInList(SAVES_KEY, v.id);
+    syncEngagement(v.id);
+    showToast(saved ? '保存しました（プロフィールから見られます）' : '保存を取り消しました');
   });
 
   // フォロー（端末内に保存。同じクリエイターの他のスライドの表示もそろえる）
@@ -1640,19 +1734,22 @@ function attachSlideEvents(slide, v){
     });
   }
 
-  // コメントはまだ未実装
-  slide.querySelector('[data-role="comment"]').addEventListener('click', ()=>{
-    showToast('コメント機能は準備中です');
-  });
+  slide.querySelector('[data-role="comment"]').addEventListener('click', ()=> openComments(v));
+  slide.querySelector('[data-role="share"]').addEventListener('click', ()=> openShare(v));
+}
 
-  // シェア（対応端末はOSの共有シートを使用）
-  slide.querySelector('[data-role="share"]').addEventListener('click', async ()=>{
-    if(navigator.share){
-      try{ await navigator.share({ title: v.title, text: v.title, url: location.href }); }
-      catch(e){ /* ユーザーがキャンセルした場合は何もしない */ }
-    } else {
-      showToast('この端末は共有に対応していません');
-    }
+// いいね・保存・コメント数の表示を、画面上にある同じ動画のスライドすべてで最新にする
+function syncEngagement(id){
+  const counts = engagementOf(id);
+  document.querySelectorAll('.short-slide').forEach(slide=>{
+    if(slide.dataset.id !== id) return;
+    const like = slide.querySelector('[data-role="like"]');
+    const save = slide.querySelector('[data-role="bookmark"]');
+    like.classList.toggle('active', !!counts.likes);
+    like.querySelector('.action-count').textContent = formatCount(counts.likes);
+    save.classList.toggle('active', !!counts.saves);
+    save.querySelector('.action-count').textContent = formatCount(counts.saves);
+    slide.querySelector('[data-role="comment"] .action-count').textContent = formatCount(counts.comments);
   });
 }
 
@@ -1760,7 +1857,8 @@ function applySlideAudio(slide){
   const trackId = slide.dataset.music;
   if(trackId){
     if(video) video.muted = true;
-    if(currentAudibleState){ if(!music.track || music.owner !== slide) startMusic(trackId, slide); }
+    const playing = currentAudibleState && !slide.classList.contains('is-paused');
+    if(playing){ if(!music.track || music.owner !== slide) startMusic(trackId, slide); }
     else stopMusic(slide);
   } else if(video){
     video.muted = !currentAudibleState;
@@ -1772,6 +1870,7 @@ function applySlideAudio(slide){
 // スライドを再生状態にする（フィードとプレビューで共通）
 function activateSlide(slide){
   slide.classList.add('is-active');
+  slide.classList.remove('is-paused');
   const video = slide.querySelector('video');
   const meter = slide.querySelector('.zone-meter-fill');
   // Zoneメーターが満タン=最後まで見た。視聴記録に残す（プレビューは記録しない）
@@ -1781,7 +1880,11 @@ function activateSlide(slide){
     video.play().catch(()=>{});
     const start = ()=> runZoneMeter(slide, meter, video.duration && isFinite(video.duration) ? video.duration : 20, onComplete);
     if(video.readyState >= 1) start();
-    else video.addEventListener('loadedmetadata', ()=>{ if(slide.classList.contains('is-active')) start(); }, { once:true });
+    else video.addEventListener('loadedmetadata', ()=>{
+      if(!slide.classList.contains('is-active')) return;
+      start();
+      if(slide.classList.contains('is-paused')) pauseZoneMeter(slide);
+    }, { once:true });
   } else {
     runZoneMeter(slide, meter, Number(slide.dataset.duration) || IMAGE_DISPLAY_SECONDS, onComplete);
   }
@@ -1790,7 +1893,8 @@ function activateSlide(slide){
 
 function deactivateSlide(slide){
   if(!slide) return;
-  slide.classList.remove('is-active');
+  slide.classList.remove('is-active', 'is-paused');
+  meterStates.delete(slide);
   const video = slide.querySelector('video');
   const meter = slide.querySelector('.zone-meter-fill');
   if(video) video.pause();
@@ -1814,16 +1918,56 @@ document.addEventListener('visibilitychange', ()=>{
 });
 
 // フィードの動画はloop再生でendedイベントが発火しないため、動画・写真ともに
-// メーターと同じ秒数のタイマーで「最後まで見た」を判定する
+// メーターと同じ秒数のタイマーで「最後まで見た」を判定する。一時停止中はメーターも止める
+const meterStates = new WeakMap(); // スライド → { duration, elapsed, startedAt, onComplete }
 function runZoneMeter(slide, meter, durationSeconds, onComplete){
+  meterStates.set(slide, { duration: durationSeconds, elapsed: 0, startedAt: Date.now(), onComplete });
+  animateMeter(slide, 0, durationSeconds);
+}
+function animateMeter(slide, fromRatio, remainingSeconds){
+  const meter = slide.querySelector('.zone-meter-fill');
   meter.style.transition = 'none';
-  meter.style.width = '0%';
+  meter.style.width = `${fromRatio * 100}%`;
   requestAnimationFrame(()=>{
-    meter.style.transition = `width ${durationSeconds}s linear`;
+    meter.style.transition = `width ${remainingSeconds}s linear`;
     meter.style.width = '100%';
   });
   clearTimeout(meterTimers.get(slide));
-  meterTimers.set(slide, setTimeout(onComplete, durationSeconds * 1000));
+  meterTimers.set(slide, setTimeout(()=>{
+    const st = meterStates.get(slide);
+    if(!st) return;
+    st.done = true;
+    st.onComplete();
+  }, remainingSeconds * 1000));
+}
+function pauseZoneMeter(slide){
+  const st = meterStates.get(slide);
+  if(!st || st.done) return;
+  st.elapsed += (Date.now() - st.startedAt) / 1000;
+  clearTimeout(meterTimers.get(slide));
+  const meter = slide.querySelector('.zone-meter-fill');
+  meter.style.transition = 'none';
+  meter.style.width = `${Math.min(100, st.elapsed / st.duration * 100)}%`;
+}
+function resumeZoneMeter(slide){
+  const st = meterStates.get(slide);
+  if(!st || st.done) return;
+  st.startedAt = Date.now();
+  animateMeter(slide, Math.min(1, st.elapsed / st.duration), Math.max(0, st.duration - st.elapsed));
+}
+
+// タップで一時停止 ↔ 再生（動画・楽曲・Zoneメーターをまとめて止める）
+function togglePause(slide){
+  if(!slide.classList.contains('is-active')) return;
+  const video = slide.querySelector('video');
+  if(slide.classList.toggle('is-paused')){
+    if(video) video.pause();
+    pauseZoneMeter(slide);
+  } else {
+    if(video) video.play().catch(()=>{});
+    resumeZoneMeter(slide);
+  }
+  applySlideAudio(slide);
 }
 
 // ---- 勉強の催促 ----
@@ -1879,7 +2023,149 @@ document.getElementById('nudge-start').addEventListener('click', ()=>{
   showToast(timerSubject.id ? '学習タイマーをスタートしました' : 'タイマーをスタート！教科も選んでおこう');
 });
 
-renderFeed();
+// ---- コメント ----
+let commentVideo = null;
+const commentSheet = document.getElementById('comment-sheet');
+const commentInput = document.getElementById('comment-input');
+
+// 「たった今」「5分前」「3時間前」「2日前」「10/3」のような表示
+function timeAgo(ts){
+  const sec = Math.floor((Date.now() - ts) / 1000);
+  if(sec < 60) return 'たった今';
+  if(sec < 3600) return `${Math.floor(sec / 60)}分前`;
+  if(sec < 86400) return `${Math.floor(sec / 3600)}時間前`;
+  if(sec < 86400 * 7) return `${Math.floor(sec / 86400)}日前`;
+  const d = new Date(ts);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function openComments(v){
+  commentVideo = v;
+  renderComments();
+  commentSheet.classList.add('show');
+}
+function closeComments(){
+  commentSheet.classList.remove('show');
+  commentVideo = null;
+}
+function renderComments(){
+  const list = loadComments(commentVideo.id);
+  const me = loadProfile();
+  document.getElementById('comment-sheet-title').textContent = `コメント ${list.length}件`;
+  document.getElementById('comment-list').innerHTML = list.map(c=>`
+    <div class="comment-row">
+      <div class="avatar">${me && c.author === me.name && isSafeAvatar(me.avatar) ? `<img src="${escapeHtml(me.avatar)}" alt="" />` : escapeHtml(c.author.charAt(0))}</div>
+      <div class="comment-body">
+        <div class="comment-meta">
+          <b>${escapeHtml(c.author)}</b><span>${timeAgo(c.createdAt)}</span>
+          ${me && c.author === me.name ? `<button class="comment-delete" data-delete-comment="${escapeHtml(c.id)}">削除</button>` : ''}
+        </div>
+        <div class="comment-text">${escapeHtml(c.text)}</div>
+      </div>
+    </div>
+  `).join('');
+  document.getElementById('comment-empty').style.display = list.length ? 'none' : 'block';
+}
+function sendComment(){
+  const text = commentInput.value.trim();
+  if(!text){ showToast('コメントを入力してください'); return; }
+  if(text.length > COMMENT_MAX_LENGTH){ showToast(`コメントは${COMMENT_MAX_LENGTH}文字までです`); return; }
+  const list = loadComments(commentVideo.id);
+  list.push({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    author: (loadProfile() || {}).name || 'あなた',
+    text,
+    createdAt: Date.now(),
+  });
+  if(!saveComments(commentVideo.id, list)){ showToast('この端末では保存できませんでした'); return; }
+  commentInput.value = '';
+  renderComments();
+  syncEngagement(commentVideo.id);
+  const listEl = document.getElementById('comment-list');
+  listEl.scrollTop = listEl.scrollHeight;
+}
+document.getElementById('comment-send').addEventListener('click', sendComment);
+commentInput.addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter' && !e.isComposing){ e.preventDefault(); sendComment(); }
+});
+document.getElementById('comment-sheet-close').addEventListener('click', closeComments);
+commentSheet.addEventListener('click', async (e)=>{
+  if(e.target === commentSheet){ closeComments(); return; }
+  const del = e.target.closest('[data-delete-comment]');
+  if(!del) return;
+  if(!await confirmDialog('このコメントを削除しますか？', '削除する')) return;
+  saveComments(commentVideo.id, loadComments(commentVideo.id).filter(c=> c.id !== del.dataset.deleteComment));
+  renderComments();
+  syncEngagement(commentVideo.id);
+});
+
+// ---- シェア ----
+// 共有リンクは「このアプリのURL ?v=動画ID」。開くとその動画がフィードの先頭に出る
+let shareVideo = null;
+const shareSheet = document.getElementById('share-sheet');
+document.getElementById('share-copy-icon').innerHTML = icon('link');
+document.getElementById('share-native-icon').innerHTML = icon('share');
+
+function shareUrlOf(v){ return `${location.href.split(/[?#]/)[0]}?v=${encodeURIComponent(v.id)}`; }
+function shareTextOf(v){ return `${v.title}｜ゾーンNOW`; }
+
+function openShare(v){
+  shareVideo = v;
+  document.getElementById('share-native').style.display = navigator.share ? 'flex' : 'none';
+  // 自分の投稿は今はこの端末の中だけにあるので、リンクを開いた人には見えない（正直に伝える）
+  document.getElementById('share-note').textContent = v.id.startsWith('u')
+    ? '※ この投稿は今はこの端末の中だけにあるため、リンクを開いた人には表示されません（サーバー対応後に見られるようになります）。'
+    : 'リンクを開くと、この動画から再生されます。';
+  shareSheet.classList.add('show');
+}
+function closeShare(){ shareSheet.classList.remove('show'); shareVideo = null; }
+
+async function copyText(text){
+  try{ await navigator.clipboard.writeText(text); return true; }
+  catch(e){
+    // 古いブラウザや埋め込み表示ではclipboardが使えないことがあるので、昔ながらの方法でも試す
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try{ ok = document.execCommand('copy'); }catch(err){}
+    ta.remove();
+    return ok;
+  }
+}
+
+document.getElementById('share-sheet-close').addEventListener('click', closeShare);
+shareSheet.addEventListener('click', async (e)=>{
+  if(e.target === shareSheet){ closeShare(); return; }
+  const opt = e.target.closest('[data-share]');
+  if(!opt || !shareVideo) return;
+  const url = shareUrlOf(shareVideo), text = shareTextOf(shareVideo);
+  const how = opt.dataset.share;
+  if(how === 'line'){
+    window.open(`https://line.me/R/share?text=${encodeURIComponent(text + '\n' + url)}`, '_blank', 'noopener');
+  } else if(how === 'x'){
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank', 'noopener');
+  } else if(how === 'copy'){
+    if(await copyText(url)) showToast('リンクをコピーしました');
+    else { document.getElementById('share-note').textContent = `コピーできませんでした。このリンクを長押ししてコピーしてください：${url}`; return; }
+  } else if(how === 'native'){
+    try{ await navigator.share({ title: text, text, url }); }
+    catch(err){ return; } // キャンセルされたらシートは開いたまま
+  }
+  closeShare();
+});
+
+// 共有リンク（?v=動画ID）から開いたときは、その動画をフィードの先頭にする
+const SHARED_VIDEO = (()=>{
+  const id = new URLSearchParams(location.search).get('v');
+  return id ? VIDEOS.find(v=> v.id === id) || null : null;
+})();
+
+renderFeed(SHARED_VIDEO || undefined);
 
 // ---- 上部バーの操作 ----
 document.getElementById('search-open-btn').addEventListener('click', ()=> showScreen('search'));
@@ -1956,8 +2242,16 @@ function renderResults(){
   grid.style.display = results.length ? 'grid' : 'none';
   empty.style.display = results.length ? 'none' : 'block';
 
-  grid.innerHTML = results.map(v=>`
-    <button class="result-card" data-id="${v.id}">
+  grid.innerHTML = results.map(resultCardHtml).join('');
+  grid.querySelectorAll('.result-card').forEach(card=>{
+    card.addEventListener('click', ()=> jumpToShort(card.dataset.id));
+  });
+}
+
+// 動画のカード（検索結果・保存した動画で共通）
+function resultCardHtml(v){
+  return `
+    <button class="result-card" data-id="${escapeHtml(v.id)}">
       <div class="result-thumb" style="background:${thumbGradientOf(v)}">
         <span class="badge">${escapeHtml(gradeLabelOf(v))}</span>
         <span class="result-duration">${v.duration}秒</span>
@@ -1965,11 +2259,7 @@ function renderResults(){
       <p class="result-title">${escapeHtml(v.title)}</p>
       <p class="result-meta">${escapeHtml(metaTextOf(v))}</p>
     </button>
-  `).join('');
-
-  grid.querySelectorAll('.result-card').forEach(card=>{
-    card.addEventListener('click', ()=> jumpToShort(card.dataset.id));
-  });
+  `;
 }
 
 // 検索結果から選んだ動画をフィードの先頭に置いてホームへ戻る（以降はまたランダム）
@@ -2626,7 +2916,7 @@ document.getElementById('onboarding-submit').addEventListener('click', ()=>{
     showScreen('profile');
     showToast('プロフィールを保存しました');
   } else {
-    renderFeed(); // 学年に合わせたおすすめで作り直す
+    renderFeed(SHARED_VIDEO || undefined); // 学年に合わせたおすすめで作り直す（共有リンクの動画は先頭のまま）
     showScreen('home');
     showToast(`ようこそ、${name}さん`);
   }
@@ -2659,6 +2949,14 @@ function renderProfileScreen(){
   document.getElementById('profile-following-count').textContent = loadFollowing().length;
   document.getElementById('profile-followers-count').textContent = 0; // サーバー機能ができるまでは常に0
   document.getElementById('profile-friends-count').textContent = 0;
+
+  // 保存した動画（新しく保存した順）。消えた投稿は除く
+  const savedVideos = loadIdList(SAVES_KEY).slice().reverse().map(id=> VIDEOS.find(v=> v.id === id)).filter(Boolean);
+  const savedGrid = document.getElementById('profile-saved');
+  savedGrid.innerHTML = savedVideos.map(resultCardHtml).join('');
+  savedGrid.style.display = savedVideos.length ? 'grid' : 'none';
+  savedGrid.querySelectorAll('.result-card').forEach(card=> card.addEventListener('click', ()=> jumpToShort(card.dataset.id)));
+  document.getElementById('profile-saved-empty').style.display = savedVideos.length ? 'none' : 'block';
 
   const totals = studyTotals();
   document.getElementById('profile-study-today').textContent = formatStudyTime(totals.today);

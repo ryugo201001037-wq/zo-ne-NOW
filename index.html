@@ -268,6 +268,57 @@
   .placeholder-sub{ font-family:var(--font-ui); font-size:13px; color:rgba(255,255,255,.6); margin:0; line-height:1.6; }
 
   /* ============================================================
+     記録画面
+  ============================================================ */
+  .record-wrap{
+    flex:1; overflow-y:auto;
+    padding:calc(var(--safe-top) + 20px) 20px calc(96px + var(--safe-bottom));
+  }
+  .record-title{ font-size:20px; font-weight:700; margin:0 0 4px; }
+  .record-sub{ font-family:var(--font-ui); font-size:12.5px; color:rgba(255,255,255,.55); margin:0 0 26px; line-height:1.6; }
+
+  .record-hero{ text-align:center; margin-bottom:22px; }
+  .record-hero-value{
+    font-size:48px; font-weight:700; font-family:var(--font-ui); line-height:1;
+    background:linear-gradient(135deg, var(--cta-from), var(--cta-to));
+    background-clip:text; -webkit-background-clip:text; color:transparent; -webkit-text-fill-color:transparent;
+  }
+  .record-hero-label{ font-family:var(--font-ui); font-size:12.5px; color:rgba(255,255,255,.55); margin-top:6px; }
+
+  .record-stat-row{ display:flex; gap:10px; margin-bottom:30px; }
+  .record-stat-tile{
+    flex:1; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
+    border-radius:14px; padding:14px; text-align:center;
+  }
+  .record-stat-value{ font-family:var(--font-ui); font-size:22px; font-weight:700; }
+  .record-stat-label{ font-family:var(--font-ui); font-size:11px; color:rgba(255,255,255,.55); margin-top:4px; }
+
+  .record-breakdown-title{
+    font-family:var(--font-ui); font-size:11px; font-weight:700; letter-spacing:.06em;
+    color:var(--muted); text-transform:uppercase; margin-bottom:14px;
+  }
+  .record-bar-row{ margin-bottom:14px; }
+  .record-bar-row:last-child{ margin-bottom:0; }
+  .record-bar-head{ display:flex; justify-content:space-between; font-family:var(--font-ui); font-size:12.5px; margin-bottom:6px; }
+  .record-bar-head .label{ color:rgba(255,255,255,.85); font-weight:600; }
+  .record-bar-head .count{ color:rgba(255,255,255,.55); }
+  .record-bar-track{ height:8px; border-radius:99px; background:rgba(255,255,255,.08); overflow:hidden; }
+  .record-bar-fill{ height:100%; border-radius:99px; }
+
+  .record-empty{
+    display:none; text-align:center; font-family:var(--font-ui); font-size:13px; color:rgba(255,255,255,.5);
+    line-height:1.8; padding:30px 10px;
+  }
+  .record-reset{
+    display:block; margin:30px auto 0; font-family:var(--font-ui); font-size:12px; color:rgba(255,255,255,.45);
+    text-decoration:underline;
+  }
+  .record-note{
+    font-family:var(--font-ui); font-size:11px; color:rgba(255,255,255,.35); text-align:center;
+    margin:10px 0 0; line-height:1.6;
+  }
+
+  /* ============================================================
      投稿画面
   ============================================================ */
   .post-form-wrap{
@@ -435,14 +486,44 @@
     </div>
   </section>
 
-  <!-- ============ AI / 記録 / プロフィール（準備中） ============ -->
+  <!-- ============ AI / プロフィール（準備中） ============ -->
   <section id="ai-screen" class="screen dark-screen">
     <div class="placeholder-wrap" data-placeholder="ai"></div>
     <div class="bottom-nav solid-dark" data-active-nav="ai"></div>
   </section>
 
+  <!-- ============ 記録画面 ============ -->
   <section id="record-screen" class="screen dark-screen">
-    <div class="placeholder-wrap" data-placeholder="record"></div>
+    <div class="record-wrap">
+      <h1 class="record-title">学習記録</h1>
+      <p class="record-sub">ショート動画・写真を最後まで見ると、ここに記録が溜まっていきます</p>
+
+      <div class="record-hero">
+        <div class="record-hero-value" id="record-hero-count">0</div>
+        <div class="record-hero-label">視聴した動画・写真</div>
+      </div>
+
+      <div class="record-stat-row">
+        <div class="record-stat-tile">
+          <div class="record-stat-value" id="record-stat-time">0分</div>
+          <div class="record-stat-label">合計視聴時間</div>
+        </div>
+        <div class="record-stat-tile">
+          <div class="record-stat-value" id="record-stat-today">0</div>
+          <div class="record-stat-label">今日見た本数</div>
+        </div>
+      </div>
+
+      <div class="record-breakdown" id="record-breakdown">
+        <div class="record-breakdown-title">教科別の内訳</div>
+        <div class="record-bars" id="record-bars"></div>
+      </div>
+
+      <p class="record-empty" id="record-empty">まだ記録がありません。<br>ショート動画・写真を最後まで見ると、ここに記録されます。</p>
+
+      <button class="record-reset" id="record-reset">記録をリセット</button>
+      <p class="record-note">※ この記録はこの端末のブラウザ内にのみ保存されます（他の端末とは共有されません）。</p>
+    </div>
     <div class="bottom-nav solid-dark" data-active-nav="record"></div>
   </section>
 
@@ -630,6 +711,7 @@ const screens = {
 function showScreen(name){
   Object.values(screens).forEach(s=>s.classList.remove('active'));
   screens[name].classList.add('active');
+  if(name === 'record') renderRecordScreen();
   document.querySelectorAll('[data-nav]').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.nav === name);
   });
@@ -807,17 +889,24 @@ function observeSlides(){
       const video = slide.querySelector('video');
       const meter = slide.querySelector('.zone-meter-fill');
       if(entry.isIntersecting && entry.intersectionRatio > 0.6){
-        currentVisibleId = slide.dataset.id;
+        const id = slide.dataset.id;
+        currentVisibleId = id;
+        // Zoneメーターが満タン=最後まで見た。CTAを光らせて記録に残す
+        const onComplete = ()=>{
+          if(currentVisibleId !== id) return;
+          pulseCta();
+          recordWatch(id);
+        };
         if(video){
           video.currentTime = 0;
           video.play().catch(()=>{});
           video.muted = !currentAudibleState;
           const muteBtn = slide.querySelector('[data-role="mute"]');
           if(muteBtn) muteBtn.innerHTML = icon(video.muted ? 'volumeOff' : 'volume');
-          runZoneMeterForVideo(video, meter);
+          runZoneMeterForVideo(video, meter, onComplete);
         } else {
-          const v = VIDEOS.find(x=>x.id===slide.dataset.id);
-          runZoneMeterForImage(meter, (v && v.duration) || IMAGE_DISPLAY_SECONDS);
+          const v = VIDEOS.find(x=>x.id===id);
+          runZoneMeterForImage(meter, (v && v.duration) || IMAGE_DISPLAY_SECONDS, onComplete);
         }
       } else {
         if(video) video.pause();
@@ -845,17 +934,22 @@ function startZoneMeter(meter, durationSeconds){
   });
 }
 
-function runZoneMeterForVideo(video, meter){
-  const start = ()=> startZoneMeter(meter, video.duration && isFinite(video.duration) ? video.duration : 20);
-  if(video.readyState >= 1) start();
-  else video.addEventListener('loadedmetadata', start, { once:true });
-  video.onended = pulseCta;
-}
-
-function runZoneMeterForImage(meter, durationSeconds){
+// フィードの動画はloop再生でendedイベントが発火しないため、動画・写真ともに
+// メーターと同じ秒数のタイマーで「最後まで見た」を判定する
+function runZoneMeterTimed(meter, durationSeconds, onComplete){
   startZoneMeter(meter, durationSeconds);
   clearTimeout(meterPulseTimers.get(meter));
-  meterPulseTimers.set(meter, setTimeout(pulseCta, durationSeconds * 1000));
+  meterPulseTimers.set(meter, setTimeout(onComplete, durationSeconds * 1000));
+}
+
+function runZoneMeterForVideo(video, meter, onComplete){
+  const start = ()=> runZoneMeterTimed(meter, video.duration && isFinite(video.duration) ? video.duration : 20, onComplete);
+  if(video.readyState >= 1) start();
+  else video.addEventListener('loadedmetadata', start, { once:true });
+}
+
+function runZoneMeterForImage(meter, durationSeconds, onComplete){
+  runZoneMeterTimed(meter, durationSeconds, onComplete);
 }
 
 function pauseAllShorts(){
@@ -986,10 +1080,89 @@ function openPlayer(id){
 }
 document.getElementById('player-back').addEventListener('click', ()=> showScreen('home'));
 
-// ---- AI / 記録 / プロフィール：準備中プレースホルダーの中身 ----
+// ---- 記録画面 ----
+// 視聴記録はlocalStorageに保存（この端末のブラウザ内のみ。サーバーができたら送信先を切り替える）
+const WATCH_LOG_KEY = 'zonenow_watch_log';
+const WATCH_LOG_MAX = 1000; // 端末の容量を圧迫しないよう古い記録から捨てる
+
+// 教科別の色。CVD(色覚多様性)で隣り合うバーが見分けられるよう検証済みの順序で割り当て
+const SUBJECT_COLORS = {
+  math: '#3987e5',
+  japanese: '#d95926',
+  english: '#199e70',
+  science: '#c98500',
+  social: '#d55181',
+  other: '#008300',
+  none: '#9085e9',
+};
+
+function loadWatchLog(){
+  try{ return JSON.parse(localStorage.getItem(WATCH_LOG_KEY)) || []; }
+  catch(e){ return []; }
+}
+function saveWatchLog(log){
+  try{ localStorage.setItem(WATCH_LOG_KEY, JSON.stringify(log.slice(-WATCH_LOG_MAX))); }
+  catch(e){ /* プライベートモード等で保存できない場合は記録をスキップ */ }
+}
+function recordWatch(id){
+  const v = VIDEOS.find(x=>x.id===id);
+  if(!v) return;
+  const log = loadWatchLog();
+  log.push({ subject: v.subject || '', grade: v.grade, duration: v.duration || 0, watchedAt: Date.now() });
+  saveWatchLog(log);
+}
+
+function formatWatchTime(totalSeconds){
+  if(totalSeconds < 60) return `${Math.round(totalSeconds)}秒`;
+  const minutes = Math.round(totalSeconds / 60);
+  if(minutes < 60) return `${minutes}分`;
+  const h = Math.floor(minutes / 60), m = minutes % 60;
+  return m ? `${h}時間${m}分` : `${h}時間`;
+}
+
+function renderRecordScreen(){
+  const log = loadWatchLog();
+  const todayStart = new Date();
+  todayStart.setHours(0,0,0,0);
+
+  document.getElementById('record-hero-count').textContent = log.length;
+  document.getElementById('record-stat-time').textContent = formatWatchTime(log.reduce((sum, e)=> sum + (e.duration || 0), 0));
+  document.getElementById('record-stat-today').textContent = log.filter(e=> e.watchedAt >= todayStart.getTime()).length;
+
+  const counts = {};
+  log.forEach(e=>{
+    const key = SUBJECT_COLORS[e.subject] ? e.subject : 'none';
+    counts[key] = (counts[key] || 0) + 1;
+  });
+  const maxCount = Math.max(1, ...Object.values(counts));
+  document.getElementById('record-bars').innerHTML = [...SUBJECTS.map(s=>s.id), 'none']
+    .filter(key=> counts[key])
+    .map(key=>`
+      <div class="record-bar-row">
+        <div class="record-bar-head">
+          <span class="label">${key === 'none' ? '啓発・教科なし' : labelOf(SUBJECTS, key)}</span>
+          <span class="count">${counts[key]}本</span>
+        </div>
+        <div class="record-bar-track">
+          <div class="record-bar-fill" style="width:${Math.round(counts[key] / maxCount * 100)}%; background:${SUBJECT_COLORS[key]};"></div>
+        </div>
+      </div>
+    `).join('');
+
+  document.getElementById('record-breakdown').style.display = log.length ? 'block' : 'none';
+  document.getElementById('record-empty').style.display = log.length ? 'none' : 'block';
+}
+
+document.getElementById('record-reset').addEventListener('click', ()=>{
+  if(!confirm('視聴記録をすべて削除します。よろしいですか？')) return;
+  try{ localStorage.removeItem(WATCH_LOG_KEY); }catch(e){}
+  renderRecordScreen();
+  showToast('記録をリセットしました');
+});
+
+// ---- AI / プロフィール：準備中プレースホルダーの中身 ----
 const PLACEHOLDER_CONTENT = {
   ai: { iconName:'sparkle', title:'AIコーチ', sub:'あなた専用の学習アドバイスを準備中です' },
-  record: { iconName:'chart', title:'学習記録', sub:'視聴時間やZoneメーターの記録をここに表示予定です' },
   profile: { iconName:'user', title:'プロフィール', sub:'アカウント機能は準備中です' },
 };
 document.querySelectorAll('[data-placeholder]').forEach(el=>{

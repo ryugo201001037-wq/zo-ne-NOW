@@ -127,7 +127,7 @@
     display:flex; align-items:center; justify-content:center; color:#fff;
   }
   .nudge-icon svg{ width:30px; height:30px; }
-  .nudge-title{ font-size:22px; font-weight:900; margin:0 0 8px; }
+  .nudge-title{ font-size:22px; font-weight:900; line-height:1.45; margin:0 0 10px; text-wrap:balance; }
   .nudge-sub{ font-family:var(--font-ui); font-size:13.5px; color:rgba(255,255,255,.7); line-height:1.7; margin:0 0 26px; }
 
   /* ---- 右側アクションレール：アバター・いいね・コメント・保存・シェア・ミュート ---- */
@@ -320,19 +320,19 @@
   .study-btn.primary{ background:linear-gradient(135deg, var(--cta-from), var(--cta-to)); }
   .study-btn.full{ display:block; width:100%; margin-top:14px; }
   .study-btn:disabled{ opacity:.35; }
-  .study-btn.danger{ background:var(--ember); }
   .other-input{ display:none; margin-top:10px; }
 
   /* ---- 確認ダイアログ ---- */
   #confirm-dialog{
     position:absolute; inset:0; z-index:60; display:none;
     align-items:center; justify-content:center; padding:0 28px;
-    background:rgba(0,0,0,.6);
+    background:rgba(16,19,26,.72); backdrop-filter:blur(8px);
   }
   #confirm-dialog.show{ display:flex; }
   .confirm-card{
-    width:100%; max-width:320px; background:#1C2030; border:1px solid rgba(255,255,255,.1);
+    width:100%; max-width:320px; background:#1A1E2B; border:1px solid rgba(255,255,255,.1);
     border-radius:18px; padding:22px 18px 18px; color:#fff;
+    box-shadow:0 18px 40px rgba(0,0,0,.35);
   }
   .confirm-message{ font-family:var(--font-ui); font-size:14px; line-height:1.7; margin:0 0 20px; text-align:center; }
   .confirm-actions{ display:flex; gap:10px; }
@@ -344,7 +344,42 @@
   .manual-row .post-input{ flex:1; min-width:0; }
   .post-input[type="date"]{ color-scheme:dark; }
 
-  /* ---- 最近の記録 ---- */
+  .history-open-btn{ margin-top:26px; }
+  .study-list{ margin-top:10px; }
+
+  /* ---- カレンダー ---- */
+  .cal-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .cal-title{ font-family:var(--font-ui); font-size:15px; font-weight:700; }
+  .cal-nav{ width:34px; height:34px; border-radius:50%; background:rgba(255,255,255,.08); color:#fff; font-size:20px; line-height:1; }
+  .cal-nav:disabled{ opacity:.25; }
+  .cal-weekdays, .cal-grid{ display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; }
+  .cal-weekdays{ margin-bottom:6px; }
+  .cal-weekdays span{ text-align:center; font-family:var(--font-ui); font-size:11px; color:rgba(255,255,255,.45); }
+  .cal-day{
+    aspect-ratio:1; border-radius:10px; font-family:var(--font-ui); font-size:13px; font-weight:600;
+    color:rgba(255,255,255,.75); background:rgba(255,255,255,.04);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .cal-day:disabled{ opacity:.25; }
+  .cal-day.today{ box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.45); }
+  .cal-day.selected{ box-shadow:inset 0 0 0 2px #fff; color:#fff; }
+  /* 勉強時間の多さ＝青の濃さ（単一色の濃淡） */
+  .cal-day.lv1, .cal-legend .lv1{ background:rgba(79,140,255,.22); }
+  .cal-day.lv2, .cal-legend .lv2{ background:rgba(79,140,255,.45); }
+  .cal-day.lv3, .cal-legend .lv3{ background:rgba(79,140,255,.7); }
+  .cal-day.lv4, .cal-legend .lv4{ background:rgba(79,140,255,1); }
+  .cal-day.lv1, .cal-day.lv2, .cal-day.lv3, .cal-day.lv4{ color:#fff; font-weight:700; }
+  .cal-legend{
+    display:flex; align-items:center; justify-content:flex-end; gap:4px; margin-top:12px;
+    font-family:var(--font-ui); font-size:10.5px; color:rgba(255,255,255,.45);
+  }
+  .cal-legend i{ width:12px; height:12px; border-radius:3px; display:inline-block; }
+  .cal-legend span:first-child{ margin-right:2px; }
+  .cal-legend span:last-child{ margin-left:2px; }
+  .history-day-head{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px; }
+  .history-day-total{ font-family:var(--font-ui); font-size:18px; font-weight:700; }
+
+  /* ---- 記録の一覧 ---- */
   .study-row{
     display:flex; align-items:center; gap:12px; padding:12px 0;
     border-bottom:1px solid rgba(255,255,255,.07); font-family:var(--font-ui);
@@ -407,7 +442,8 @@
     display:flex; margin-bottom:18px; padding:14px 0;
     border-top:1px solid rgba(255,255,255,.08); border-bottom:1px solid rgba(255,255,255,.08);
   }
-  .profile-stat{ flex:1; text-align:center; }
+  .profile-stat{ flex:1; text-align:center; color:#fff; border-radius:10px; padding:2px 0; }
+  .profile-stat:active{ background:rgba(255,255,255,.06); }
   .profile-stat + .profile-stat{ border-left:1px solid rgba(255,255,255,.08); }
   .profile-stat-value{ font-family:var(--font-ui); font-size:19px; font-weight:700; }
   .profile-stat-label{ font-family:var(--font-ui); font-size:11px; color:rgba(255,255,255,.55); margin-top:3px; }
@@ -424,7 +460,21 @@
   .friends-icon svg{ width:26px; height:26px; }
   .friends-title{ font-size:15px; font-weight:700; margin:0 0 6px; }
   .friends-sub{ font-family:var(--font-ui); font-size:12px; color:rgba(255,255,255,.55); line-height:1.7; margin:0 0 2px; }
-  #profile-following-list .chip{ cursor:default; }
+  /* ---- フォロー中・フォロワー・友達の一覧 ---- */
+  .people-tabs{ display:flex; border-bottom:1px solid rgba(255,255,255,.1); margin-bottom:8px; }
+  .people-tab{
+    flex:1; padding:12px 0; font-family:var(--font-ui); font-size:13px; font-weight:700;
+    color:rgba(255,255,255,.45); border-bottom:2px solid transparent; margin-bottom:-1px;
+  }
+  .people-tab.active{ color:#fff; border-bottom-color:var(--cta-from); }
+  .people-row{ display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid rgba(255,255,255,.07); }
+  .people-row .avatar{ width:42px; height:42px; font-size:16px; border-width:1.5px; flex-shrink:0; }
+  .people-name{ flex:1; min-width:0; font-family:var(--font-ui); font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .people-action{
+    padding:7px 14px; border-radius:99px; border:1px solid rgba(255,255,255,.25); color:#fff;
+    font-family:var(--font-ui); font-size:12px; font-weight:700; flex-shrink:0;
+  }
+  .people-empty{ text-align:center; padding:48px 12px 0; }
 
   /* ============================================================
      投稿画面
@@ -534,7 +584,7 @@
       <div class="nudge-card">
         <div class="nudge-icon" id="nudge-icon"></div>
         <h2 class="nudge-title" id="nudge-title"></h2>
-        <p class="nudge-sub">やる気が温まってきたところで、<br>勉強モードに切り替えよう。</p>
+        <p class="nudge-sub" id="nudge-sub"></p>
         <button class="study-btn primary full" id="nudge-start">タイマーをスタートして勉強する</button>
         <button class="text-link" id="nudge-continue">あと少しだけ見る</button>
       </div>
@@ -658,20 +708,51 @@
         <button class="study-btn primary full" id="manual-add">記録を追加</button>
       </div>
 
-      <div class="record-block" id="study-breakdown">
-        <div class="record-section-title">教科別（累計）</div>
-        <div id="study-bars"></div>
+      <div class="record-block">
+        <div class="record-section-title">今日の教科別</div>
+        <div id="today-bars"></div>
+        <div id="today-list" class="study-list"></div>
+        <p class="record-empty" id="today-empty">今日の記録はまだありません。<br>タイマーか手入力で記録してみましょう。</p>
       </div>
 
-      <div class="record-block" id="study-history">
-        <div class="record-section-title">最近の記録</div>
-        <div id="study-list"></div>
+      <button class="study-btn full history-open-btn" id="history-open">これまでの記録を見る</button>
+      <p class="record-note">※ この記録はこの端末のブラウザ内にのみ保存されます（他の端末とは共有されません）。</p>
+    </div>
+    <div class="bottom-nav solid-dark" data-active-nav="record"></div>
+  </section>
+
+  <!-- ============ これまでの記録（カレンダー） ============ -->
+  <section id="history-screen" class="screen dark-screen">
+    <div class="record-wrap">
+      <div class="post-form-header">
+        <button class="back-btn" id="history-back">←</button>
+        <h1 class="post-form-title">これまでの記録</h1>
       </div>
 
-      <p class="record-empty" id="study-empty">まだ勉強時間の記録がありません。<br>タイマーか手入力で記録してみましょう。</p>
+      <div class="study-card">
+        <div class="cal-head">
+          <button class="cal-nav" id="cal-prev" aria-label="前の月">‹</button>
+          <div class="cal-title" id="cal-title"></div>
+          <button class="cal-nav" id="cal-next" aria-label="次の月">›</button>
+        </div>
+        <div class="cal-weekdays"><span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span></div>
+        <div class="cal-grid" id="cal-grid"></div>
+        <div class="cal-legend">
+          <span>少</span><i class="lv1"></i><i class="lv2"></i><i class="lv3"></i><i class="lv4"></i><span>多</span>
+        </div>
+      </div>
+
+      <div class="record-block">
+        <div class="history-day-head">
+          <div class="record-section-title" id="history-day-title" style="margin:0;"></div>
+          <div class="history-day-total" id="history-day-total"></div>
+        </div>
+        <div id="history-bars"></div>
+        <div id="history-list" class="study-list"></div>
+        <p class="record-empty" id="history-empty">この日の記録はありません。</p>
+      </div>
 
       <button class="record-reset" id="record-reset">勉強記録をすべて削除</button>
-      <p class="record-note">※ この記録はこの端末のブラウザ内にのみ保存されます（他の端末とは共有されません）。</p>
     </div>
     <div class="bottom-nav solid-dark" data-active-nav="record"></div>
   </section>
@@ -692,18 +773,18 @@
       </div>
 
       <div class="profile-stats">
-        <div class="profile-stat">
+        <button class="profile-stat" data-people-tab="following">
           <div class="profile-stat-value" id="profile-following-count">0</div>
           <div class="profile-stat-label">フォロー中</div>
-        </div>
-        <div class="profile-stat">
+        </button>
+        <button class="profile-stat" data-people-tab="followers">
           <div class="profile-stat-value" id="profile-followers-count">0</div>
           <div class="profile-stat-label">フォロワー</div>
-        </div>
-        <div class="profile-stat">
+        </button>
+        <button class="profile-stat" data-people-tab="friends">
           <div class="profile-stat-value" id="profile-friends-count">0</div>
           <div class="profile-stat-label">友達</div>
-        </div>
+        </button>
       </div>
 
       <div class="study-card">
@@ -731,13 +812,29 @@
         </div>
       </div>
 
-      <div class="record-block">
-        <div class="record-section-title">フォロー中のクリエイター</div>
-        <div class="chip-row" id="profile-following-list"></div>
-        <p class="record-empty" id="profile-following-empty" style="padding:6px 0; text-align:left;">まだフォローしていません。気になるクリエイターのアイコンの「＋」からフォローできます。</p>
-      </div>
-
       <p class="record-note" style="margin-top:28px;">※ プロフィールはこの端末のブラウザ内にのみ保存されます。フォロワー・友達はサーバー機能ができてから使えるようになります。</p>
+    </div>
+    <div class="bottom-nav solid-dark" data-active-nav="profile"></div>
+  </section>
+
+  <!-- ============ フォロー中・フォロワー・友達の一覧（プロフィールから開く） ============ -->
+  <section id="people-screen" class="screen dark-screen">
+    <div class="record-wrap">
+      <div class="post-form-header">
+        <button class="back-btn" id="people-back">←</button>
+        <h1 class="post-form-title" id="people-title"></h1>
+      </div>
+      <div class="people-tabs" role="tablist">
+        <button class="people-tab" role="tab" data-tab="following">フォロー中</button>
+        <button class="people-tab" role="tab" data-tab="followers">フォロワー</button>
+        <button class="people-tab" role="tab" data-tab="friends">友達</button>
+      </div>
+      <div id="people-list"></div>
+      <div class="people-empty" id="people-empty">
+        <div class="friends-icon" id="people-empty-icon"></div>
+        <p class="friends-title" id="people-empty-title"></p>
+        <p class="friends-sub" id="people-empty-sub"></p>
+      </div>
     </div>
     <div class="bottom-nav solid-dark" data-active-nav="profile"></div>
   </section>
@@ -810,7 +907,7 @@
       <p class="confirm-message" id="confirm-message"></p>
       <div class="confirm-actions">
         <button class="study-btn" id="confirm-cancel">キャンセル</button>
-        <button class="study-btn danger" id="confirm-ok">OK</button>
+        <button class="study-btn primary" id="confirm-ok">OK</button>
       </div>
     </div>
   </div>
@@ -1109,14 +1206,18 @@ const screens = {
   create: document.getElementById('create-screen'),
   onboarding: document.getElementById('onboarding-screen'),
   notifications: document.getElementById('notifications-screen'),
+  history: document.getElementById('history-screen'),
+  people: document.getElementById('people-screen'),
 };
 // ボトムナビに無い画面は、どのタブの中の画面かを決めておく（そのタブを点灯させる）
-const NAV_PARENT = { search:'home', notifications:'profile' };
+const NAV_PARENT = { search:'home', notifications:'profile', history:'record', people:'profile' };
 function showScreen(name){
   Object.values(screens).forEach(s=>s.classList.remove('active'));
   screens[name].classList.add('active');
   if(name === 'record') renderRecordScreen();
   if(name === 'profile') renderProfileScreen();
+  if(name === 'history') renderHistoryScreen();
+  if(name === 'people') renderPeopleScreen();
   const activeTab = NAV_PARENT[name] || name;
   document.querySelectorAll('[data-nav]').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.nav === activeTab);
@@ -1272,11 +1373,7 @@ function attachSlideEvents(slide, v){
     followBtn.addEventListener('click', ()=>{
       const follow = !isFollowing(v.creator);
       setFollowing(v.creator, follow);
-      feedEl.querySelectorAll('[data-role="follow"]').forEach(btn=>{
-        if(btn.dataset.creator !== v.creator) return;
-        btn.classList.toggle('active', follow);
-        btn.innerHTML = icon(follow ? 'check' : 'plus');
-      });
+      syncFollowButtons(v.creator, follow);
       showToast(follow ? `${v.creator}をフォローしました` : `${v.creator}のフォローを外しました`);
     });
   }
@@ -1310,6 +1407,15 @@ const feedObserver = new IntersectionObserver((entries)=>{
     }
   });
 }, { threshold:[0,0.6,1] });
+
+// フィード上の同じクリエイターのフォローボタンの表示をそろえる
+function syncFollowButtons(creator, follow){
+  feedEl.querySelectorAll('[data-role="follow"]').forEach(btn=>{
+    if(btn.dataset.creator !== creator) return;
+    btn.classList.toggle('active', follow);
+    btn.innerHTML = icon(follow ? 'check' : 'plus');
+  });
+}
 
 // ---- 学年に合わせたおすすめ ----
 // 自分の学年の動画が「出やすく」なるように重みをつけてランダムに選ぶ。
@@ -1430,12 +1536,42 @@ function runZoneMeter(slide, meter, durationSeconds, onComplete){
 }
 
 // ---- 勉強の催促 ----
+// 表示する言葉。毎回ランダムで、前回と同じものは続けて出さない。ここに足せばレパートリーが増える
+const STUDY_NUDGE_MESSAGES = [
+  { title:'見るのは、ここまで。', sub:'頭が温まった今が、いちばん集中しやすいタイミング。' },
+  { title:'今の5分が、明日の自分を楽にする。', sub:'まずは5分だけ。始めてしまえば、やる気はあとからついてくる。' },
+  { title:'インプットのあとは、アウトプット。', sub:'見て「わかった」を、解いて「できた」に変えよう。' },
+  { title:'やる気は待つものじゃなく、つくるもの。', sub:'机に向かった瞬間から、ゾーンは始まる。' },
+  { title:'スマホを置いたら、もう半分勝ち。', sub:'通知の届かない場所で、自分だけの時間を。' },
+  { title:'昨日の自分を、ちょっとだけ超えよう。', sub:'1問でも、1ページでも。積み重ねは裏切らない。' },
+  { title:'差がつくのは、こういう時間。', sub:'みんなが休んでいる「すきま」に、ほんの少しだけ。' },
+  { title:'続きは、勉強のあとのごほうびに。', sub:'やることを先に終わらせて、すっきり楽しもう。' },
+  { title:'完璧じゃなくていい。始めることが大事。', sub:'わからないところが見つかったら、それも立派な前進。' },
+  { title:'未来の自分に、ありがとうと言われよう。', sub:'今日の1時間は、テスト当日の自信に変わる。' },
+  { title:'集中モード、スイッチオン。', sub:'タイマーを押すだけで、勉強の時間に切り替わる。' },
+  { title:'小さな一歩が、大きな差になる。', sub:'毎日少しずつ。それがいちばんの近道。' },
+  { title:'今日のゴールを、ひとつ決めよう。', sub:'「ここまでやる」が決まると、集中は続きやすい。' },
+  { title:'苦手に5分だけ、向き合ってみよう。', sub:'5分できたら、今日はもう大成功。' },
+  { title:'休憩はおしまい。さあ、本番。', sub:'十分チャージできたはず。その勢いで机へ。' },
+  { title:'考えるより先に、手を動かそう。', sub:'できる人は、始めるのが早い人。' },
+];
+let lastNudgeMessageIndex = -1;
+function pickNudgeMessage(){
+  let i;
+  do { i = Math.floor(Math.random() * STUDY_NUDGE_MESSAGES.length); }
+  while(STUDY_NUDGE_MESSAGES.length > 1 && i === lastNudgeMessageIndex);
+  lastNudgeMessageIndex = i;
+  return STUDY_NUDGE_MESSAGES[i];
+}
+
 const studyNudgeEl = document.getElementById('study-nudge');
 document.getElementById('nudge-icon').innerHTML = icon('clock');
 function isStudyNudgeOpen(){ return studyNudgeEl.classList.contains('show'); }
 function openStudyNudge(){
   deactivateSlide(currentSlide);
-  document.getElementById('nudge-title').textContent = `${viewedCount}本見たね！`;
+  const msg = pickNudgeMessage();
+  document.getElementById('nudge-title').textContent = msg.title;
+  document.getElementById('nudge-sub').textContent = msg.sub;
   studyNudgeEl.classList.add('show');
 }
 document.getElementById('nudge-continue').addEventListener('click', ()=>{
@@ -1736,16 +1872,10 @@ function studyTotals(log = loadStudyLog()){
   };
 }
 
-function renderRecordScreen(){
-  const log = loadStudyLog();
-  const totals = studyTotals(log);
-  document.getElementById('study-today').textContent = formatStudyTime(totals.today);
-  document.getElementById('study-week').textContent = formatStudyTime(totals.week);
-  document.getElementById('study-total').textContent = formatStudyTime(totals.total);
-
-  // 「その他」は入力された教科名ごとに分けて集計する（例：情報・美術）
+// 教科別の合計を棒グラフで描く。「その他」は入力された教科名ごとに分けて集計する（例：情報・美術）
+function renderSubjectBars(el, entries){
   const groups = new Map();
-  log.forEach(e=>{
+  entries.forEach(e=>{
     const subject = SUBJECT_COLORS[e.subject] ? e.subject : 'none';
     const key = subject === 'other' ? `other:${e.subjectOther || ''}` : subject;
     const g = groups.get(key) || { subject, label: studyEntryLabel(e), seconds: 0 };
@@ -1755,55 +1885,143 @@ function renderRecordScreen(){
   const order = [...SUBJECTS.map(s=>s.id), 'none'];
   const rows = [...groups.values()].sort((a, b)=> order.indexOf(a.subject) - order.indexOf(b.subject) || b.seconds - a.seconds);
   const maxSeconds = Math.max(1, ...rows.map(r=> r.seconds));
-  document.getElementById('study-bars').innerHTML = rows.map(r=>`
-      <div class="record-bar-row">
-        <div class="record-bar-head">
-          <span class="label">${escapeHtml(r.label)}</span>
-          <span class="count">${formatStudyTime(r.seconds)}</span>
-        </div>
-        <div class="record-bar-track">
-          <div class="record-bar-fill" style="width:${Math.round(r.seconds / maxSeconds * 100)}%; background:${SUBJECT_COLORS[r.subject]};"></div>
-        </div>
+  el.innerHTML = rows.map(r=>`
+    <div class="record-bar-row">
+      <div class="record-bar-head">
+        <span class="label">${escapeHtml(r.label)}</span>
+        <span class="count">${formatStudyTime(r.seconds)}</span>
       </div>
-    `).join('');
+      <div class="record-bar-track">
+        <div class="record-bar-fill" style="width:${Math.round(r.seconds / maxSeconds * 100)}%; background:${SUBJECT_COLORS[r.subject]};"></div>
+      </div>
+    </div>
+  `).join('');
+}
 
-  const recent = [...log]
-    .sort((a, b)=> b.date.localeCompare(a.date) || b.createdAt - a.createdAt)
-    .slice(0, 20);
-  document.getElementById('study-list').innerHTML = recent.map(e=>{
-    const [, m, d] = e.date.split('-');
-    return `
+// 1件ずつの記録（×で削除できる）
+function renderStudyRows(el, entries){
+  el.innerHTML = [...entries]
+    .sort((a, b)=> b.createdAt - a.createdAt)
+    .map(e=>`
       <div class="study-row">
         <span class="study-dot" style="background:${studyColor(e.subject)}"></span>
         <div class="study-row-main">
           <div class="study-row-subject">${escapeHtml(studyEntryLabel(e))}</div>
-          <div class="study-row-meta">${Number(m)}/${Number(d)} ・ ${e.source === 'timer' ? 'タイマー' : '手入力'}</div>
+          <div class="study-row-meta">${e.source === 'timer' ? 'タイマー' : '手入力'}</div>
         </div>
         <div class="study-row-time">${formatStudyTime(e.seconds)}</div>
         <button class="study-row-delete" data-id="${e.id}" aria-label="この記録を削除">×</button>
       </div>
-    `;
-  }).join('');
+    `).join('');
+}
 
-  document.getElementById('study-breakdown').style.display = log.length ? 'block' : 'none';
-  document.getElementById('study-history').style.display = log.length ? 'block' : 'none';
-  document.getElementById('study-empty').style.display = log.length ? 'none' : 'block';
+function renderRecordScreen(){
+  const log = loadStudyLog();
+  const totals = studyTotals(log);
+  document.getElementById('study-today').textContent = formatStudyTime(totals.today);
+  document.getElementById('study-week').textContent = formatStudyTime(totals.week);
+  document.getElementById('study-total').textContent = formatStudyTime(totals.total);
+
+  // 記録画面の下には「今日」の分だけ出す。過去の分はカレンダーで見る
+  const todayEntries = log.filter(e=> e.date === localDateKey());
+  renderSubjectBars(document.getElementById('today-bars'), todayEntries);
+  renderStudyRows(document.getElementById('today-list'), todayEntries);
+  document.getElementById('today-empty').style.display = todayEntries.length ? 'none' : 'block';
 
   renderTimer();
   renderManualForm();
 }
 
-document.getElementById('study-list').addEventListener('click', async (e)=>{
+// ---- これまでの記録（カレンダー） ----
+let calMonth = null;      // 表示中の月の1日
+let calSelected = null;   // 選択中の日付（YYYY-MM-DD）
+const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+
+// その日の合計時間 → カレンダーの色の濃さ（0〜4）
+function studyLevel(seconds){
+  if(seconds <= 0) return 0;
+  if(seconds < 30 * 60) return 1;
+  if(seconds < 60 * 60) return 2;
+  if(seconds < 120 * 60) return 3;
+  return 4;
+}
+
+function openHistory(){
+  const now = new Date();
+  calMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  calSelected = localDateKey();
+  showScreen('history');
+}
+
+function renderHistoryScreen(){
+  const log = loadStudyLog();
+  const secondsByDate = {};
+  log.forEach(e=>{ secondsByDate[e.date] = (secondsByDate[e.date] || 0) + e.seconds; });
+
+  const y = calMonth.getFullYear(), m = calMonth.getMonth();
+  const today = localDateKey();
+  const now = new Date();
+  document.getElementById('cal-title').textContent = `${y}年${m + 1}月`;
+  document.getElementById('cal-next').disabled = y === now.getFullYear() && m === now.getMonth();
+
+  const firstWeekday = new Date(y, m, 1).getDay();
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  let html = '<span></span>'.repeat(firstWeekday);
+  for(let d = 1; d <= daysInMonth; d++){
+    const key = localDateKey(new Date(y, m, d));
+    const seconds = secondsByDate[key] || 0;
+    const classes = ['cal-day', `lv${studyLevel(seconds)}`];
+    if(key === today) classes.push('today');
+    if(key === calSelected) classes.push('selected');
+    const label = `${m + 1}月${d}日 ${seconds ? formatStudyTime(seconds) : '記録なし'}`;
+    html += `<button class="${classes.join(' ')}" data-date="${key}" aria-label="${label}" ${key > today ? 'disabled' : ''}>${d}</button>`;
+  }
+  document.getElementById('cal-grid').innerHTML = html;
+
+  // 選んだ日の教科別の合計と、その日の記録一覧
+  const dayEntries = log.filter(e=> e.date === calSelected);
+  const [, sm, sd] = calSelected.split('-').map(Number);
+  const weekday = WEEKDAY_LABELS[new Date(Number(calSelected.slice(0, 4)), sm - 1, sd).getDay()];
+  document.getElementById('history-day-title').textContent = `${sm}月${sd}日（${weekday}）の記録`;
+  document.getElementById('history-day-total').textContent = formatStudyTime(dayEntries.reduce((s, e)=> s + e.seconds, 0));
+  renderSubjectBars(document.getElementById('history-bars'), dayEntries);
+  renderStudyRows(document.getElementById('history-list'), dayEntries);
+  document.getElementById('history-empty').style.display = dayEntries.length ? 'none' : 'block';
+}
+
+document.getElementById('history-open').addEventListener('click', openHistory);
+document.getElementById('history-back').addEventListener('click', ()=> showScreen('record'));
+document.getElementById('cal-prev').addEventListener('click', ()=>{
+  calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1);
+  renderHistoryScreen();
+});
+document.getElementById('cal-next').addEventListener('click', ()=>{
+  calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1);
+  renderHistoryScreen();
+});
+document.getElementById('cal-grid').addEventListener('click', (e)=>{
+  const day = e.target.closest('.cal-day');
+  if(!day || day.disabled) return;
+  calSelected = day.dataset.date;
+  renderHistoryScreen();
+});
+
+// 記録の削除（今日の一覧・カレンダーの一覧のどちらからでも）
+async function onStudyRowDelete(e){
   const btn = e.target.closest('.study-row-delete');
   if(!btn || !await confirmDialog('この記録を削除しますか？', '削除する')) return;
   saveJSON(STUDY_LOG_KEY, loadStudyLog().filter(entry=> entry.id !== btn.dataset.id));
   renderRecordScreen();
-});
+  if(screens.history.classList.contains('active')) renderHistoryScreen();
+}
+document.getElementById('today-list').addEventListener('click', onStudyRowDelete);
+document.getElementById('history-list').addEventListener('click', onStudyRowDelete);
 
 document.getElementById('record-reset').addEventListener('click', async ()=>{
   if(!await confirmDialog('勉強時間の記録をすべて削除します。元に戻せません。よろしいですか？', 'すべて削除')) return;
   try{ localStorage.removeItem(STUDY_LOG_KEY); }catch(e){}
   renderRecordScreen();
+  renderHistoryScreen();
   showToast('勉強記録を削除しました');
 });
 
@@ -1988,17 +2206,71 @@ function renderProfileScreen(){
   document.getElementById('profile-name').textContent = p.name;
   document.getElementById('profile-grade').textContent = gradeLabelOf(p);
 
-  const following = loadFollowing();
-  document.getElementById('profile-following-count').textContent = following.length;
+  document.getElementById('profile-following-count').textContent = loadFollowing().length;
   document.getElementById('profile-followers-count').textContent = 0; // サーバー機能ができるまでは常に0
   document.getElementById('profile-friends-count').textContent = 0;
-  document.getElementById('profile-following-list').innerHTML = following.map(n=> `<span class="chip">${escapeHtml(n)}</span>`).join('');
-  document.getElementById('profile-following-empty').style.display = following.length ? 'none' : 'block';
 
   const totals = studyTotals();
   document.getElementById('profile-study-today').textContent = formatStudyTime(totals.today);
   document.getElementById('profile-study-week').textContent = formatStudyTime(totals.week);
 }
+
+// ---- フォロー中・フォロワー・友達の一覧 ----
+// フォロワーと友達は、サーバー機能（アカウント同士のつながり）ができるまで空のまま
+const PEOPLE_TABS = {
+  following: { label:'フォロー中', emptyIcon:'user', emptyTitle:'まだ誰もフォローしていません', emptySub:'動画のアイコンの「＋」から、気になるクリエイターをフォローできます。' },
+  followers: { label:'フォロワー', emptyIcon:'users', emptyTitle:'まだフォロワーはいません', emptySub:'動画を投稿して、あなたを見つけてもらおう。' },
+  friends:   { label:'友達',       emptyIcon:'users', emptyTitle:'友達機能は準備中です', emptySub:'友達になると、お互いの今日・今週の勉強時間を見せ合えるようになります。' },
+};
+let peopleTab = 'following';
+
+function openPeople(tab){
+  peopleTab = tab;
+  showScreen('people');
+}
+
+function renderPeopleScreen(){
+  const tab = PEOPLE_TABS[peopleTab];
+  const profile = loadProfile();
+  document.getElementById('people-title').textContent = profile ? profile.name : tab.label;
+  document.querySelectorAll('.people-tab').forEach(btn=>{
+    const active = btn.dataset.tab === peopleTab;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active);
+  });
+
+  const people = peopleTab === 'following' ? loadFollowing() : [];
+  document.getElementById('people-list').innerHTML = people.map(name=>`
+    <div class="people-row">
+      <div class="avatar">${escapeHtml(name.charAt(0))}</div>
+      <div class="people-name">${escapeHtml(name)}</div>
+      <button class="people-action" data-unfollow="${escapeHtml(name)}">フォロー解除</button>
+    </div>
+  `).join('');
+
+  document.getElementById('people-empty').style.display = people.length ? 'none' : 'block';
+  document.getElementById('people-empty-icon').innerHTML = icon(tab.emptyIcon);
+  document.getElementById('people-empty-title').textContent = tab.emptyTitle;
+  document.getElementById('people-empty-sub').textContent = tab.emptySub;
+}
+
+document.querySelectorAll('[data-people-tab]').forEach(btn=>{
+  btn.addEventListener('click', ()=> openPeople(btn.dataset.peopleTab));
+});
+document.querySelectorAll('.people-tab').forEach(btn=>{
+  btn.addEventListener('click', ()=>{ peopleTab = btn.dataset.tab; renderPeopleScreen(); });
+});
+document.getElementById('people-back').addEventListener('click', ()=> showScreen('profile'));
+document.getElementById('people-list').addEventListener('click', async (e)=>{
+  const btn = e.target.closest('[data-unfollow]');
+  if(!btn) return;
+  const name = btn.dataset.unfollow;
+  if(!await confirmDialog(`${name}のフォローを解除しますか？`, '解除する')) return;
+  setFollowing(name, false);
+  syncFollowButtons(name, false);
+  renderPeopleScreen();
+  showToast(`${name}のフォローを外しました`);
+});
 
 // アイコン画像：中央を正方形に切り抜き、小さく縮小してから端末内に保存する（容量対策）
 const AVATAR_SIZE = 192;
@@ -2061,6 +2333,15 @@ document.getElementById('install-close').addEventListener('click', ()=>{
 
 // ---- Service Worker登録 ----
 if('serviceWorker' in navigator){
+  // 新しい版のService Workerに切り替わったら1回だけ再読み込みして最新の画面にする
+  // （初めて開いたときは切り替えではないので再読み込みしない）
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloadedForUpdate = false;
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if(!hadController || reloadedForUpdate) return;
+    reloadedForUpdate = true;
+    location.reload();
+  });
   window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('sw.js').catch(()=>{ /* プレビュー環境では失敗することがありますが問題ありません */ });
   });

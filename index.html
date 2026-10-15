@@ -53,7 +53,7 @@
   #app{ position:fixed; inset:0; overflow:hidden; }
 
   /* ============================================================
-     画面切り替え（home / search / player / ai / record / profile / create）
+     画面切り替え（home / search / ai / record / profile / create / onboarding）
   ============================================================ */
   .screen{ position:absolute; inset:0; opacity:0; pointer-events:none; transition:opacity .35s ease; }
   .screen.active{ opacity:1; pointer-events:auto; }
@@ -89,7 +89,7 @@
   }
 
   .short-top{
-    position:absolute; top:calc(var(--safe-top) + 108px); left:16px; right:78px; z-index:4;
+    position:absolute; top:calc(var(--safe-top) + 68px); left:16px; right:78px; z-index:4;
     display:flex; gap:6px; flex-wrap:wrap;
   }
   .badge{
@@ -115,18 +115,22 @@
     background:var(--ember); border:1.5px solid var(--ink);
   }
 
-  /* ---- 「勉強を始める」CTA ---- */
-  #feed-cta{
-    position:absolute; top:calc(var(--safe-top) + 62px); right:16px; z-index:12;
-    display:flex; align-items:center; gap:7px;
-    padding:10px 16px 10px 14px; border-radius:99px;
-    background:linear-gradient(135deg, var(--cta-from), var(--cta-to));
-    color:#fff; font-family:var(--font-ui); font-size:13.5px; font-weight:700;
-    box-shadow:0 8px 20px rgba(79,140,255,.4);
+  /* ---- 勉強の催促（ショートを一定本数見るたびに表示） ---- */
+  #study-nudge{
+    position:absolute; inset:0; z-index:30; display:none;
+    align-items:center; justify-content:center; padding:0 28px;
+    background:rgba(16,19,26,.82); backdrop-filter:blur(10px);
   }
-  #feed-cta svg{ width:14px; height:14px; }
-  #feed-cta.pulse{ animation:pulse 1.1s ease; }
-  @keyframes pulse{ 0%{transform:scale(1);} 40%{transform:scale(1.15);} 100%{transform:scale(1);} }
+  #study-nudge.show{ display:flex; }
+  .nudge-card{ width:100%; max-width:340px; text-align:center; }
+  .nudge-icon{
+    width:68px; height:68px; border-radius:50%; margin:0 auto 18px;
+    background:linear-gradient(135deg, var(--cta-from), var(--cta-to));
+    display:flex; align-items:center; justify-content:center; color:#fff;
+  }
+  .nudge-icon svg{ width:30px; height:30px; }
+  .nudge-title{ font-size:22px; font-weight:900; margin:0 0 8px; }
+  .nudge-sub{ font-family:var(--font-ui); font-size:13.5px; color:rgba(255,255,255,.7); line-height:1.7; margin:0 0 26px; }
 
   /* ---- 右側アクションレール：アバター・いいね・コメント・保存・シェア・ミュート ---- */
   .action-rail{
@@ -235,20 +239,19 @@
   .empty-state{ text-align:center; padding:70px 30px; color:var(--muted); font-family:var(--font-ui); font-size:14px; line-height:1.7; }
 
   /* ============================================================
-     ロング動画画面
+     初回設定画面（アカウント名・学年）
   ============================================================ */
-  #player-screen{ background:#000; }
-  .player-header{
-    position:absolute; top:0; left:0; right:0; z-index:5; padding:calc(var(--safe-top) + 14px) 16px 30px;
-    background:linear-gradient(180deg, rgba(0,0,0,.65), rgba(0,0,0,0));
-    display:flex; align-items:center; gap:12px;
+  #onboarding-screen{ z-index:40; }
+  .onboarding-wrap{
+    flex:1; overflow-y:auto;
+    padding:calc(var(--safe-top) + 56px) 24px calc(32px + var(--safe-bottom));
   }
-  .player-header-title{ font-family:var(--font-ui); font-size:13px; font-weight:600; color:#fff; opacity:.85; }
-  #player-video{ width:100%; height:100%; object-fit:contain; background:#000; }
-  #player-image{ width:100%; height:100%; object-fit:contain; background:#000; display:none; }
-  .player-info{ position:absolute; left:0; right:0; bottom:0; padding:20px 20px calc(20px + var(--safe-bottom)); background:linear-gradient(0deg, rgba(0,0,0,.75), rgba(0,0,0,0)); }
-  .player-info h2{ font-size:18px; margin:0 0 6px; }
-  .player-info p{ margin:0; font-family:var(--font-ui); font-size:12.5px; color:rgba(255,255,255,.75); }
+  .onboarding-logo{
+    font-family:var(--font-ui); font-size:30px; font-weight:700; margin:0 0 10px;
+    background:linear-gradient(135deg, var(--cta-from), var(--cta-to));
+    background-clip:text; -webkit-background-clip:text; color:transparent; -webkit-text-fill-color:transparent;
+  }
+  .onboarding-lead{ font-size:15px; line-height:1.7; color:rgba(255,255,255,.75); margin:0 0 34px; }
 
   /* ============================================================
      AI / 記録 / プロフィール：準備中のプレースホルダー画面
@@ -444,7 +447,6 @@
 
   @media (prefers-reduced-motion: reduce){
     .zone-meter-fill{ transition:none; }
-    #feed-cta.pulse{ animation:none; }
   }
 </style>
 </head>
@@ -466,13 +468,17 @@
       </button>
     </div>
 
-    <button id="feed-cta">
-      <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 3 20 12 6 21 6 3"/></svg>
-      <span>勉強を始める</span>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
-    </button>
-
     <div class="bottom-nav" data-active-nav="home"></div>
+
+    <div id="study-nudge" role="dialog" aria-modal="true" aria-labelledby="nudge-title">
+      <div class="nudge-card">
+        <div class="nudge-icon" id="nudge-icon"></div>
+        <h2 class="nudge-title" id="nudge-title"></h2>
+        <p class="nudge-sub">やる気が温まってきたところで、<br>勉強モードに切り替えよう。</p>
+        <button class="study-btn primary full" id="nudge-start">タイマーをスタートして勉強する</button>
+        <button class="text-link" id="nudge-continue">あと少しだけ見る</button>
+      </div>
+    </div>
 
     <div id="install-banner">
       <div class="ib-icon">Z</div>
@@ -513,17 +519,23 @@
     <div id="empty-state" class="empty-state" style="display:none;">条件に合う動画がまだありません。<br>条件を変えて探してみてください。</div>
   </section>
 
-  <!-- ============ ロング動画画面 ============ -->
-  <section id="player-screen" class="screen">
-    <div class="player-header">
-      <button class="back-btn" id="player-back">←</button>
-      <span class="player-header-title" id="player-header-title">本編動画</span>
-    </div>
-    <video id="player-video" playsinline controls></video>
-    <img id="player-image" alt="" />
-    <div class="player-info">
-      <h2 id="player-title"></h2>
-      <p id="player-meta"></p>
+  <!-- ============ 初回設定画面（アカウント名・学年） ============ -->
+  <section id="onboarding-screen" class="screen dark-screen">
+    <div class="onboarding-wrap">
+      <p class="onboarding-logo">ZoneNOW</p>
+      <p class="onboarding-lead">ようこそ！<br>はじめに、あなたのことを少しだけ教えてください。</p>
+
+      <div class="post-field">
+        <label class="post-label" for="onboarding-name">アカウント名</label>
+        <input type="text" class="post-input" id="onboarding-name" placeholder="例：ゾーン太郎" maxlength="20" autocomplete="nickname" />
+      </div>
+
+      <div class="post-field">
+        <label class="post-label">学年</label>
+        <div class="chip-row" id="onboarding-grade-chips"></div>
+      </div>
+
+      <button class="post-submit" id="onboarding-submit">はじめる</button>
     </div>
   </section>
 
@@ -639,7 +651,7 @@
         <input type="text" class="post-input" id="post-unit" placeholder="例：二次関数（啓発動画などは空欄でOK）" maxlength="20" />
       </div>
 
-      <p class="post-note">※ 現在はデモ版です。投稿者名はアカウント名を使う予定ですが、ログイン機能がまだないため仮の名前で表示されます。投稿した動画・写真はこの端末・このタブの中だけで表示され、リロードすると消えます。</p>
+      <p class="post-note">※ 現在はデモ版です。投稿者名には最初に設定したアカウント名が使われます。投稿した動画・写真はこの端末・このタブの中だけで表示され、リロードすると消えます。</p>
 
       <button class="post-submit" id="post-submit">投稿する</button>
     </div>
@@ -655,7 +667,7 @@
    ここが「動画を追加する場所」です。他のコードには一切触れず、
    このリストに1件追加するだけで、検索・フィード両方に反映されます。
    subject / grade は下の SUBJECTS / GRADES と対応させてください。
-   shortSrc / longSrc は今はデモ用の仮動画URLです。
+   short は今はデモ用の仮動画URLです。
    実際のコンテンツができたら、ここのURLだけ差し替えてください。
 ============================================================ */
 const GRADES = [
@@ -675,8 +687,8 @@ const SUBJECTS = [
   { id:'social', label:'社会' },
   { id:'other', label:'その他' },
 ];
-const CURRENT_USER_NAME = 'あなた'; // ログイン機能ができるまでの仮の投稿者名
 const IMAGE_DISPLAY_SECONDS = 8; // 写真投稿のZoneメーター表示時間(秒)
+const STUDY_NUDGE_EVERY = 15; // ショートをこの本数見るたびに勉強を促す
 
 // デモ用の仮動画(公開サンプル素材)。本番では自社動画URLに差し替えます。
 const DEMO_SHORT = [
@@ -686,31 +698,31 @@ const DEMO_SHORT = [
   "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
   "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
 ];
-const DEMO_LONG = [
-  "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-  "https://storage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-  "https://storage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
-];
 
 const VIDEOS = [
-  { id:'m1', subject:'math', grade:'high1', unit:'二次関数', title:'二次関数の最大値を10秒でつかむ', creator:'ゾーン先生', duration:24, short:DEMO_SHORT[0], long:DEMO_LONG[0] },
-  { id:'m2', subject:'math', grade:'high1', unit:'因数分解', title:'たすき掛けが一瞬で見える裏ワザ', creator:'すうがく部 リナ', duration:19, short:DEMO_SHORT[1], long:DEMO_LONG[1] },
-  { id:'m3', subject:'math', grade:'high2', unit:'微分', title:'微分は"変化の速さ"を測るだけ', creator:'ゾーン先生', duration:31, short:DEMO_SHORT[2], long:DEMO_LONG[2] },
-  { id:'m4', subject:'math', grade:'high2', unit:'ベクトル', title:'ベクトルの内積、図で見たら一瞬', creator:'かず先輩', duration:22, short:DEMO_SHORT[3], long:DEMO_LONG[0] },
-  { id:'m5', subject:'math', grade:'high3', unit:'積分', title:'積分=面積を求めるだけと知って楽になった話', creator:'ゾーン先生', duration:28, short:DEMO_SHORT[4], long:DEMO_LONG[1] },
+  { id:'m1', subject:'math', grade:'high1', unit:'二次関数', title:'二次関数の最大値を10秒でつかむ', creator:'ゾーン先生', duration:24, short:DEMO_SHORT[0] },
+  { id:'m2', subject:'math', grade:'high1', unit:'因数分解', title:'たすき掛けが一瞬で見える裏ワザ', creator:'すうがく部 リナ', duration:19, short:DEMO_SHORT[1] },
+  { id:'m3', subject:'math', grade:'high2', unit:'微分', title:'微分は"変化の速さ"を測るだけ', creator:'ゾーン先生', duration:31, short:DEMO_SHORT[2] },
+  { id:'m4', subject:'math', grade:'high2', unit:'ベクトル', title:'ベクトルの内積、図で見たら一瞬', creator:'かず先輩', duration:22, short:DEMO_SHORT[3] },
+  { id:'m5', subject:'math', grade:'high3', unit:'積分', title:'積分=面積を求めるだけと知って楽になった話', creator:'ゾーン先生', duration:28, short:DEMO_SHORT[4] },
 
-  { id:'j1', subject:'japanese', grade:'high1', unit:'現代文読解', title:'筆者の主張を10秒で見抜く読み方', creator:'国語のミナ', duration:26, short:DEMO_SHORT[0], long:DEMO_LONG[1] },
-  { id:'j2', subject:'japanese', grade:'high1', unit:'古文文法', title:'助動詞「き」と「けり」の違い、一発理解', creator:'古文先生', duration:21, short:DEMO_SHORT[1], long:DEMO_LONG[2] },
-  { id:'j3', subject:'japanese', grade:'high2', unit:'漢文句法', title:'漢文の「使役」はこの2文字だけ覚えればいい', creator:'古文先生', duration:18, short:DEMO_SHORT[2], long:DEMO_LONG[0] },
-  { id:'j4', subject:'japanese', grade:'high3', unit:'小論文', title:'小論文が伸びない人の共通点', creator:'国語のミナ', duration:29, short:DEMO_SHORT[3], long:DEMO_LONG[1] },
+  { id:'j1', subject:'japanese', grade:'high1', unit:'現代文読解', title:'筆者の主張を10秒で見抜く読み方', creator:'国語のミナ', duration:26, short:DEMO_SHORT[0] },
+  { id:'j2', subject:'japanese', grade:'high1', unit:'古文文法', title:'助動詞「き」と「けり」の違い、一発理解', creator:'古文先生', duration:21, short:DEMO_SHORT[1] },
+  { id:'j3', subject:'japanese', grade:'high2', unit:'漢文句法', title:'漢文の「使役」はこの2文字だけ覚えればいい', creator:'古文先生', duration:18, short:DEMO_SHORT[2] },
+  { id:'j4', subject:'japanese', grade:'high3', unit:'小論文', title:'小論文が伸びない人の共通点', creator:'国語のミナ', duration:29, short:DEMO_SHORT[3] },
 
-  { id:'e1', subject:'english', grade:'high1', unit:'文型', title:'英語の5文型、結局これだけ覚えればいい', creator:'イングリッシュTAKU', duration:23, short:DEMO_SHORT[4], long:DEMO_LONG[2] },
-  { id:'e2', subject:'english', grade:'high2', unit:'関係代名詞', title:'関係代名詞が苦手な理由、正体はこれ', creator:'イングリッシュTAKU', duration:25, short:DEMO_SHORT[0], long:DEMO_LONG[0] },
-  { id:'e3', subject:'english', grade:'high2', unit:'仮定法', title:'仮定法過去は"妄想"の話だった', creator:'えいご部 モモ', duration:20, short:DEMO_SHORT[1], long:DEMO_LONG[1] },
-  { id:'e4', subject:'english', grade:'high3', unit:'長文読解', title:'長文の最初の3行だけ読めば展開が読める', creator:'イングリッシュTAKU', duration:27, short:DEMO_SHORT[2], long:DEMO_LONG[2] },
+  { id:'e1', subject:'english', grade:'high1', unit:'文型', title:'英語の5文型、結局これだけ覚えればいい', creator:'イングリッシュTAKU', duration:23, short:DEMO_SHORT[4] },
+  { id:'e2', subject:'english', grade:'high2', unit:'関係代名詞', title:'関係代名詞が苦手な理由、正体はこれ', creator:'イングリッシュTAKU', duration:25, short:DEMO_SHORT[0] },
+  { id:'e3', subject:'english', grade:'high2', unit:'仮定法', title:'仮定法過去は"妄想"の話だった', creator:'えいご部 モモ', duration:20, short:DEMO_SHORT[1] },
+  { id:'e4', subject:'english', grade:'high3', unit:'長文読解', title:'長文の最初の3行だけ読めば展開が読める', creator:'イングリッシュTAKU', duration:27, short:DEMO_SHORT[2] },
 ];
 
 function labelOf(list, id){ const f = list.find(x=>x.id===id); return f ? f.label : id; }
+
+// ユーザーが入力した文字(タイトル・単元・アカウント名)をHTMLに埋め込む前に必ず通す
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
 
 /* ============================================================
    ◆ アイコン ◆
@@ -731,6 +743,7 @@ const ICON_PATHS = {
   check: '<polyline points="20 6 9 17 4 12"/>',
   volume: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.1 5a9 9 0 0 1 0 14"/><path d="M15.5 8.5a4.5 4.5 0 0 1 0 7"/>',
   volumeOff: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>',
+  clock: '<circle cx="12" cy="13" r="8"/><polyline points="12 9 12 13 14.5 15.5"/><line x1="9" y1="2" x2="15" y2="2"/>',
 };
 function icon(name){
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name] || ''}</svg>`;
@@ -771,11 +784,11 @@ function formatCount(n){
 const screens = {
   home: document.getElementById('home-screen'),
   search: document.getElementById('search-screen'),
-  player: document.getElementById('player-screen'),
   ai: document.getElementById('ai-screen'),
   record: document.getElementById('record-screen'),
   profile: document.getElementById('profile-screen'),
   create: document.getElementById('create-screen'),
+  onboarding: document.getElementById('onboarding-screen'),
 };
 function showScreen(name){
   Object.values(screens).forEach(s=>s.classList.remove('active'));
@@ -784,13 +797,9 @@ function showScreen(name){
   document.querySelectorAll('[data-nav]').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.nav === name);
   });
-  if(name !== 'player'){
-    const pv = document.getElementById('player-video');
-    pv.pause();
-  }
-  if(name !== 'home'){
-    pauseAllShorts();
-  }
+  // ホームを離れたら再生を止め、戻ってきたら今のショートを頭から再生する
+  if(name === 'home') resumeFeed();
+  else deactivateSlide(currentSlide);
 }
 
 // ---- ボトムナビ：5項目(ホーム/AI/＋/記録/プロフィール)を共通生成 ----
@@ -819,220 +828,271 @@ document.querySelectorAll('[data-nav]').forEach(btn=>{
   btn.addEventListener('click', ()=> showScreen(btn.dataset.nav));
 });
 
-// ---- ショート動画フィードの生成 ----
+// ---- ショート動画フィード ----
+// 並びは毎回ランダム。終わりが近づいたらシャッフルし直した動画を後ろに足していく（無限スクロール）
 const feedEl = document.getElementById('feed');
-let feedVideos = VIDEOS; // 検索結果からここへ差し込むことも可能な設計
-let currentVisibleId = null; // 今画面に出ているショートのid(CTAから本編を開くときに使う)
-
-function renderFeed(videos){
-  feedEl.innerHTML = '';
-  videos.forEach(v=>{
-    const likes = demoCount(v.id + '-like', 800, 15000);
-    const comments = demoCount(v.id + '-comment', 20, 600);
-    const bookmarks = demoCount(v.id + '-bookmark', 100, 2000);
-
-    const isImage = v.mediaType === 'image';
-    const slide = document.createElement('div');
-    slide.className = 'short-slide';
-    slide.dataset.id = v.id;
-    slide.innerHTML = `
-      <div class="zone-meter"><div class="zone-meter-fill"></div></div>
-      ${isImage
-        ? `<img class="short-media-image" src="${v.short}" alt="" />`
-        : `<video src="${v.short}" muted loop playsinline preload="metadata"></video>`}
-
-      <div class="short-top">
-        ${v.subject ? `<span class="badge subject">${labelOf(SUBJECTS, v.subject)}</span>` : ''}
-        <span class="badge">${labelOf(GRADES, v.grade)}</span>
-        ${v.unit ? `<span class="badge">${v.unit}</span>` : ''}
-      </div>
-
-      <div class="action-rail">
-        <div class="avatar-wrap">
-          <div class="avatar">${v.creator.charAt(0)}</div>
-          <button class="follow-badge" data-role="follow">${icon('plus')}</button>
-        </div>
-        <button class="action-item" data-role="like">
-          ${icon('heart')}
-          <span class="action-count">${formatCount(likes)}</span>
-        </button>
-        <button class="action-item" data-role="comment">
-          ${icon('comment')}
-          <span class="action-count">${formatCount(comments)}</span>
-        </button>
-        <button class="action-item" data-role="bookmark">
-          ${icon('bookmark')}
-          <span class="action-count">${formatCount(bookmarks)}</span>
-        </button>
-        <button class="action-item" data-role="share">
-          ${icon('share')}
-          <span class="action-label">シェア</span>
-        </button>
-        ${isImage ? '' : `<button class="action-item mute-item" data-role="mute">${icon('volumeOff')}</button>`}
-      </div>
-
-      <div class="caption-block">
-        ${v.unit ? `<span class="caption-tag">#${v.unit}</span>` : ''}
-        <p class="caption-text">${v.title}</p>
-        <p class="caption-hashtags">#勉強 #やる気 #高校生 ・ @${v.creator}</p>
-        <p class="caption-music">♪ オリジナル楽曲 - ZoneNOW</p>
-      </div>
-    `;
-    feedEl.appendChild(slide);
-  });
-  attachSlideEvents();
-  observeSlides();
-  if(videos[0]) currentVisibleId = videos[0].id;
-}
-
-function attachSlideEvents(){
-  feedEl.querySelectorAll('.short-slide').forEach(slide=>{
-    const id = slide.dataset.id;
-    const video = slide.querySelector('video');
-
-    // 音のON/OFF（フィード内のスライドをまたいで状態を引き継ぐ。写真投稿には音がないのでボタン自体がない）
-    const muteBtn = slide.querySelector('[data-role="mute"]');
-    if(muteBtn && video){
-      muteBtn.addEventListener('click', ()=>{
-        video.muted = !video.muted;
-        currentAudibleState = !video.muted;
-        muteBtn.innerHTML = icon(video.muted ? 'volumeOff' : 'volume');
-      });
-    }
-
-    // いいね（ローカル表示のみ。サーバー保存は未実装）
-    const likeBtn = slide.querySelector('[data-role="like"]');
-    const likeCount = likeBtn.querySelector('.action-count');
-    const baseLikes = demoCount(id + '-like', 800, 15000);
-    let liked = false;
-    likeBtn.addEventListener('click', ()=>{
-      liked = !liked;
-      likeBtn.classList.toggle('active', liked);
-      likeCount.textContent = formatCount(baseLikes + (liked ? 1 : 0));
-    });
-
-    // 保存（ローカル表示のみ）
-    const bookmarkBtn = slide.querySelector('[data-role="bookmark"]');
-    const bookmarkCount = bookmarkBtn.querySelector('.action-count');
-    const baseBookmarks = demoCount(id + '-bookmark', 100, 2000);
-    let saved = false;
-    bookmarkBtn.addEventListener('click', ()=>{
-      saved = !saved;
-      bookmarkBtn.classList.toggle('active', saved);
-      bookmarkCount.textContent = formatCount(baseBookmarks + (saved ? 1 : 0));
-    });
-
-    // フォロー（ローカル表示のみ）
-    const followBtn = slide.querySelector('[data-role="follow"]');
-    followBtn.addEventListener('click', ()=>{
-      const active = followBtn.classList.toggle('active');
-      followBtn.innerHTML = icon(active ? 'check' : 'plus');
-    });
-
-    // コメントはまだ未実装
-    slide.querySelector('[data-role="comment"]').addEventListener('click', ()=>{
-      showToast('コメント機能は準備中です');
-    });
-
-    // シェア（対応端末はOSの共有シートを使用）
-    slide.querySelector('[data-role="share"]').addEventListener('click', async ()=>{
-      const v = VIDEOS.find(x=>x.id===id);
-      if(navigator.share){
-        try{ await navigator.share({ title: v.title, text: v.title, url: location.href }); }
-        catch(e){ /* ユーザーがキャンセルした場合は何もしない */ }
-      } else {
-        showToast('この端末は共有に対応していません');
-      }
-    });
-  });
-}
-
-// ---- スワイプで表示されている動画・写真だけ再生/表示する ----
+let currentSlide = null;        // 今画面に出ているショート
 let currentAudibleState = true; // ミュート状態をスライド間で引き継ぐ
-const meterPulseTimers = new WeakMap(); // 写真投稿用：Zoneメーター満了時にCTAを光らせるタイマー
-function observeSlides(){
-  const slides = feedEl.querySelectorAll('.short-slide');
-  const io = new IntersectionObserver((entries)=>{
-    entries.forEach(entry=>{
-      const slide = entry.target;
-      const video = slide.querySelector('video');
-      const meter = slide.querySelector('.zone-meter-fill');
-      if(entry.isIntersecting && entry.intersectionRatio > 0.6){
-        const id = slide.dataset.id;
-        currentVisibleId = id;
-        // Zoneメーターが満タン=最後まで見た。CTAを光らせて記録に残す
-        const onComplete = ()=>{
-          if(currentVisibleId !== id) return;
-          pulseCta();
-          recordWatch(id);
-        };
-        if(video){
-          video.currentTime = 0;
-          video.play().catch(()=>{});
-          video.muted = !currentAudibleState;
-          const muteBtn = slide.querySelector('[data-role="mute"]');
-          if(muteBtn) muteBtn.innerHTML = icon(video.muted ? 'volumeOff' : 'volume');
-          runZoneMeterForVideo(video, meter, onComplete);
-        } else {
-          const v = VIDEOS.find(x=>x.id===id);
-          runZoneMeterForImage(meter, (v && v.duration) || IMAGE_DISPLAY_SECONDS, onComplete);
-        }
-      } else {
-        if(video) video.pause();
-        clearTimeout(meterPulseTimers.get(meter));
-        meter.style.transition = 'none';
-        meter.style.width = '0%';
-      }
+const meterTimers = new WeakMap();  // スライドごとのZoneメーター満了タイマー
+const countedSlides = new WeakSet(); // 視聴本数に数え済みのスライド（上に戻っても二重に数えない）
+let viewedCount = 0;
+let lastNudgeAt = 0;
+
+function shuffled(list){
+  const a = [...list];
+  for(let i = a.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function createSlide(v){
+  const likes = demoCount(v.id + '-like', 800, 15000);
+  const comments = demoCount(v.id + '-comment', 20, 600);
+  const bookmarks = demoCount(v.id + '-bookmark', 100, 2000);
+  const isImage = v.mediaType === 'image';
+
+  const slide = document.createElement('div');
+  slide.className = 'short-slide';
+  slide.dataset.id = v.id;
+  slide.innerHTML = `
+    <div class="zone-meter"><div class="zone-meter-fill"></div></div>
+    ${isImage
+      ? `<img class="short-media-image" src="${v.short}" alt="" />`
+      : `<video src="${v.short}" muted loop playsinline preload="metadata"></video>`}
+
+    <div class="short-top">
+      ${v.subject ? `<span class="badge subject">${labelOf(SUBJECTS, v.subject)}</span>` : ''}
+      <span class="badge">${labelOf(GRADES, v.grade)}</span>
+      ${v.unit ? `<span class="badge">${escapeHtml(v.unit)}</span>` : ''}
+    </div>
+
+    <div class="action-rail">
+      <div class="avatar-wrap">
+        <div class="avatar">${escapeHtml(v.creator.charAt(0))}</div>
+        <button class="follow-badge" data-role="follow">${icon('plus')}</button>
+      </div>
+      <button class="action-item" data-role="like">
+        ${icon('heart')}
+        <span class="action-count">${formatCount(likes)}</span>
+      </button>
+      <button class="action-item" data-role="comment">
+        ${icon('comment')}
+        <span class="action-count">${formatCount(comments)}</span>
+      </button>
+      <button class="action-item" data-role="bookmark">
+        ${icon('bookmark')}
+        <span class="action-count">${formatCount(bookmarks)}</span>
+      </button>
+      <button class="action-item" data-role="share">
+        ${icon('share')}
+        <span class="action-label">シェア</span>
+      </button>
+      ${isImage ? '' : `<button class="action-item mute-item" data-role="mute">${icon('volumeOff')}</button>`}
+    </div>
+
+    <div class="caption-block">
+      ${v.unit ? `<span class="caption-tag">#${escapeHtml(v.unit)}</span>` : ''}
+      <p class="caption-text">${escapeHtml(v.title)}</p>
+      <p class="caption-hashtags">#勉強 #やる気 #高校生 ・ @${escapeHtml(v.creator)}</p>
+      <p class="caption-music">♪ オリジナル楽曲 - ZoneNOW</p>
+    </div>
+  `;
+  attachSlideEvents(slide, v);
+  return slide;
+}
+
+function attachSlideEvents(slide, v){
+  const video = slide.querySelector('video');
+
+  // 音のON/OFF（フィード内のスライドをまたいで状態を引き継ぐ。写真投稿には音がないのでボタン自体がない）
+  const muteBtn = slide.querySelector('[data-role="mute"]');
+  if(muteBtn && video){
+    muteBtn.addEventListener('click', ()=>{
+      video.muted = !video.muted;
+      currentAudibleState = !video.muted;
+      muteBtn.innerHTML = icon(video.muted ? 'volumeOff' : 'volume');
     });
-  }, { threshold:[0,0.6,1] });
-  slides.forEach(s=>io.observe(s));
+  }
+
+  // いいね（ローカル表示のみ。サーバー保存は未実装）
+  const likeBtn = slide.querySelector('[data-role="like"]');
+  const likeCount = likeBtn.querySelector('.action-count');
+  const baseLikes = demoCount(v.id + '-like', 800, 15000);
+  let liked = false;
+  likeBtn.addEventListener('click', ()=>{
+    liked = !liked;
+    likeBtn.classList.toggle('active', liked);
+    likeCount.textContent = formatCount(baseLikes + (liked ? 1 : 0));
+  });
+
+  // 保存（ローカル表示のみ）
+  const bookmarkBtn = slide.querySelector('[data-role="bookmark"]');
+  const bookmarkCount = bookmarkBtn.querySelector('.action-count');
+  const baseBookmarks = demoCount(v.id + '-bookmark', 100, 2000);
+  let saved = false;
+  bookmarkBtn.addEventListener('click', ()=>{
+    saved = !saved;
+    bookmarkBtn.classList.toggle('active', saved);
+    bookmarkCount.textContent = formatCount(baseBookmarks + (saved ? 1 : 0));
+  });
+
+  // フォロー（ローカル表示のみ）
+  const followBtn = slide.querySelector('[data-role="follow"]');
+  followBtn.addEventListener('click', ()=>{
+    const active = followBtn.classList.toggle('active');
+    followBtn.innerHTML = icon(active ? 'check' : 'plus');
+  });
+
+  // コメントはまだ未実装
+  slide.querySelector('[data-role="comment"]').addEventListener('click', ()=>{
+    showToast('コメント機能は準備中です');
+  });
+
+  // シェア（対応端末はOSの共有シートを使用）
+  slide.querySelector('[data-role="share"]').addEventListener('click', async ()=>{
+    if(navigator.share){
+      try{ await navigator.share({ title: v.title, text: v.title, url: location.href }); }
+      catch(e){ /* ユーザーがキャンセルした場合は何もしない */ }
+    } else {
+      showToast('この端末は共有に対応していません');
+    }
+  });
 }
 
-function pulseCta(){
-  const cta = document.getElementById('feed-cta');
-  cta.classList.add('pulse');
-  setTimeout(()=>cta.classList.remove('pulse'), 1200);
+const feedObserver = new IntersectionObserver((entries)=>{
+  entries.forEach(entry=>{
+    const slide = entry.target;
+    if(entry.isIntersecting && entry.intersectionRatio > 0.6){
+      if(currentSlide && currentSlide !== slide) deactivateSlide(currentSlide);
+      currentSlide = slide;
+      if(isNearFeedEnd(slide)) appendFeedBatch();
+      if(screens.home.classList.contains('active')) enterSlide(slide);
+    } else {
+      deactivateSlide(slide);
+    }
+  });
+}, { threshold:[0,0.6,1] });
+
+function appendFeedBatch(){
+  const lastId = feedEl.lastElementChild ? feedEl.lastElementChild.dataset.id : null;
+  const batch = shuffled(VIDEOS);
+  if(batch.length > 1 && batch[0].id === lastId) batch.push(batch.shift()); // 同じ動画が2本続かないように
+  batch.forEach(v=>{
+    const slide = createSlide(v);
+    feedEl.appendChild(slide);
+    feedObserver.observe(slide);
+  });
+}
+function isNearFeedEnd(slide){
+  return Array.prototype.indexOf.call(feedEl.children, slide) >= feedEl.children.length - 3;
 }
 
-function startZoneMeter(meter, durationSeconds){
+// pinnedFirst を渡すとその動画を先頭に固定（投稿直後に自分の投稿を見せるため）
+function renderFeed(pinnedFirst){
+  feedEl.querySelectorAll('.short-slide').forEach(s=>{
+    feedObserver.unobserve(s);
+    deactivateSlide(s);
+  });
+  feedEl.innerHTML = '';
+  currentSlide = null;
+  if(pinnedFirst){
+    const slide = createSlide(pinnedFirst);
+    feedEl.appendChild(slide);
+    feedObserver.observe(slide);
+  }
+  appendFeedBatch();
+  feedEl.scrollTo({ top:0 });
+}
+
+// スライドが画面に入ったとき：視聴本数を数え、一定本数ごとに勉強を促す。促さないときは再生
+function enterSlide(slide){
+  if(!slide || isStudyNudgeOpen()) return;
+  if(!countedSlides.has(slide)){
+    if(viewedCount > 0 && viewedCount % STUDY_NUDGE_EVERY === 0 && lastNudgeAt !== viewedCount){
+      lastNudgeAt = viewedCount;
+      openStudyNudge();
+      return;
+    }
+    countedSlides.add(slide);
+    viewedCount++;
+  }
+  activateSlide(slide);
+}
+function resumeFeed(){ enterSlide(currentSlide); }
+
+function activateSlide(slide){
+  const video = slide.querySelector('video');
+  const meter = slide.querySelector('.zone-meter-fill');
+  // Zoneメーターが満タン=最後まで見た。視聴記録に残す
+  const onComplete = ()=>{ if(currentSlide === slide) recordWatch(slide.dataset.id); };
+  if(video){
+    video.currentTime = 0;
+    video.muted = !currentAudibleState;
+    video.play().catch(()=>{});
+    const muteBtn = slide.querySelector('[data-role="mute"]');
+    if(muteBtn) muteBtn.innerHTML = icon(video.muted ? 'volumeOff' : 'volume');
+    const start = ()=> runZoneMeter(slide, meter, video.duration && isFinite(video.duration) ? video.duration : 20, onComplete);
+    if(video.readyState >= 1) start();
+    else video.addEventListener('loadedmetadata', ()=>{ if(currentSlide === slide) start(); }, { once:true });
+  } else {
+    const v = VIDEOS.find(x=>x.id===slide.dataset.id);
+    runZoneMeter(slide, meter, (v && v.duration) || IMAGE_DISPLAY_SECONDS, onComplete);
+  }
+}
+
+function deactivateSlide(slide){
+  if(!slide) return;
+  const video = slide.querySelector('video');
+  const meter = slide.querySelector('.zone-meter-fill');
+  if(video) video.pause();
+  clearTimeout(meterTimers.get(slide));
+  meter.style.transition = 'none';
+  meter.style.width = '0%';
+}
+
+// フィードの動画はloop再生でendedイベントが発火しないため、動画・写真ともに
+// メーターと同じ秒数のタイマーで「最後まで見た」を判定する
+function runZoneMeter(slide, meter, durationSeconds, onComplete){
   meter.style.transition = 'none';
   meter.style.width = '0%';
   requestAnimationFrame(()=>{
     meter.style.transition = `width ${durationSeconds}s linear`;
     meter.style.width = '100%';
   });
+  clearTimeout(meterTimers.get(slide));
+  meterTimers.set(slide, setTimeout(onComplete, durationSeconds * 1000));
 }
 
-// フィードの動画はloop再生でendedイベントが発火しないため、動画・写真ともに
-// メーターと同じ秒数のタイマーで「最後まで見た」を判定する
-function runZoneMeterTimed(meter, durationSeconds, onComplete){
-  startZoneMeter(meter, durationSeconds);
-  clearTimeout(meterPulseTimers.get(meter));
-  meterPulseTimers.set(meter, setTimeout(onComplete, durationSeconds * 1000));
+// ---- 勉強の催促 ----
+const studyNudgeEl = document.getElementById('study-nudge');
+document.getElementById('nudge-icon').innerHTML = icon('clock');
+function isStudyNudgeOpen(){ return studyNudgeEl.classList.contains('show'); }
+function openStudyNudge(){
+  deactivateSlide(currentSlide);
+  document.getElementById('nudge-title').textContent = `${viewedCount}本見たね！`;
+  studyNudgeEl.classList.add('show');
 }
+document.getElementById('nudge-continue').addEventListener('click', ()=>{
+  studyNudgeEl.classList.remove('show');
+  resumeFeed();
+});
+document.getElementById('nudge-start').addEventListener('click', ()=>{
+  studyNudgeEl.classList.remove('show');
+  if(!timerState.startedAt){
+    timerState.startedAt = Date.now();
+    saveTimer();
+  }
+  showScreen('record');
+  showToast('学習タイマーをスタートしました');
+});
 
-function runZoneMeterForVideo(video, meter, onComplete){
-  const start = ()=> runZoneMeterTimed(meter, video.duration && isFinite(video.duration) ? video.duration : 20, onComplete);
-  if(video.readyState >= 1) start();
-  else video.addEventListener('loadedmetadata', start, { once:true });
-}
+renderFeed();
 
-function runZoneMeterForImage(meter, durationSeconds, onComplete){
-  runZoneMeterTimed(meter, durationSeconds, onComplete);
-}
-
-function pauseAllShorts(){
-  feedEl.querySelectorAll('video').forEach(v=>v.pause());
-}
-
-renderFeed(feedVideos);
-
-// ---- 上部バー・CTAの操作 ----
+// ---- 上部バーの操作 ----
 document.getElementById('search-open-btn').addEventListener('click', ()=> showScreen('search'));
 document.getElementById('bell-btn').addEventListener('click', ()=> showToast('通知はまだありません'));
-document.getElementById('feed-cta').addEventListener('click', ()=>{
-  if(currentVisibleId) openPlayer(currentVisibleId);
-});
 
 // ---- 検索画面 ----
 let activeGrade = 'all';
@@ -1098,8 +1158,8 @@ function renderResults(){
         <span class="badge">${labelOf(GRADES, v.grade)}</span>
         <span class="result-duration">${v.duration}秒</span>
       </div>
-      <p class="result-title">${v.title}</p>
-      <p class="result-meta">${metaTextOf(v)}</p>
+      <p class="result-title">${escapeHtml(v.title)}</p>
+      <p class="result-meta">${escapeHtml(metaTextOf(v))}</p>
     </button>
   `).join('');
 
@@ -1108,46 +1168,18 @@ function renderResults(){
   });
 }
 
+// 検索結果から選んだ動画をフィードの先頭に置いてホームへ戻る（以降はまたランダム）
 function jumpToShort(id){
+  const v = VIDEOS.find(x=>x.id===id);
+  if(!v) return;
+  renderFeed(v);
   showScreen('home');
-  const target = feedEl.querySelector(`.short-slide[data-id="${id}"]`);
-  if(target) target.scrollIntoView({ behavior:'instant', block:'start' });
 }
 
 document.getElementById('search-back').addEventListener('click', ()=> showScreen('home'));
 
 renderChips();
 renderResults();
-
-// ---- ロング動画 / 写真プレイヤー ----
-function openPlayer(id){
-  const v = VIDEOS.find(x=>x.id===id);
-  if(!v) return;
-  const pv = document.getElementById('player-video');
-  const pi = document.getElementById('player-image');
-  const isImage = v.mediaType === 'image';
-
-  if(isImage){
-    pv.pause();
-    pv.removeAttribute('src');
-    pv.style.display = 'none';
-    pi.src = v.long;
-    pi.style.display = 'block';
-  } else {
-    pi.removeAttribute('src');
-    pi.style.display = 'none';
-    pv.style.display = 'block';
-    pv.src = v.long;
-  }
-
-  document.getElementById('player-header-title').textContent = isImage ? '投稿写真' : '本編動画';
-  document.getElementById('player-title').textContent = v.title + (isImage ? '' : '(本編)');
-  const metaParts = [v.subject ? labelOf(SUBJECTS, v.subject) : null, labelOf(GRADES, v.grade), v.unit || null, v.creator].filter(Boolean);
-  document.getElementById('player-meta').textContent = metaParts.join(' ・ ');
-  showScreen('player');
-  if(!isImage) pv.play().catch(()=>{});
-}
-document.getElementById('player-back').addEventListener('click', ()=> showScreen('home'));
 
 // ---- 記録画面 ----
 // 記録はすべてlocalStorageに保存（この端末のブラウザ内のみ。サーバーができたら送信先を切り替える）
@@ -1488,30 +1520,65 @@ document.getElementById('post-submit').addEventListener('click', ()=>{
   if(!title){ showToast('タイトルを入力してください'); return; }
   if(!postGrade){ showToast('ターゲット学年を選択してください'); return; }
 
-  const mediaUrl = URL.createObjectURL(postSelectedFile);
-  VIDEOS.unshift({
+  const newPost = {
     id: 'u' + Date.now(),
     subject: postSubject,
     grade: postGrade,
     unit,
     title,
-    creator: CURRENT_USER_NAME,
+    creator: (loadProfile() || {}).name || 'あなた',
     duration: postMediaType === 'image' ? IMAGE_DISPLAY_SECONDS : postSelectedDuration,
     mediaType: postMediaType,
-    short: mediaUrl,
-    long: mediaUrl,
-  });
+    short: URL.createObjectURL(postSelectedFile),
+  };
+  VIDEOS.unshift(newPost);
 
-  feedVideos = VIDEOS;
-  renderFeed(feedVideos);
+  renderFeed(newPost);
   renderResults();
   resetPostForm();
   showToast('投稿しました（この端末内のみ・保存はされません）');
   showScreen('home');
-  feedEl.scrollTo({ top:0 });
 });
 
 document.getElementById('post-back').addEventListener('click', ()=> showScreen('home'));
+
+// ---- 初回設定（アカウント名・学年） ----
+// 今は端末内に保存するだけ。ログイン機能ができたらアカウント情報としてサーバーに送る
+const PROFILE_KEY = 'zonenow_profile';
+const PROFILE_NAME_MAX = 20;
+let onboardingGrade = null;
+
+function loadProfile(){
+  const p = loadJSON(PROFILE_KEY, null);
+  return p && p.name && p.grade ? p : null;
+}
+
+function renderOnboardingChips(){
+  const wrap = document.getElementById('onboarding-grade-chips');
+  wrap.innerHTML = chipHtml(GRADES, onboardingGrade);
+  wrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{
+    onboardingGrade = c.dataset.id;
+    renderOnboardingChips();
+  }));
+}
+
+document.getElementById('onboarding-submit').addEventListener('click', ()=>{
+  const name = document.getElementById('onboarding-name').value.trim();
+  if(!name){ showToast('アカウント名を入力してください'); return; }
+  if(name.length > PROFILE_NAME_MAX){ showToast(`アカウント名は${PROFILE_NAME_MAX}文字以内にしてください`); return; }
+  if(!onboardingGrade){ showToast('学年を選択してください'); return; }
+  if(!saveJSON(PROFILE_KEY, { name, grade: onboardingGrade, createdAt: Date.now() })){
+    showToast('この端末では保存できませんでした');
+    return;
+  }
+  showScreen('home');
+  showToast(`ようこそ、${name}さん`);
+});
+
+if(!loadProfile()){
+  renderOnboardingChips();
+  showScreen('onboarding');
+}
 
 // ---- PWA: ホーム画面追加バナー ----
 let deferredPrompt = null;

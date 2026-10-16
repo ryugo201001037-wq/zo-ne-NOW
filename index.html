@@ -253,6 +253,11 @@
   /* ============================================================
      AIコーチ
   ============================================================ */
+  .timer-capped-note{
+    margin:12px 0 0; padding:10px 12px; border-radius:12px; font-family:var(--font-ui); font-size:12.5px; line-height:1.6;
+    background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12); color:rgba(255,255,255,.85);
+  }
+  .timer-capped-note[hidden]{ display:none; }
   .ai-wrap{
     flex:1; min-height:0; display:flex; flex-direction:column;
     padding:calc(var(--safe-top) + 18px) 16px calc(78px + var(--safe-bottom));
@@ -903,6 +908,7 @@
           <button class="study-btn primary" id="timer-toggle">開始</button>
           <button class="study-btn" id="timer-finish">終了して記録</button>
         </div>
+        <p class="timer-capped-note" id="timer-capped-note" hidden></p>
         <button class="text-link" id="timer-discard">タイマーを破棄</button>
       </div>
 
@@ -1084,7 +1090,7 @@
         <span class="post-preview-count" id="post-preview-count"></span>
         <div class="post-upload-empty">
           <div class="post-upload-icon" id="post-upload-icon"></div>
-          <p>タップして動画・写真を選択<br><span class="post-upload-hint">写真は最大10枚まで選べます</span></p>
+          <p>タップして動画・写真を選択<br><span class="post-upload-hint">動画は3分・100MBまで／写真は最大10枚まで</span></p>
         </div>
       </label>
 
@@ -2134,12 +2140,9 @@ document.getElementById('nudge-continue').addEventListener('click', ()=>{
 });
 document.getElementById('nudge-start').addEventListener('click', ()=>{
   studyNudgeEl.classList.remove('show');
-  if(!timerState.startedAt){
-    timerState.startedAt = Date.now();
-    saveTimer();
-  }
+  const started = startTimer();
   showScreen('record');
-  showToast(timerSubject.id ? '学習タイマーをスタートしました' : 'タイマーをスタート！教科も選んでおこう');
+  showToast(!started ? TIMER_CAPPED_TOAST : timerSubject.id ? '学習タイマーをスタートしました' : 'タイマーをスタート！教科も選んでおこう');
 });
 
 // ---- コメント ----
@@ -2476,12 +2479,34 @@ const timerSubject = createChoice('timer-subject-chips', SUBJECTS,
     saveTimer();
   });
 
+// 止め忘れ対策：1回の計測は TIMER_MAX_HOURS 時間まで。超えたらその時点で自動で止める
+const TIMER_MAX_HOURS = 3;
+const TIMER_MAX_MS = TIMER_MAX_HOURS * 3600 * 1000;
 function timerElapsedMs(){
-  return timerState.accumulatedMs + (timerState.startedAt ? Date.now() - timerState.startedAt : 0);
+  const ms = timerState.accumulatedMs + (timerState.startedAt ? Date.now() - timerState.startedAt : 0);
+  return Math.min(ms, TIMER_MAX_MS);
 }
+// 上限に達していたら止める。止めたら true（画面の更新は呼び出し側で）
+function capTimer(){
+  if(!timerState.startedAt || timerElapsedMs() < TIMER_MAX_MS) return false;
+  timerState.accumulatedMs = TIMER_MAX_MS;
+  timerState.startedAt = null;
+  timerState.capped = true;
+  saveTimer();
+  return true;
+}
+// タイマーを動かし始める（上限で止まったままなら動かさず false）
+function startTimer(){
+  if(timerState.startedAt) return true;
+  if(timerState.capped) return false;
+  timerState.startedAt = Date.now();
+  saveTimer();
+  return true;
+}
+const TIMER_CAPPED_TOAST = `タイマーが上限の${TIMER_MAX_HOURS}時間で止まっています。記録するか破棄してね`;
 function saveTimer(){ saveJSON(STUDY_TIMER_KEY, timerState); }
 function resetTimer(){
-  timerState = { subject: timerState.subject, subjectOther: timerState.subjectOther, startedAt:null, accumulatedMs:0 };
+  timerState = { subject: timerState.subject, subjectOther: timerState.subjectOther, startedAt:null, accumulatedMs:0, capped:false };
   saveTimer();
 }
 function formatClock(ms){
@@ -2502,20 +2527,25 @@ function renderTimer(){
   document.getElementById('timer-toggle').textContent = running ? '一時停止' : (hasTime ? '再開' : '開始');
   document.getElementById('timer-finish').disabled = !hasTime;
   document.getElementById('timer-discard').style.display = hasTime ? 'block' : 'none';
+  const note = document.getElementById('timer-capped-note');
+  note.hidden = !timerState.capped;
+  note.textContent = `止め忘れていませんか？${TIMER_MAX_HOURS}時間たったので自動で止めました。実際の勉強時間と違う場合は、タイマーを破棄して「手入力で追加」から正しい時間を記録してね。`;
 }
 
 document.getElementById('timer-toggle').addEventListener('click', ()=>{
+  if(capTimer()){ renderTimer(); showToast(TIMER_CAPPED_TOAST); return; }
   if(timerState.startedAt){
     timerState.accumulatedMs += Date.now() - timerState.startedAt;
     timerState.startedAt = null;
-  } else {
-    timerState.startedAt = Date.now();
+    saveTimer();
+  } else if(!startTimer()){
+    showToast(TIMER_CAPPED_TOAST);
   }
-  saveTimer();
   renderTimer();
 });
 
 document.getElementById('timer-finish').addEventListener('click', ()=>{
+  capTimer();
   const seconds = Math.floor(timerElapsedMs() / 1000);
   if(seconds < MIN_STUDY_SECONDS){
     showToast('1分未満の学習は記録されません');
@@ -2535,7 +2565,12 @@ document.getElementById('timer-discard').addEventListener('click', async ()=>{
   renderTimer();
 });
 
-setInterval(()=>{ if(timerState.startedAt) renderTimerDisplay(); }, 1000);
+// 1秒ごとに表示を更新。アプリを閉じている間に上限を超えた場合も、開いた直後にここで止まる
+capTimer();
+setInterval(()=>{
+  if(!timerState.startedAt) return;
+  if(capTimer()) renderTimer(); else renderTimerDisplay();
+}, 1000);
 
 // ---- 手入力 ----
 const manualSubject = createChoice('manual-subject-chips', SUBJECTS);
@@ -2753,6 +2788,11 @@ document.querySelectorAll('[data-placeholder]').forEach(el=>{
 document.getElementById('post-upload-icon').innerHTML = icon('plus');
 
 const MAX_POST_PHOTOS = 10;
+// 端末の容量・あとでサーバーに送るときの通信量を考えた上限（ショート動画アプリなので長い動画は受け付けない）
+const MAX_POST_VIDEO_SECONDS = 180;
+const MAX_POST_VIDEO_MB = 100;
+const MAX_POST_PHOTO_MB = 10;
+const MB = 1024 * 1024;
 const PHOTO_SECONDS_EACH = 5; // 複数枚の写真は1枚あたりこの秒数でZoneメーターを進める
 const MAX_HASHTAGS = 5;
 const HASHTAG_MAX_LENGTH = 20;
@@ -2761,6 +2801,7 @@ let postMediaType = null;   // 'video' | 'image'
 let postMediaUrls = [];     // 選んだファイルのプレビュー用URL（投稿時もそのまま使う）
 let postMediaFiles = [];    // 選んだファイル本体（端末内に保存するため）
 let postSelectedDuration = 0;
+let postVideoReady = false; // 動画の長さを読み終えたか（読み終える前に「次へ」を押されたとき用）
 let postHashtags = [];
 let postMusicId = null;
 let postDraft = null;      // 「次へ」で作った投稿内容（プレビューで確認してから投稿する）
@@ -2787,6 +2828,7 @@ function clearPostMedia(){
   postMediaUrls = [];
   postMediaFiles = [];
   postSelectedDuration = 0;
+  postVideoReady = false;
   postPreviewVideo.pause();
   postPreviewVideo.removeAttribute('src');
   postPreviewVideo.style.display = 'none';
@@ -2806,6 +2848,8 @@ postFileInput.addEventListener('change', ()=>{
   if(videos.length + images.length !== files.length){ showToast('動画か写真のファイルを選んでください'); return; }
   if(videos.length && (videos.length > 1 || images.length)){ showToast('動画は1本だけ、写真とは別々に投稿してください'); return; }
   if(images.length > MAX_POST_PHOTOS){ showToast(`写真は${MAX_POST_PHOTOS}枚まで選べます`); return; }
+  if(videos.length && videos[0].size > MAX_POST_VIDEO_MB * MB){ showToast(`動画は${MAX_POST_VIDEO_MB}MBまでです`); return; }
+  if(images.some(f=> f.size > MAX_POST_PHOTO_MB * MB)){ showToast(`写真は1枚${MAX_POST_PHOTO_MB}MBまでです`); return; }
 
   clearPostMedia();
   if(videos.length){
@@ -2829,7 +2873,19 @@ postFileInput.addEventListener('change', ()=>{
   postUploadLabel.classList.add('has-media');
 });
 postPreviewVideo.addEventListener('loadedmetadata', ()=>{
-  if(isFinite(postPreviewVideo.duration)) postSelectedDuration = Math.round(postPreviewVideo.duration);
+  const d = postPreviewVideo.duration;
+  if(isFinite(d) && d > MAX_POST_VIDEO_SECONDS + 0.5){
+    clearPostMedia();
+    showToast(`動画は${MAX_POST_VIDEO_SECONDS / 60}分までです`);
+    return;
+  }
+  if(isFinite(d)) postSelectedDuration = Math.round(d);
+  postVideoReady = true;
+});
+postPreviewVideo.addEventListener('error', ()=>{
+  if(postMediaType !== 'video' || !postPreviewVideo.getAttribute('src')) return;
+  clearPostMedia();
+  showToast('この動画は読み込めませんでした（別の形式で試してください）');
 });
 
 // ---- ハッシュタグ（最大5個）：「#」ボタンで入力欄を開く ----
@@ -2948,6 +3004,7 @@ document.getElementById('post-next').addEventListener('click', ()=>{
   const unit = document.getElementById('post-unit').value.trim();
 
   if(!postMediaUrls.length){ showToast('動画か写真を選択してください'); return; }
+  if(postMediaType === 'video' && !postVideoReady){ showToast('動画を読み込み中です。少し待ってからもう一度押してね'); return; }
   if(!title){ showToast('タイトルを入力してください'); return; }
   const choiceError = postKind.error('種類') || postTarget.error('ターゲット学年') || postSubject.error('教科');
   if(choiceError){ showToast(choiceError); return; }
@@ -3353,9 +3410,9 @@ async function askAi(photo = null){
 
 // 勉強タイマーを（教科を決めて）スタートして記録画面へ
 function startStudyTimerFromCoach(subject){
-  if(timerState.startedAt){
+  if(timerState.startedAt || timerState.capped){
     showScreen('record');
-    showToast('タイマーはもう動いています');
+    showToast(timerState.capped ? TIMER_CAPPED_TOAST : 'タイマーはもう動いています');
     return;
   }
   if(subject){

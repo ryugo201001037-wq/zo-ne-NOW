@@ -11,10 +11,23 @@ index.html     ホーム(ショート動画フィード)・検索・本編プレ
 manifest.json  PWA用マニフェスト（ホーム画面追加対応）
 sw.js          Service Worker（コアファイルのみキャッシュ、動画はキャッシュ対象外）
 icons/         ホーム画面アイコン
+tests/         ブラウザで全機能を動かして確かめる自動テスト（Playwright）
 ```
 
 - 動画データは `index.html` 内の `VIDEOS` 配列にハードコードされたデモ用サンプル動画。
 - サーバー・API・データベース・認証は未実装。すべてクライアント側のみで完結する状態。
+
+## テスト
+
+```
+npm install
+npm test
+```
+
+- `tests/full.test.js`：全画面・全機能のチェック。`tests/ai.test.js`：AIコーチ（AIなし／模擬AIあり）。
+- テスト用のサーバー（ポート8139、`PORT` で変更可）はテストが自分で起動します。
+- Playwright付属のブラウザが無い環境では、`CHROMIUM_PATH` にChromiumの場所を指定してください。
+- スクリーンショットは `tests/output/` に出ます（git管理外）。
 
 ## 本格リリースに向けた骨組み（検討中のロードマップ）
 

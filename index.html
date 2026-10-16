@@ -1090,7 +1090,7 @@
         <span class="post-preview-count" id="post-preview-count"></span>
         <div class="post-upload-empty">
           <div class="post-upload-icon" id="post-upload-icon"></div>
-          <p>タップして動画・写真を選択<br><span class="post-upload-hint">動画は3分・100MBまで／写真は最大10枚まで</span></p>
+          <p>タップして動画・写真を選択<br><span class="post-upload-hint">動画は3分まで／写真は最大10枚まで</span></p>
         </div>
       </label>
 
@@ -1750,7 +1750,7 @@ function createSlide(v){
   slide.dataset.music = track ? track.id : '';
   slide.innerHTML = `
     <div class="zone-meter"><div class="zone-meter-fill"></div></div>
-    ${isImage ? photoMediaHtml(v) : `<video src="${v.short}" muted loop playsinline preload="metadata"></video>`}
+    ${isImage ? photoMediaHtml(v) : `<video src="${v.short}" data-src="${v.short}" muted loop playsinline preload="none"></video>`}
 
     <div class="pause-indicator" aria-hidden="true">${icon('play')}</div>
 
@@ -1885,6 +1885,7 @@ const feedObserver = new IntersectionObserver((entries)=>{
       if(currentSlide && currentSlide !== slide) deactivateSlide(currentSlide);
       currentSlide = slide;
       if(isNearFeedEnd(slide)) appendFeedBatch();
+      syncFeedMedia(slide);
       if(screens.home.classList.contains('active')) enterSlide(slide);
     } else {
       deactivateSlide(slide);
@@ -1939,6 +1940,28 @@ function appendFeedBatch(){
     feedObserver.observe(slide);
   });
 }
+// ---- 動画の読み込み範囲 ----
+// 見ている動画の前1本・次の2本だけを先読みし、離れた動画は読み込んだデータを手放す。
+// スワイプした瞬間に次の動画が始まり、長くスクロールしてもメモリが増え続けない
+const FEED_LOAD_BEHIND = 1, FEED_LOAD_AHEAD = 2;
+function syncFeedMedia(current){
+  const slides = [...feedEl.children];
+  const i = slides.indexOf(current);
+  if(i < 0) return;
+  slides.forEach((slide, k)=>{
+    const video = slide.querySelector('video');
+    if(!video) return;
+    if(k >= i - FEED_LOAD_BEHIND && k <= i + FEED_LOAD_AHEAD){
+      if(!video.getAttribute('src')) video.src = video.dataset.src;
+      video.preload = 'auto';
+      video.dataset.loaded = '1';
+    } else if(video.dataset.loaded){
+      video.removeAttribute('src');
+      video.load(); // 読み込み済みのデータを解放する
+      delete video.dataset.loaded;
+    }
+  });
+}
 function isNearFeedEnd(slide){
   return Array.prototype.indexOf.call(feedEl.children, slide) >= feedEl.children.length - 3;
 }
@@ -1957,6 +1980,7 @@ function renderFeed(pinnedFirst){
     feedObserver.observe(slide);
   }
   appendFeedBatch();
+  syncFeedMedia(feedEl.firstElementChild);
   feedEl.scrollTo({ top:0 });
 }
 
@@ -2480,7 +2504,7 @@ const timerSubject = createChoice('timer-subject-chips', SUBJECTS,
   });
 
 // 止め忘れ対策：1回の計測は TIMER_MAX_HOURS 時間まで。超えたらその時点で自動で止める
-const TIMER_MAX_HOURS = 3;
+const TIMER_MAX_HOURS = 12;
 const TIMER_MAX_MS = TIMER_MAX_HOURS * 3600 * 1000;
 function timerElapsedMs(){
   const ms = timerState.accumulatedMs + (timerState.startedAt ? Date.now() - timerState.startedAt : 0);
@@ -2790,7 +2814,8 @@ document.getElementById('post-upload-icon').innerHTML = icon('plus');
 const MAX_POST_PHOTOS = 10;
 // 端末の容量・あとでサーバーに送るときの通信量を考えた上限（ショート動画アプリなので長い動画は受け付けない）
 const MAX_POST_VIDEO_SECONDS = 180;
-const MAX_POST_VIDEO_MB = 100;
+// 目安（iPhoneの標準設定で3分撮った場合）：1080p/30fps 約180MB、1080p/60fps 約270MB、4K/30fps 約510MB
+const MAX_POST_VIDEO_MB = 600;
 const MAX_POST_PHOTO_MB = 10;
 const MB = 1024 * 1024;
 const PHOTO_SECONDS_EACH = 5; // 複数枚の写真は1枚あたりこの秒数でZoneメーターを進める

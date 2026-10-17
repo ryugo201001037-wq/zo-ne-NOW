@@ -1,14 +1,16 @@
-// AIコーチのテスト：AIなし（本番・自前サーバー想定）と、AIあり（プレビュー想定・模擬AI）（実行：npm test）
-const { ASSETS, OUT, APP_URL, startServer, launchBrowser, createChecker } = require('./helpers');
+// AIコーチのテスト（実行：npm test）
+// ・AIなし ・AIあり（プレビューの sample 機能を模擬） ・AIサーバー（server/ の本物のコードを、にせのClaudeで動かす）
+const { ASSETS, OUT, ORIGIN, APP_URL, startServer, launchBrowser, createChecker } = require('./helpers');
 const { check, state, report } = createChecker();
 
-async function setup(browser, withAi) {
+async function setup(browser, withAi, aiServerUrl = null) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
-  await page.addInitScript(([withAi]) => {
+  await page.addInitScript(([withAi, aiServerUrl]) => {
     window.confirm = () => false;
+    if (aiServerUrl) window.ZONENOW_CONFIG = { aiServerUrl };
     localStorage.setItem('zonenow_profile', JSON.stringify({ name: 'テスト花子', grade: 'junior2', createdAt: 1 }));
     const day = n => { const d = new Date(); const x = new Date(d.getFullYear(), d.getMonth(), d.getDate() - n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
     if (!localStorage.getItem('zonenow_study_log')) {
@@ -38,10 +40,49 @@ async function setup(browser, withAi) {
       sample.limits = async () => ({ maxPromptBytes: 262144, images: { maxCount: 5, maxInputBytes: 20000000, mediaTypes: ['image/jpeg', 'image/png'] } });
       window.claude = { use: async name => (name === 'sample' ? sample : null) };
     }
-  }, [withAi]);
+  }, [withAi, aiServerUrl]);
   await page.goto(APP_URL, { waitUntil: 'load' });
   await page.waitForTimeout(400);
   return { context, page, errors };
+}
+
+// server/ の本物の処理を、にせのClaudeにつないでローカルで動かす（APIの料金はかからない）
+async function startAiServer() {
+  const http = require('http');
+  const { createHandler } = await import('../server/src/handler.js');
+  const ai = { requests: [], calls: [], nextStop: 'end_turn' };
+  const client = {
+    messages: {
+      stream(params) {
+        ai.calls.push(params);
+        const stop = ai.nextStop; ai.nextStop = 'end_turn';
+        const listeners = [];
+        const final = new Promise(resolve => setTimeout(async () => {
+          for (const c of ['ポイント：', '移項する。', '答え：x=3']) { listeners.forEach(fn => fn(c)); await new Promise(r => setTimeout(r, 20)); }
+          resolve({ stop_reason: stop, content: [] });
+        }, 20));
+        return { on(name, fn) { if (name === 'text') listeners.push(fn); return this; }, finalMessage: () => final, abort() {} };
+      },
+    },
+  };
+  const store = new Map();
+  const env = { ALLOWED_ORIGINS: ORIGIN, DAILY_LIMIT: '3', USAGE: { get: async k => store.get(k) ?? null, put: async (k, v) => { store.set(k, v); } } };
+  const handle = createHandler({ makeClient: () => client });
+  const server = http.createServer(async (req, res) => {
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    const body = Buffer.concat(chunks);
+    if (req.method === 'POST' && body.length) ai.requests.push({ deviceId: req.headers['x-device-id'], body: JSON.parse(body.toString()) });
+    const request = new Request(`http://localhost${req.url}`, { method: req.method, headers: req.headers, body: req.method === 'POST' ? body : undefined });
+    const response = await handle(request, env, { waitUntil() {} });
+    res.writeHead(response.status, Object.fromEntries(response.headers));
+    if (response.body) for await (const c of response.body) res.write(c);
+    res.end();
+  });
+  await new Promise(r => server.listen(0, r));
+  ai.url = `http://localhost:${server.address().port}`;
+  ai.close = () => { server.closeAllConnections(); server.close(); };
+  return ai;
 }
 
 (async () => {
@@ -161,6 +202,52 @@ async function setup(browser, withAi) {
     await page.fill('#ai-input', '質問'); await page.click('#ai-send');
     await page.waitForTimeout(400);
     check('許可されないとオフに切り替え・説明', (await page.textContent('#ai-status')).includes('オフ') && (await page.$eval('.ai-msg.coach:last-child .ai-bubble', e => e.textContent)).includes('許可されていない'));
+    check('エラーなし', errors.length === 0, errors.join(' / '));
+  }
+
+  // ========== AIサーバー（本番の形） ==========
+  state.section = 'AIサーバー';
+  {
+    const ai = await startAiServer();
+    const { page, errors } = await setup(browser, false, ai.url);
+    const status = () => page.textContent('#ai-status');
+    const lastCoach = () => page.$eval('.ai-msg.coach:last-child .ai-bubble', e => e.textContent);
+    await page.click('.screen.active [data-nav="ai"]');
+    await page.waitForTimeout(200);
+    check('サーバーがあればAIはオン', (await status()).includes('オン'));
+    check('写真ボタンが出る', !(await page.$eval('#ai-photo', b => b.hidden)));
+    await page.fill('#ai-input', 'x+2=5を解いて');
+    await page.click('#ai-send');
+    await page.waitForFunction(() => !document.querySelector('.ai-msg.coach:last-child .ai-bubble.thinking') && document.getElementById('ai-send').textContent === '送信');
+    check('サーバーの解説が表示される', (await lastCoach()) === 'ポイント：移項する。答え：x=3', await lastCoach());
+    const req = ai.requests[0];
+    check('学年と学習記録を送る', req.body.gradeLabel === '中学2年' && req.body.studySummary.includes('直近7日間：1時間55分'), JSON.stringify(req.body).slice(0, 200));
+    check('指示はアプリから送らない（サーバーが持つ）', !JSON.stringify(req.body).includes('AIコーチです') && ai.calls[0].system.includes('AIコーチです'));
+    check('端末IDを送る', /^[A-Za-z0-9-]{16,64}$/.test(req.deviceId), req.deviceId);
+    check('残り回数を表示', (await status()).includes('今日あと2回'), await status());
+    check('解説の後は続きのチップ', (await page.textContent('#ai-suggestions')).includes('もっとくわしく'));
+    await page.setInputFiles('#ai-photo-input', ASSETS + 'p1.png');
+    await page.waitForTimeout(300);
+    await page.click('#ai-send');
+    await page.waitForFunction(() => document.getElementById('ai-send').textContent === '送信' && !document.querySelector('.ai-bubble.thinking'));
+    const img = ai.calls[1].messages.at(-1).content;
+    check('写真がサーバー経由でAIに届く', Array.isArray(img) && img[0].type === 'image' && img[0].source.media_type === 'image/jpeg' && img[0].source.data.length > 100, JSON.stringify(img).slice(0, 120));
+    check('前の会話も送る', ai.calls[1].messages.length === 3 && ai.calls[1].messages[1].role === 'assistant');
+    ai.nextStop = 'refusal';
+    await page.fill('#ai-input', '危ない質問'); await page.click('#ai-send');
+    await page.waitForFunction(() => document.getElementById('ai-send').textContent === '送信' && !document.querySelector('.ai-bubble.thinking'));
+    check('断られたら途中の文は消して説明', (await lastCoach()).startsWith('ごめんね、その内容には答えられない'), await lastCoach());
+    check('上限まで使うと「使い切り」と表示', (await status()).includes('使い切りました'), await status());
+    await page.fill('#ai-input', 'もう1問'); await page.click('#ai-send');
+    await page.waitForFunction(() => document.getElementById('ai-send').textContent === '送信' && !document.querySelector('.ai-bubble.thinking'));
+    check('上限を超えると「また明日」', (await lastCoach()).includes('今日の質問はここまで（1日3回）'), await lastCoach());
+    check('上限を超えた分はAIを呼ばない', ai.calls.length === 3);
+    ai.close();
+    await page.waitForTimeout(100);
+    await page.fill('#ai-input', 'つながる？'); await page.click('#ai-send');
+    await page.waitForFunction(() => document.getElementById('ai-send').textContent === '送信' && !document.querySelector('.ai-bubble.thinking'));
+    check('サーバーに届かないときは「もう一度」', (await lastCoach()).includes('うまくつながらなかった'), await lastCoach());
+    await page.screenshot({ path: OUT + 'ai-server.png' });
     check('エラーなし', errors.length === 0, errors.join(' / '));
   }
 

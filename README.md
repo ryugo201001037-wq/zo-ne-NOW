@@ -12,6 +12,7 @@ manifest.json  PWA用マニフェスト（ホーム画面追加対応）
 sw.js          Service Worker（コアファイルのみキャッシュ、動画はキャッシュ対象外）
 icons/         ホーム画面アイコン
 tests/         ブラウザで全機能を動かして確かめる自動テスト（Playwright）
+server/        AIサーバー（Cloudflare Workers）。APIキーを預かり、AIコーチの質問をClaudeに中継する
 ```
 
 - 動画データは `index.html` 内の `VIDEOS` 配列にハードコードされたデモ用サンプル動画。
@@ -21,13 +22,39 @@ tests/         ブラウザで全機能を動かして確かめる自動テス�
 
 ```
 npm install
-npm test
+(cd server && npm install)
+npm test                 # アプリ全体（AIサーバーとのやりとりも含む）
+(cd server && npm test)  # AIサーバー単体
 ```
 
 - `tests/full.test.js`：全画面・全機能のチェック。`tests/ai.test.js`：AIコーチ（AIなし／模擬AIあり）。
 - テスト用のサーバー（ポート8139、`PORT` で変更可）はテストが自分で起動します。
+- AIはにせもの（決まった文を返す）に置き換えて動かすので、APIの料金はかかりません。
 - Playwright付属のブラウザが無い環境では、`CHROMIUM_PATH` にChromiumの場所を指定してください。
 - スクリーンショットは `tests/output/` に出ます（git管理外）。
+
+## AIサーバー（server/）
+
+AIコーチの「問題の解説」は、本番ではこのサーバー経由でClaude（Haiku）に聞きます。
+claude.aiのプレビューで開いたときは、見ている人のClaudeの利用枠を使うので、サーバーは使いません。
+
+- APIキーはサーバーの秘密の設定にだけ置き、アプリには入れない
+- 1端末あたり1日20回まで（`wrangler.toml` の `DAILY_LIMIT`）。日本時間0時にリセット
+- 回答は少しずつ返す（アプリの「停止」でAIへの問い合わせも止まる）
+- 注意：端末IDはブラウザのデータを消すとリセットできる。ログイン機能ができたらアカウント単位に変える。最終的な歯止めとして、Anthropic Consoleで月の利用額の上限を必ず設定する
+
+### 公開する手順
+
+1. [Cloudflare](https://dash.cloudflare.com/sign-up) のアカウントを作る（無料プランで可）
+2. `cd server && npm install`
+3. `npx wrangler login`（ブラウザでCloudflareにログイン）
+4. `npx wrangler kv namespace create USAGE` → 表示された `id` を `wrangler.toml` の `REPLACE_WITH_KV_NAMESPACE_ID` に書く
+5. [Anthropic Console](https://console.anthropic.com/) でAPIキーを作り、**月の利用額の上限を設定**する
+6. `npx wrangler secret put ANTHROPIC_API_KEY` → キーを貼り付ける（キーはファイルやチャットに書かない）
+7. `wrangler.toml` の `ALLOWED_ORIGINS` を、アプリを公開するURL（例：`https://zonenow.example.com`）にする
+8. `npx wrangler deploy` → 表示されたURL（`https://zonenow-ai.xxxx.workers.dev`）を、`index.html` の `AI_SERVER_URL_DEFAULT` に書く
+
+無料プランの回数を数える保存場所（KV）は、書き込みが1日1,000回までです（全員の質問の合計が1日約1,000問まで）。超えそうなら有料プラン（月5ドル）にします。
 
 ## 本格リリースに向けた骨組み（検討中のロードマップ）
 

@@ -253,11 +253,6 @@
   /* ============================================================
      AIコーチ
   ============================================================ */
-  .timer-capped-note{
-    margin:12px 0 0; padding:10px 12px; border-radius:12px; font-family:var(--font-ui); font-size:12.5px; line-height:1.6;
-    background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12); color:rgba(255,255,255,.85);
-  }
-  .timer-capped-note[hidden]{ display:none; }
   .ai-wrap{
     flex:1; min-height:0; display:flex; flex-direction:column;
     padding:calc(var(--safe-top) + 18px) 16px calc(78px + var(--safe-bottom));
@@ -908,7 +903,6 @@
           <button class="study-btn primary" id="timer-toggle">開始</button>
           <button class="study-btn" id="timer-finish">終了して記録</button>
         </div>
-        <p class="timer-capped-note" id="timer-capped-note" hidden></p>
         <button class="text-link" id="timer-discard">タイマーを破棄</button>
       </div>
 
@@ -918,7 +912,7 @@
         <div class="chip-row" id="manual-subject-chips"></div>
         <input type="text" class="post-input other-input" id="manual-subject-chips-other" placeholder="教科名を入力（例：情報）" />
         <div class="manual-row">
-          <input type="number" class="post-input" id="manual-minutes" placeholder="分（例：90）" min="1" max="1440" inputmode="numeric" />
+          <input type="number" class="post-input" id="manual-minutes" placeholder="分（例：90）" min="1" inputmode="numeric" />
           <input type="date" class="post-input" id="manual-date" />
         </div>
         <button class="study-btn primary full" id="manual-add">記録を追加</button>
@@ -2164,9 +2158,12 @@ document.getElementById('nudge-continue').addEventListener('click', ()=>{
 });
 document.getElementById('nudge-start').addEventListener('click', ()=>{
   studyNudgeEl.classList.remove('show');
-  const started = startTimer();
+  if(!timerState.startedAt){
+    timerState.startedAt = Date.now();
+    saveTimer();
+  }
   showScreen('record');
-  showToast(!started ? TIMER_CAPPED_TOAST : timerSubject.id ? '学習タイマーをスタートしました' : 'タイマーをスタート！教科も選んでおこう');
+  showToast(timerSubject.id ? '学習タイマーをスタートしました' : 'タイマーをスタート！教科も選んでおこう');
 });
 
 // ---- コメント ----
@@ -2457,7 +2454,6 @@ const SUBJECT_COLORS = {
 const STUDY_LOG_KEY = 'zonenow_study_log';
 const STUDY_TIMER_KEY = 'zonenow_study_timer';
 const MIN_STUDY_SECONDS = 60; // 誤タップで数秒の記録が残らないように
-const MAX_MANUAL_MINUTES = 1440;
 
 // 教科なしの記録は旧バージョンのデータのみ（今は教科の選択が必須）
 function studyEntryLabel(e){ return subjectLabelOf(e) || '未分類'; }
@@ -2503,34 +2499,12 @@ const timerSubject = createChoice('timer-subject-chips', SUBJECTS,
     saveTimer();
   });
 
-// 止め忘れ対策：1回の計測は TIMER_MAX_HOURS 時間まで。超えたらその時点で自動で止める
-const TIMER_MAX_HOURS = 12;
-const TIMER_MAX_MS = TIMER_MAX_HOURS * 3600 * 1000;
 function timerElapsedMs(){
-  const ms = timerState.accumulatedMs + (timerState.startedAt ? Date.now() - timerState.startedAt : 0);
-  return Math.min(ms, TIMER_MAX_MS);
+  return timerState.accumulatedMs + (timerState.startedAt ? Date.now() - timerState.startedAt : 0);
 }
-// 上限に達していたら止める。止めたら true（画面の更新は呼び出し側で）
-function capTimer(){
-  if(!timerState.startedAt || timerElapsedMs() < TIMER_MAX_MS) return false;
-  timerState.accumulatedMs = TIMER_MAX_MS;
-  timerState.startedAt = null;
-  timerState.capped = true;
-  saveTimer();
-  return true;
-}
-// タイマーを動かし始める（上限で止まったままなら動かさず false）
-function startTimer(){
-  if(timerState.startedAt) return true;
-  if(timerState.capped) return false;
-  timerState.startedAt = Date.now();
-  saveTimer();
-  return true;
-}
-const TIMER_CAPPED_TOAST = `タイマーが上限の${TIMER_MAX_HOURS}時間で止まっています。記録するか破棄してね`;
 function saveTimer(){ saveJSON(STUDY_TIMER_KEY, timerState); }
 function resetTimer(){
-  timerState = { subject: timerState.subject, subjectOther: timerState.subjectOther, startedAt:null, accumulatedMs:0, capped:false };
+  timerState = { subject: timerState.subject, subjectOther: timerState.subjectOther, startedAt:null, accumulatedMs:0 };
   saveTimer();
 }
 function formatClock(ms){
@@ -2551,25 +2525,20 @@ function renderTimer(){
   document.getElementById('timer-toggle').textContent = running ? '一時停止' : (hasTime ? '再開' : '開始');
   document.getElementById('timer-finish').disabled = !hasTime;
   document.getElementById('timer-discard').style.display = hasTime ? 'block' : 'none';
-  const note = document.getElementById('timer-capped-note');
-  note.hidden = !timerState.capped;
-  note.textContent = `止め忘れていませんか？${TIMER_MAX_HOURS}時間たったので自動で止めました。実際の勉強時間と違う場合は、タイマーを破棄して「手入力で追加」から正しい時間を記録してね。`;
 }
 
 document.getElementById('timer-toggle').addEventListener('click', ()=>{
-  if(capTimer()){ renderTimer(); showToast(TIMER_CAPPED_TOAST); return; }
   if(timerState.startedAt){
     timerState.accumulatedMs += Date.now() - timerState.startedAt;
     timerState.startedAt = null;
-    saveTimer();
-  } else if(!startTimer()){
-    showToast(TIMER_CAPPED_TOAST);
+  } else {
+    timerState.startedAt = Date.now();
   }
+  saveTimer();
   renderTimer();
 });
 
 document.getElementById('timer-finish').addEventListener('click', ()=>{
-  capTimer();
   const seconds = Math.floor(timerElapsedMs() / 1000);
   if(seconds < MIN_STUDY_SECONDS){
     showToast('1分未満の学習は記録されません');
@@ -2589,12 +2558,7 @@ document.getElementById('timer-discard').addEventListener('click', async ()=>{
   renderTimer();
 });
 
-// 1秒ごとに表示を更新。アプリを閉じている間に上限を超えた場合も、開いた直後にここで止まる
-capTimer();
-setInterval(()=>{
-  if(!timerState.startedAt) return;
-  if(capTimer()) renderTimer(); else renderTimerDisplay();
-}, 1000);
+setInterval(()=>{ if(timerState.startedAt) renderTimerDisplay(); }, 1000);
 
 // ---- 手入力 ----
 const manualSubject = createChoice('manual-subject-chips', SUBJECTS);
@@ -2612,8 +2576,8 @@ document.getElementById('manual-add').addEventListener('click', ()=>{
   if(subjectError){ showToast(subjectError); return; }
   const minutes = Number(manualMinutesInput.value);
   const date = manualDateInput.value;
-  if(!Number.isInteger(minutes) || minutes < 1 || minutes > MAX_MANUAL_MINUTES){
-    showToast(`勉強時間は1〜${MAX_MANUAL_MINUTES}分の整数で入力してください`);
+  if(!Number.isInteger(minutes) || minutes < 1){
+    showToast('勉強時間は1以上の整数（分）で入力してください');
     return;
   }
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > localDateKey()){
@@ -3435,9 +3399,9 @@ async function askAi(photo = null){
 
 // 勉強タイマーを（教科を決めて）スタートして記録画面へ
 function startStudyTimerFromCoach(subject){
-  if(timerState.startedAt || timerState.capped){
+  if(timerState.startedAt){
     showScreen('record');
-    showToast(timerState.capped ? TIMER_CAPPED_TOAST : 'タイマーはもう動いています');
+    showToast('タイマーはもう動いています');
     return;
   }
   if(subject){

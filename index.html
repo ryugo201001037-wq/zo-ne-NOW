@@ -780,25 +780,6 @@
   }
 
   /* ============================================================
-     友達（勉強時間の見せ合い）
-  ============================================================ */
-  .friend-row{ display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid rgba(255,255,255,.07); }
-  .friend-row .avatar{ width:40px; height:40px; font-size:15px; border-width:1.5px; flex-shrink:0; }
-  .friend-rank{ width:20px; text-align:center; font-family:var(--font-ui); font-size:14px; font-weight:800; color:rgba(255,255,255,.5); flex-shrink:0; }
-  .friend-main{ flex:1; min-width:0; }
-  .friend-name{ font-family:var(--font-ui); font-size:14px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .friend-sub{ font-family:var(--font-ui); font-size:11.5px; color:rgba(255,255,255,.5); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .friend-time{ text-align:right; flex-shrink:0; }
-  .friend-week{ font-family:var(--font-ui); font-size:15px; font-weight:800; }
-  .friend-today{ font-family:var(--font-ui); font-size:11px; color:rgba(255,255,255,.5); margin-top:2px; }
-  .friend-row.me .friend-name{ color:#A5B4FF; }
-  .me-tag{ font-size:10px; padding:2px 7px; border-radius:99px; background:rgba(255,255,255,.12); margin-left:6px; color:#fff; }
-  .friends-actions{ display:flex; gap:8px; margin-top:14px; }
-  .friends-actions .study-btn{ flex:1; margin-top:0; }
-  .friends-howto{ font-family:var(--font-ui); font-size:12px; color:rgba(255,255,255,.55); line-height:1.7; margin:12px 0 0; }
-  .friends-ranking-title{ font-family:var(--font-ui); font-size:12px; font-weight:700; color:rgba(255,255,255,.55); margin:18px 0 2px; }
-
-  /* ============================================================
      通知・設定
   ============================================================ */
   .notify-row{ display:flex; gap:12px; padding:14px 0; border-bottom:1px solid rgba(255,255,255,.07); }
@@ -1153,21 +1134,15 @@
       </div>
 
       <div class="study-card">
-        <div class="record-section-title">友達と勉強時間を見せ合う</div>
-        <div class="friends-empty" id="friends-empty">
+        <div class="record-section-title">友達</div>
+        <div class="friends-empty">
           <div class="friends-icon" id="friends-icon"></div>
-          <p class="friends-title">友達と勉強時間を見せ合おう</p>
-          <p class="friends-sub">あなたの記録をLINEなどで友達に送り、友達からも送ってもらうと、<br>お互いの勉強時間をランキングで見られます。</p>
-        </div>
-        <div id="profile-friends-ranking"></div>
-        <div class="friends-actions">
-          <button class="study-btn primary" id="friends-send">自分の記録を送る</button>
-          <button class="study-btn" id="friends-open">友達一覧</button>
+          <p class="friends-title">友達と勉強時間を見せ合おう（準備中）</p>
+          <p class="friends-sub">アプリの中で友達とつながって、お互いの今日・今週の勉強時間を見せ合える機能を準備しています。<br>サーバーができたら使えるようになります。</p>
         </div>
       </div>
 
-
-      <p class="record-note" style="margin-top:28px;">※ プロフィールと記録はこの端末のブラウザ内にのみ保存されます。フォロワーはサーバー機能ができてから使えるようになります。</p>
+      <p class="record-note" style="margin-top:28px;">※ プロフィールと記録はこの端末のブラウザ内にのみ保存されます。フォロワー・友達はサーバー機能ができてから使えるようになります。</p>
     </div>
     <div class="bottom-nav solid-dark" data-active-nav="profile"></div>
   </section>
@@ -1189,7 +1164,6 @@
         <div class="friends-icon" id="people-empty-icon"></div>
         <p class="friends-title" id="people-empty-title"></p>
         <p class="friends-sub" id="people-empty-sub"></p>
-        <button class="study-btn primary full" id="people-empty-send" style="display:none;">自分の記録を友達に送る</button>
       </div>
     </div>
     <div class="bottom-nav solid-dark" data-active-nav="profile"></div>
@@ -1206,7 +1180,7 @@
       <div class="people-empty" id="notify-empty">
         <div class="friends-icon" id="notify-empty-icon"></div>
         <p class="friends-title">まだ通知はありません</p>
-        <p class="friends-sub">友達の記録が届いたときや、目標を達成したとき、<br>勉強が続いたときに、ここにお知らせが届きます。</p>
+        <p class="friends-sub">目標を達成したときや、勉強が続いたときに、<br>ここにお知らせが届きます。</p>
       </div>
     </div>
     <div class="bottom-nav solid-dark" data-active-nav="profile"></div>
@@ -1653,19 +1627,7 @@ function loadProfile(){
 // アイコン画像は自分でリサイズしたdata URLだけを受け付ける
 function isSafeAvatar(src){ return typeof src === 'string' && src.startsWith('data:image/'); }
 
-// この端末のユーザーID（友達の記録カードで「誰の記録か」を見分けるため。ログイン機能ができたらアカウントIDに置き換える）
-const USER_ID_KEY = 'zonenow_user_id';
-function myUserId(){
-  let id = loadJSON(USER_ID_KEY, null);
-  if(typeof id !== 'string' || !/^[A-Za-z0-9-]{16,64}$/.test(id)){
-    id = crypto.randomUUID ? crypto.randomUUID()
-      : [...crypto.getRandomValues(new Uint8Array(16))].map(b=> b.toString(16).padStart(2, '0')).join('');
-    saveJSON(USER_ID_KEY, id);
-  }
-  return id;
-}
-
-// ---- 通知：この端末の中で起きたできごと（友達の記録が届いた・目標達成・連続記録など） ----
+// ---- 通知：この端末の中で起きたできごと（目標達成・連続記録など） ----
 // サーバーがないので、他の人の行動（いいね・コメントなど）の通知はまだ届かない
 const NOTIFY_KEY = 'zonenow_notifications';
 const NOTIFY_MAX = 50;
@@ -2483,8 +2445,7 @@ commentSheet.addEventListener('click', async (e)=>{
 
 // ---- シェア ----
 // 動画の共有リンクは「このアプリのURL ?v=動画ID」。開くとその動画がフィードの先頭に出る
-// 同じシートで「自分の勉強記録を友達に送る」もできる（shareTarget.video がないとき）
-let shareTarget = null; // { url, text, note, video? }
+let shareTarget = null; // { url, text, note, video }
 const shareSheet = document.getElementById('share-sheet');
 document.getElementById('share-copy-icon').innerHTML = icon('link');
 document.getElementById('share-native-icon').innerHTML = icon('share');
@@ -2495,9 +2456,7 @@ function shareTextOf(v){ return `${v.title}｜ゾーンNOW`; }
 function openShareSheet(target){
   shareTarget = target;
   const v = target.video;
-  document.getElementById('share-sheet-title').textContent = target.title || 'シェア';
   document.getElementById('share-native').style.display = navigator.share ? 'flex' : 'none';
-  document.querySelector('.share-option[data-share="x"]').style.display = v ? 'flex' : 'none';
   document.getElementById('share-note').textContent = target.note;
   // 「興味なし」は他の人の動画だけ
   const profile = loadProfile();
@@ -3127,7 +3086,7 @@ document.getElementById('record-reset').addEventListener('click', async ()=>{
 });
 
 // ---- 通知画面：開いたら既読にする ----
-const NOTIFY_ICONS = { friend:'users', goal:'check', streak:'flame' };
+const NOTIFY_ICONS = { goal:'check', streak:'flame' };
 document.getElementById('notify-empty-icon').innerHTML = icon('bell');
 function renderNotificationsScreen(){
   const list = loadNotifications();
@@ -4040,8 +3999,6 @@ document.getElementById('onboarding-submit').addEventListener('click', ()=>{
 // ---- プロフィール画面 ----
 document.getElementById('friends-icon').innerHTML = icon('users');
 document.getElementById('profile-edit').addEventListener('click', openProfileEditor);
-document.getElementById('friends-send').addEventListener('click', openFriendShare);
-document.getElementById('friends-open').addEventListener('click', ()=> openPeople('friends'));
 document.getElementById('profile-gear').innerHTML = icon('gear');
 document.getElementById('profile-gear').addEventListener('click', ()=> showScreen('settings'));
 document.getElementById('profile-bell').innerHTML = icon('bell');
@@ -4067,13 +4024,7 @@ function renderProfileScreen(){
 
   document.getElementById('profile-following-count').textContent = loadFollowing().length;
   document.getElementById('profile-followers-count').textContent = 0; // サーバー機能ができるまでは常に0
-  const friends = loadFriends();
-  document.getElementById('profile-friends-count').textContent = friends.length;
-  document.getElementById('friends-empty').style.display = friends.length ? 'none' : 'block';
-  const ranking = friendRanking();
-  document.getElementById('profile-friends-ranking').innerHTML = friends.length
-    ? `<div class="friends-ranking-title" style="margin-top:0;">直近7日間のランキング</div>${ranking.slice(0, 3).map((e, i)=> friendRowHtml(e, i + 1, false)).join('')}`
-    : '';
+  document.getElementById('profile-friends-count').textContent = 0;
   updateNotifyBadges();
 
   renderProfileGrid();
@@ -4128,165 +4079,12 @@ document.getElementById('profile-grid').addEventListener('click', async (e)=>{
   if(card) jumpToShort(card.dataset.id);
 });
 
-// ---- 友達：勉強時間の見せ合い ----
-// サーバーがないので「記録カード」をリンクで交換する方式。
-// 自分の記録をリンクにしてLINEなどで送り、相手がそのリンクを開くと、相手の端末に友達として保存される。
-// 見えるのはリンクを送った時点の記録。新しい記録を見せるにはもう一度送る（サーバーができたら自動で更新する）
-const FRIENDS_KEY = 'zonenow_friends';
-const FRIEND_CARD_DAYS = 14;   // カードに入れる日数（日ごとの合計だけ。教科別は直近7日）
-const FRIEND_NAME_MAX = 20;
-function loadFriends(){ return loadJSON(FRIENDS_KEY, []); }
-
-// 日本語を含むJSONを、URLに入れられる文字だけにする（base64url）
-function toBase64Url(text){
-  let bin = '';
-  new TextEncoder().encode(text).forEach(b=>{ bin += String.fromCharCode(b); });
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-function fromBase64Url(str){
-  const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
-  const bin = atob(b64 + '='.repeat((4 - b64.length % 4) % 4));
-  return new TextDecoder().decode(Uint8Array.from(bin, c=> c.charCodeAt(0)));
-}
-
-function myFriendCard(){
-  const p = loadProfile() || {};
-  const log = loadStudyLog();
-  const from = dateKeyDaysAgo(FRIEND_CARD_DAYS - 1), weekStart = dateKeyDaysAgo(6), today = localDateKey();
-  const byDay = {}, bySubject = {};
-  const subjectIds = SUBJECTS.map(x=> x.id);
-  log.forEach(e=>{
-    if(e.date < from || e.date > today) return;
-    byDay[e.date] = (byDay[e.date] || 0) + e.seconds;
-    if(e.date >= weekStart){
-      const k = subjectIds.includes(e.subject) ? e.subject : 'other';
-      bySubject[k] = (bySubject[k] || 0) + e.seconds;
-    }
-  });
-  return { v:1, id: myUserId(), n: (p.name || '').slice(0, FRIEND_NAME_MAX), g: (gradeLabelOf(p) || '').slice(0, 20), t: Date.now(), d: Object.entries(byDay), s: bySubject };
-}
-function friendLinkUrl(){
-  return `${location.href.split(/[?#]/)[0]}?friend=${toBase64Url(JSON.stringify(myFriendCard()))}`;
-}
-
-// リンクから届いたカードを確かめて、保存する形にする。おかしければ null（他人が作ったデータなので全部確かめる）
-function parseFriendCard(raw){
-  let c;
-  try{ c = JSON.parse(fromBase64Url(raw)); }catch(e){ return null; }
-  if(!c || c.v !== 1 || typeof c.id !== 'string' || !/^[A-Za-z0-9-]{16,64}$/.test(c.id)) return null;
-  const name = typeof c.n === 'string' ? c.n.trim().slice(0, FRIEND_NAME_MAX) : '';
-  if(!name) return null;
-  const grade = typeof c.g === 'string' ? c.g.slice(0, 20) : '';
-  if(typeof c.t !== 'number' || !isFinite(c.t) || c.t < 1.6e12 || c.t > Date.now() + 86400000) return null;
-  if(!Array.isArray(c.d) || c.d.length > 31) return null;
-  const days = {};
-  for(const item of c.d){
-    if(!Array.isArray(item) || !/^\d{4}-\d{2}-\d{2}$/.test(item[0]) || !Number.isInteger(item[1]) || item[1] < 0 || item[1] > 10 * 86400) return null;
-    days[item[0]] = item[1];
-  }
-  const subjects = {};
-  if(c.s && typeof c.s === 'object'){
-    for(const [k, sec] of Object.entries(c.s)){
-      if(SUBJECTS.some(x=> x.id === k) && Number.isInteger(sec) && sec >= 0 && sec <= 70 * 86400) subjects[k] = sec;
-    }
-  }
-  return { id: c.id, name, grade, updatedAt: c.t, days, subjects };
-}
-
-// 今日から見た「今日」「直近7日間」（古いカードは、日が経つほど直近7日間から外れていく）
-function friendStats(f){
-  const today = localDateKey(), weekStart = dateKeyDaysAgo(6);
-  let week = 0;
-  Object.entries(f.days).forEach(([date, sec])=>{ if(date >= weekStart && date <= today) week += sec; });
-  return { today: f.days[today] || 0, week };
-}
-
-function formatUpdatedAt(ts){
-  const d = new Date(ts);
-  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}時点`;
-}
-
-// 自分＋友達を直近7日間の勉強時間でならべる
-function friendRanking(){
-  const p = loadProfile() || {};
-  const mine = studyTotals();
-  return [
-    { me:true, name: p.name || 'あなた', grade: gradeLabelOf(p), week: mine.week, today: mine.today },
-    ...loadFriends().map(f=> ({ ...friendStats(f), id: f.id, name: f.name, grade: f.grade, updatedAt: f.updatedAt })),
-  ].sort((a, b)=> b.week - a.week || (a.me ? -1 : b.me ? 1 : 0));
-}
-function friendRowHtml(entry, rank, deletable){
-  const sub = entry.me ? (entry.grade || '') : [entry.grade, formatUpdatedAt(entry.updatedAt)].filter(Boolean).join(' ・ ');
-  return `
-    <div class="friend-row ${entry.me ? 'me' : ''}">
-      <div class="friend-rank">${rank}</div>
-      <div class="avatar">${escapeHtml(entry.name.charAt(0))}</div>
-      <div class="friend-main">
-        <div class="friend-name">${escapeHtml(entry.name)}${entry.me ? '<span class="me-tag">あなた</span>' : ''}</div>
-        <div class="friend-sub">${escapeHtml(sub)}</div>
-      </div>
-      <div class="friend-time">
-        <div class="friend-week">${formatStudyTime(entry.week)}</div>
-        <div class="friend-today">今日 ${formatStudyTime(entry.today)}</div>
-      </div>
-      ${deletable && !entry.me ? `<button class="study-row-delete" data-remove-friend="${escapeHtml(entry.id)}" aria-label="${escapeHtml(entry.name)}を友達から外す">×</button>` : ''}
-    </div>`;
-}
-
-function openFriendShare(){
-  const p = loadProfile();
-  if(!p){ showToast('先にプロフィールを設定してください'); return; }
-  openShareSheet({
-    title: '自分の記録を友達に送る',
-    url: friendLinkUrl(),
-    text: `${p.name}さんの勉強記録｜ゾーンNOW（直近7日間：${formatStudyTime(studyTotals().week)}）`,
-    note: 'リンクを開いた友達のゾーンNOWに、今のあなたの勉強時間が届きます。新しい記録を見せたいときは、もう一度送ってね。',
-  });
-}
-
-// 友達の記録リンク（?friend=...）から開いたとき
-async function handleFriendLink(raw){
-  // 再読み込みで同じリンクを何度も処理しないよう、URLから外しておく
-  const params = new URLSearchParams(location.search);
-  params.delete('friend');
-  history.replaceState(null, '', location.pathname + (params.toString() ? '?' + params : '') + location.hash);
-
-  const card = parseFriendCard(raw);
-  if(!card){ showToast('友達の記録リンクを読み取れませんでした'); return; }
-  if(card.id === myUserId()){ showToast('これはあなた自身の記録リンクです。友達に送ってね'); return; }
-
-  const friends = loadFriends();
-  const existing = friends.find(f=> f.id === card.id);
-  const myWeek = studyTotals().week;
-  if(existing){
-    if(card.updatedAt <= existing.updatedAt){ showToast(`${card.name}さんの記録は最新です`); }
-    else {
-      const wasBehind = friendStats(existing).week <= myWeek;
-      Object.assign(existing, card);
-      saveJSON(FRIENDS_KEY, friends);
-      addNotification('friend', `${card.name}さんの勉強記録が更新されました（直近7日間：${formatStudyTime(friendStats(card).week)}）`);
-      if(wasBehind && friendStats(card).week > myWeek){
-        addNotification('friend', `${card.name}さんに、直近7日間の勉強時間で抜かれました。巻き返そう！`, `overtaken:${card.id}:${localDateKey()}`);
-      }
-      showToast(`${card.name}さんの記録を更新しました`);
-    }
-  } else {
-    const label = card.grade ? `${card.name}さん（${card.grade}）` : `${card.name}さん`;
-    if(!await confirmDialog(`${label}の勉強記録が届きました。友達に追加して、勉強時間を見せ合いますか？`, '友達に追加')) return;
-    friends.push({ ...card, addedAt: Date.now() });
-    if(!saveJSON(FRIENDS_KEY, friends)){ showToast('この端末では保存できませんでした'); return; }
-    addNotification('friend', `${card.name}さんと友達になりました。あなたの記録も送ってあげよう`);
-    showToast(`${card.name}さんを友達に追加しました`);
-  }
-  if(loadProfile()) openPeople('friends');
-}
-
 // ---- フォロー中・フォロワー・友達の一覧 ----
-// フォロワーは、サーバー機能（アカウント同士のつながり）ができるまで空のまま
+// フォロワーと友達は、サーバー機能（アカウント同士のつながり）ができるまで空のまま
 const PEOPLE_TABS = {
   following: { label:'フォロー中', emptyIcon:'user', emptyTitle:'まだ誰もフォローしていません', emptySub:'動画のアイコンの「＋」から、気になるクリエイターをフォローできます。' },
   followers: { label:'フォロワー', emptyIcon:'users', emptyTitle:'まだフォロワーはいません', emptySub:'動画を投稿して、あなたを見つけてもらおう。' },
-  friends:   { label:'友達',       emptyIcon:'users', emptyTitle:'まだ友達はいません', emptySub:'下のボタンから自分の記録をLINEなどで友達に送り、友達からも送ってもらうと、お互いの勉強時間を見せ合えます。' },
+  friends:   { label:'友達',       emptyIcon:'users', emptyTitle:'友達機能は準備中です', emptySub:'アプリの中で友達とつながり、お互いの今日・今週の勉強時間を見せ合えるようになります（サーバー対応後）。' },
 };
 let peopleTab = 'following';
 
@@ -4305,30 +4103,16 @@ function renderPeopleScreen(){
     btn.setAttribute('aria-selected', active);
   });
 
-  const listEl = document.getElementById('people-list');
-  let count;
-  if(peopleTab === 'friends'){
-    // 友達：自分も入れた直近7日間のランキング
-    count = loadFriends().length;
-    const send = `<button class="study-btn primary full" id="people-friends-send">自分の記録を友達に送る</button>
-      <p class="friends-howto">見えるのは、友達がリンクを送った時点の記録です。新しい記録は、もう一度送ってもらうと更新されます。</p>`;
-    listEl.innerHTML = count
-      ? `${send}<div class="friends-ranking-title">直近7日間のランキング</div>${friendRanking().map((e, i)=> friendRowHtml(e, i + 1, true)).join('')}`
-      : '';
-  } else {
-    const people = peopleTab === 'following' ? loadFollowing() : [];
-    count = people.length;
-    listEl.innerHTML = people.map(name=>`
-      <div class="people-row">
-        <div class="avatar">${escapeHtml(name.charAt(0))}</div>
-        <div class="people-name">${escapeHtml(name)}</div>
-        <button class="people-action" data-unfollow="${escapeHtml(name)}">フォロー解除</button>
-      </div>
-    `).join('');
-  }
+  const people = peopleTab === 'following' ? loadFollowing() : [];
+  document.getElementById('people-list').innerHTML = people.map(name=>`
+    <div class="people-row">
+      <div class="avatar">${escapeHtml(name.charAt(0))}</div>
+      <div class="people-name">${escapeHtml(name)}</div>
+      <button class="people-action" data-unfollow="${escapeHtml(name)}">フォロー解除</button>
+    </div>
+  `).join('');
 
-  document.getElementById('people-empty').style.display = count ? 'none' : 'block';
-  document.getElementById('people-empty-send').style.display = peopleTab === 'friends' && !count ? 'block' : 'none';
+  document.getElementById('people-empty').style.display = people.length ? 'none' : 'block';
   document.getElementById('people-empty-icon').innerHTML = icon(tab.emptyIcon);
   document.getElementById('people-empty-title').textContent = tab.emptyTitle;
   document.getElementById('people-empty-sub').textContent = tab.emptySub;
@@ -4341,18 +4125,7 @@ document.querySelectorAll('.people-tab').forEach(btn=>{
   btn.addEventListener('click', ()=>{ peopleTab = btn.dataset.tab; renderPeopleScreen(); });
 });
 document.getElementById('people-back').addEventListener('click', ()=> showScreen('profile'));
-document.getElementById('people-empty-send').addEventListener('click', openFriendShare);
 document.getElementById('people-list').addEventListener('click', async (e)=>{
-  if(e.target.closest('#people-friends-send')){ openFriendShare(); return; }
-  const remove = e.target.closest('[data-remove-friend]');
-  if(remove){
-    const f = loadFriends().find(x=> x.id === remove.dataset.removeFriend);
-    if(!f || !await confirmDialog(`${f.name}さんを友達から外しますか？`, '外す')) return;
-    saveJSON(FRIENDS_KEY, loadFriends().filter(x=> x.id !== f.id));
-    renderPeopleScreen();
-    showToast(`${f.name}さんを友達から外しました`);
-    return;
-  }
   const btn = e.target.closest('[data-unfollow]');
   if(!btn) return;
   const name = btn.dataset.unfollow;
@@ -4432,7 +4205,7 @@ document.getElementById('settings-hidden-reset').addEventListener('click', ()=>{
 });
 
 // バックアップ：記録や設定をファイルに書き出す／読み込む（投稿した動画・写真は大きいので含めない）
-const BACKUP_KEYS = [PROFILE_KEY, USER_ID_KEY, STUDY_LOG_KEY, GOAL_KEY, FRIENDS_KEY, FOLLOW_KEY, LIKES_KEY, SAVES_KEY,
+const BACKUP_KEYS = [PROFILE_KEY, STUDY_LOG_KEY, GOAL_KEY, FOLLOW_KEY, LIKES_KEY, SAVES_KEY,
   COMMENTS_KEY, HIDDEN_VIDEOS_KEY, BLOCKED_CREATORS_KEY, NOTIFY_KEY, AI_CHAT_KEY];
 document.getElementById('backup-export').addEventListener('click', async ()=>{
   const data = {};
@@ -4464,7 +4237,6 @@ function validBackupEntries(data){
     if(k === PROFILE_KEY) return v && typeof v === 'object' && typeof v.name === 'string' && v.name.trim() && typeof v.grade === 'string';
     if(k === STUDY_LOG_KEY) return Array.isArray(v) && v.every(e=> e && /^[A-Za-z0-9]+$/.test(e.id) && typeof e.subject === 'string'
       && Number.isFinite(e.seconds) && e.seconds > 0 && /^\d{4}-\d{2}-\d{2}$/.test(e.date));
-    if(k === USER_ID_KEY) return typeof v === 'string' && /^[A-Za-z0-9-]{16,64}$/.test(v);
     if(k === GOAL_KEY) return GOAL_OPTIONS.includes(v);
     if(k === COMMENTS_KEY) return v && typeof v === 'object' && !Array.isArray(v);
     return Array.isArray(v);
@@ -4501,9 +4273,6 @@ if(!loadProfile()) showScreen('onboarding');
 restoreOwnPosts();
 updateNotifyBadges();
 
-// 友達の記録リンク（?friend=...）から開いたとき
-const FRIEND_PARAM = new URLSearchParams(location.search).get('friend');
-if(FRIEND_PARAM) handleFriendLink(FRIEND_PARAM);
 
 // ---- PWA: ホーム画面追加バナー ----
 let deferredPrompt = null;

@@ -1,4 +1,4 @@
-// 追加機能のテスト：友達・キーワード検索・目標と連続記録・興味なし・通知・設定・iPhoneの案内（実行：npm test）
+// 追加機能のテスト：キーワード検索・目標と連続記録・興味なし・通知・設定・iPhoneの案内（実行：npm test）
 const fs = require('fs');
 const { ASSETS, OUT, APP_URL, startServer, launchBrowser, createChecker } = require('./helpers');
 const { check, state, report } = createChecker();
@@ -31,73 +31,6 @@ const entry = (id, subject, minutes, daysAgo) => ({ id, subject, subjectOther: '
   const toast = page => page.textContent('#toast').catch(() => '');
   const active = page => page.$eval('.screen.active', el => el.id);
   const nav = async (page, n) => { await page.click(`.screen.active [data-nav="${n}"]`); await page.waitForTimeout(150); };
-
-  // ========== 友達 ==========
-  state.section = '友達';
-  const a = await openApp(browser, { name: 'あおい', log: [entry('a1', 'math', 90, 0), entry('a2', 'english', 60, 2)] });
-  await nav(a.page, 'profile');
-  check('プロフィールに「自分の記録を送る」', await a.page.isVisible('#friends-send'));
-  await a.page.click('#friends-send');
-  check('送るシートが開く', (await a.page.textContent('#share-sheet-title')) === '自分の記録を友達に送る');
-  check('記録を送るときは「興味なし」を出さない', !(await a.page.isVisible('#share-hide-options')));
-  await a.page.click('#share-sheet-close');
-  const linkA1 = await a.page.evaluate(() => friendLinkUrl());
-  check('リンクに記録カードが入る', /\?friend=[A-Za-z0-9_-]+$/.test(linkA1) && linkA1.length < 1500, linkA1.length);
-  await a.page.goto(linkA1);
-  await a.page.waitForTimeout(400);
-  check('自分のリンクを開くと「あなた自身」', (await toast(a.page)).includes('あなた自身'));
-
-  const b = await openApp(browser, { name: 'ひかる', log: [entry('b1', 'japanese', 30, 0)] });
-  await b.page.goto(linkA1);
-  await b.page.waitForTimeout(400);
-  check('友達リンクで確認が出る', (await b.page.textContent('#confirm-message')).includes('あおいさん（中学2年）の勉強記録が届きました'));
-  await b.page.click('#confirm-ok');
-  await b.page.waitForTimeout(300);
-  check('友達一覧（ランキング）が開く', (await active(b.page)) === 'people-screen' && (await b.page.textContent('.people-tab.active')) === '友達');
-  const rows = await b.page.$$eval('#people-list .friend-row', rs => rs.map(r => r.querySelector('.friend-name').textContent + '|' + r.querySelector('.friend-week').textContent + '|' + r.querySelector('.friend-today').textContent));
-  check('友達の勉強時間が見える（多い順）', rows[0] === 'あおい|2時間30分|今日 1時間30分' && rows[1] === 'ひかるあなた|30分|今日 30分', rows.join(' / '));
-  check('URLから友達リンクが消える（再読み込みで二重にならない）', !b.page.url().includes('friend='));
-  await b.page.screenshot({ path: OUT + 'features-friends.png' });
-  await nav(b.page, 'profile');
-  check('プロフィールの友達の数', (await b.page.textContent('#profile-friends-count')) === '1');
-  check('プロフィールにランキング', (await b.page.$$('#profile-friends-ranking .friend-row')).length === 2);
-  check('新しい通知の印', await b.page.$eval('#profile-bell', el => el.classList.contains('has-unread')));
-
-  await b.page.goto(linkA1);
-  await b.page.waitForTimeout(400);
-  check('同じリンクをもう一度開くと「最新です」', (await toast(b.page)).includes('最新'));
-  // あおいが勉強を足して送り直す
-  await a.page.evaluate(() => { const log = JSON.parse(localStorage.getItem('zonenow_study_log')); log.push({ id: 'a3', subject: 'science', subjectOther: '', seconds: 1800, date: log[0].date, source: 'manual', createdAt: Date.now() }); localStorage.setItem('zonenow_study_log', JSON.stringify(log)); });
-  await a.page.waitForTimeout(20);
-  const linkA2 = await a.page.evaluate(() => friendLinkUrl());
-  await b.page.goto(linkA2);
-  await b.page.waitForTimeout(400);
-  check('新しいリンクで記録が更新される', (await toast(b.page)).includes('更新しました') && (await b.page.$eval('#people-list .friend-row .friend-week', e => e.textContent)) === '3時間');
-
-  await b.page.goto(APP_URL + '?friend=abc');
-  await b.page.waitForTimeout(400);
-  check('壊れたリンクは読み取れないと伝える', (await toast(b.page)).includes('読み取れません'));
-  // 名前にタグを仕込んだカード
-  const evil = await b.page.evaluate(() => toBase64Url(JSON.stringify({ v: 1, id: 'evil-id-0123456789abc', n: '<img src=x onerror=alert(1)>', g: '', t: Date.now(), d: [], s: {} })));
-  await b.page.goto(APP_URL + '?friend=' + evil);
-  await b.page.waitForTimeout(400);
-  await b.page.click('#confirm-ok');
-  await b.page.waitForTimeout(300);
-  check('名前のタグは文字として表示（実行されない）', (await b.page.$$('#people-list img')).length === 0 && (await b.page.textContent('#people-list')).includes('<img src=x'));
-  await b.page.click('[data-remove-friend="evil-id-0123456789abc"]');
-  await b.page.click('#confirm-ok');
-  check('友達から外せる', (await b.page.$$('#people-list .friend-row')).length === 2);
-
-  // 通知
-  state.section = '通知';
-  await nav(b.page, 'profile');
-  await b.page.click('#profile-bell');
-  await b.page.waitForTimeout(150);
-  const notes = await b.page.$$eval('.notify-row .notify-text', ns => ns.map(n => n.textContent));
-  check('友達追加・更新・抜かれた通知', notes.some(t => t.includes('あおいさんと友達になりました')) && notes.some(t => t.includes('更新されました')), notes.join(' / '));
-  check('開くと既読になり印が消える', !(await b.page.$eval('#profile-bell', el => el.classList.contains('has-unread'))));
-  check('エラーなし（友達）', !a.errors.length && !b.errors.length, [...a.errors, ...b.errors].join(' / '));
-  await a.context.close(); await b.context.close();
 
   // ========== 検索・目標・興味なし ==========
   const c = await openApp(browser, { name: 'テスト', log: [entry('c1', 'math', 20, 1), entry('c2', 'math', 20, 2)] });
@@ -135,9 +68,20 @@ const entry = (id, subject, minutes, daysAgo) => ({ id, subject, subjectOther: '
   check('今日も勉強して連続3日', (await page.textContent('#streak-badge')).includes('連続3日'));
   const notes2 = await page.evaluate(() => JSON.parse(localStorage.getItem('zonenow_notifications')).map(n => n.text));
   check('目標達成と連続3日の通知', notes2.some(t => t.includes('目標（1時間）を達成')) && notes2.some(t => t.includes('3日連続')), notes2.join(' / '));
+  check('新しい通知の印（プロフィール）', await page.$eval('.screen.active .nav-btn[data-nav="profile"]', el => el.classList.contains('has-unread')));
   await page.reload(); await page.waitForTimeout(300);
   await nav(page, 'record');
   check('目標は保存される', (await page.inputValue('#goal-select')) === '60');
+  state.section = '通知';
+  await nav(page, 'profile');
+  check('ベルに未読の印', await page.$eval('#profile-bell', el => el.classList.contains('has-unread')));
+  await page.click('#profile-bell');
+  await page.waitForTimeout(150);
+  check('通知の一覧', (await page.$$('.notify-row')).length === 2 && (await page.textContent('#notify-list')).includes('3日連続'));
+  check('開くと既読になり印が消える', !(await page.$eval('#profile-bell', el => el.classList.contains('has-unread'))));
+  await page.click('#notifications-back');
+  await page.waitForTimeout(150);
+  check('友達は準備中と表示', (await page.textContent('#profile-screen .friends-title')).includes('準備中') && (await page.textContent('#profile-friends-count')) === '0');
   await page.screenshot({ path: OUT + 'features-goal.png' });
 
   state.section = '興味なし';
@@ -192,7 +136,7 @@ const entry = (id, subject, minutes, daysAgo) => ({ id, subject, subjectOther: '
   await page.click('#settings-delete-all');
   await Promise.all([page.waitForNavigation(), page.click('#confirm-ok')]);
   await page.waitForTimeout(400);
-  check('すべて削除すると最初の設定画面に戻る', (await active(page)) === 'onboarding-screen' && await page.evaluate(() => !Object.keys(localStorage).some(k => k.startsWith('zonenow_') && k !== 'zonenow_user_id' && k !== 'zonenow_notifications')));
+  check('すべて削除すると最初の設定画面に戻る', (await active(page)) === 'onboarding-screen' && await page.evaluate(() => !Object.keys(localStorage).some(k => k.startsWith('zonenow_'))));
   check('エラーなし（検索・目標・設定）', !c.errors.length, c.errors.join(' / '));
   await c.context.close();
 

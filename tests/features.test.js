@@ -1,4 +1,4 @@
-// 追加機能のテスト：キーワード検索・目標と連続記録・興味なし・通知・設定・iPhoneの案内（実行：npm test）
+// 追加機能のテスト：キーワード検索・連続記録・興味なし・通知・設定・iPhoneの案内（実行：npm test）
 const fs = require('fs');
 const { ASSETS, OUT, APP_URL, startServer, launchBrowser, createChecker } = require('./helpers');
 const { check, state, report } = createChecker();
@@ -32,7 +32,7 @@ const entry = (id, subject, minutes, daysAgo) => ({ id, subject, subjectOther: '
   const active = page => page.$eval('.screen.active', el => el.id);
   const nav = async (page, n) => { await page.click(`.screen.active [data-nav="${n}"]`); await page.waitForTimeout(150); };
 
-  // ========== 検索・目標・興味なし ==========
+  // ========== 検索・連続記録・興味なし ==========
   const c = await openApp(browser, { name: 'テスト', log: [entry('c1', 'math', 20, 1), entry('c2', 'math', 20, 2)] });
   const page = c.page;
   state.section = '検索';
@@ -54,35 +54,29 @@ const entry = (id, subject, minutes, daysAgo) => ({ id, subject, subjectOther: '
   await page.click('#search-back');
   await page.waitForTimeout(200);
 
-  state.section = '目標と連続記録';
+  state.section = '連続記録';
   await nav(page, 'record');
-  check('目標なしでは進み具合を出さない', await page.$eval('#goal-bar', el => el.hidden));
+  check('目標の欄はない', !(await page.$('#goal-select')) && !(await page.$('#goal-bar')));
   check('連続日数（昨日まで2日）', (await page.textContent('#streak-badge')).includes('連続2日'));
-  await page.selectOption('#goal-select', '60');
-  check('目標を決めると残りを表示', (await page.textContent('#goal-text')) === '目標1時間まで、あと1時間' && !(await page.$eval('#goal-bar', el => el.hidden)));
   await page.click('#manual-subject-chips .chip[data-id="english"]');
   await page.fill('#manual-minutes', '60');
   await page.click('#manual-add');
   await page.waitForTimeout(150);
-  check('目標達成の表示', (await page.textContent('#goal-text')) === '今日の目標を達成！');
   check('今日も勉強して連続3日', (await page.textContent('#streak-badge')).includes('連続3日'));
   const notes2 = await page.evaluate(() => JSON.parse(localStorage.getItem('zonenow_notifications')).map(n => n.text));
-  check('目標達成と連続3日の通知', notes2.some(t => t.includes('目標（1時間）を達成')) && notes2.some(t => t.includes('3日連続')), notes2.join(' / '));
+  check('連続3日の通知', notes2.length === 1 && notes2[0].includes('3日連続'), notes2.join(' / '));
   check('新しい通知の印（プロフィール）', await page.$eval('.screen.active .nav-btn[data-nav="profile"]', el => el.classList.contains('has-unread')));
-  await page.reload(); await page.waitForTimeout(300);
-  await nav(page, 'record');
-  check('目標は保存される', (await page.inputValue('#goal-select')) === '60');
   state.section = '通知';
   await nav(page, 'profile');
   check('ベルに未読の印', await page.$eval('#profile-bell', el => el.classList.contains('has-unread')));
   await page.click('#profile-bell');
   await page.waitForTimeout(150);
-  check('通知の一覧', (await page.$$('.notify-row')).length === 2 && (await page.textContent('#notify-list')).includes('3日連続'));
+  check('通知の一覧', (await page.$$('.notify-row')).length === 1 && (await page.textContent('#notify-list')).includes('3日連続'));
   check('開くと既読になり印が消える', !(await page.$eval('#profile-bell', el => el.classList.contains('has-unread'))));
   await page.click('#notifications-back');
   await page.waitForTimeout(150);
   check('友達は準備中と表示', (await page.textContent('#profile-screen .friends-title')).includes('準備中') && (await page.textContent('#profile-friends-count')) === '0');
-  await page.screenshot({ path: OUT + 'features-goal.png' });
+  await page.screenshot({ path: OUT + 'features-profile.png' });
 
   state.section = '興味なし';
   await nav(page, 'home');
@@ -120,7 +114,7 @@ const entry = (id, subject, minutes, daysAgo) => ({ id, subject, subjectOther: '
   const backupPath = OUT + 'backup.json';
   await download.saveAs(backupPath);
   const backup = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
-  check('バックアップを書き出せる', backup.app === 'zonenow' && backup.data.zonenow_study_log.length === 3 && backup.data.zonenow_goal_minutes === 60);
+  check('バックアップを書き出せる', backup.app === 'zonenow' && backup.data.zonenow_study_log.length === 3 && backup.data.zonenow_profile.name === 'テスト');
   await page.evaluate(() => localStorage.setItem('zonenow_study_log', '[]'));
   await page.setInputFiles('#backup-import', backupPath);
   await page.waitForTimeout(200);
@@ -137,7 +131,7 @@ const entry = (id, subject, minutes, daysAgo) => ({ id, subject, subjectOther: '
   await Promise.all([page.waitForNavigation(), page.click('#confirm-ok')]);
   await page.waitForTimeout(400);
   check('すべて削除すると最初の設定画面に戻る', (await active(page)) === 'onboarding-screen' && await page.evaluate(() => !Object.keys(localStorage).some(k => k.startsWith('zonenow_'))));
-  check('エラーなし（検索・目標・設定）', !c.errors.length, c.errors.join(' / '));
+  check('エラーなし（検索・連続記録・設定）', !c.errors.length, c.errors.join(' / '));
   await c.context.close();
 
   // ========== iPhoneでホーム画面追加の案内 ==========

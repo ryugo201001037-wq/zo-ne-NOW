@@ -765,22 +765,13 @@
   .caption-tag::after{ content:''; position:absolute; inset:-12px -3px; }
 
   /* ============================================================
-     1日の目標・連続記録（記録画面）
+     連続記録（記録画面）
   ============================================================ */
-  .goal-bar{ height:8px; max-width:280px; margin:14px auto 0; border-radius:99px; background:rgba(255,255,255,.08); overflow:hidden; }
-  .goal-bar[hidden]{ display:none; }
-  .goal-bar-fill{ height:100%; width:0; border-radius:99px; background:linear-gradient(90deg, var(--cta-from), var(--cta-to)); transition:width .4s ease; }
-  .goal-text{ font-family:var(--font-ui); font-size:12.5px; color:rgba(255,255,255,.75); margin-top:8px; min-height:1em; }
-  .goal-text.done{ color:var(--mint); font-weight:700; }
   .record-meta-row{ display:flex; justify-content:center; align-items:center; gap:10px; margin-top:12px; flex-wrap:wrap; }
   .streak-badge svg{ width:16px; height:16px; color:#FF8A4C; }
   .streak-badge{
     display:inline-flex; align-items:center; min-height:40px; padding:0 16px; border-radius:99px;
     background:rgba(255,255,255,.07); font-family:var(--font-ui); font-size:13px; font-weight:700;
-  }
-  .goal-select{
-    min-height:40px; padding:0 14px; border-radius:99px; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.14);
-    color:#fff; font-family:var(--font-ui); font-size:16px; color-scheme:dark;
   }
 
   /* ============================================================
@@ -991,11 +982,8 @@
       <div class="record-hero">
         <div class="record-hero-value" id="study-today">0分</div>
         <div class="record-hero-label">今日の勉強時間</div>
-        <div class="goal-bar" id="goal-bar" hidden><div class="goal-bar-fill" id="goal-fill"></div></div>
-        <div class="goal-text" id="goal-text"></div>
         <div class="record-meta-row">
           <span class="streak-badge" id="streak-badge">連続0日</span>
-          <select class="goal-select" id="goal-select" aria-label="1日の目標時間"></select>
         </div>
       </div>
 
@@ -1185,7 +1173,7 @@
       <div class="people-empty" id="notify-empty">
         <div class="friends-icon" id="notify-empty-icon"></div>
         <p class="friends-title">まだ通知はありません</p>
-        <p class="friends-sub">目標を達成したときや、勉強が続いたときに、<br>ここにお知らせが届きます。</p>
+        <p class="friends-sub">勉強が続いたときなどに、<br>ここにお知らせが届きます。</p>
       </div>
     </div>
     <div class="bottom-nav solid-dark" data-active-nav="profile"></div>
@@ -1637,12 +1625,12 @@ function loadProfile(){
 // アイコン画像は自分でリサイズしたdata URLだけを受け付ける
 function isSafeAvatar(src){ return typeof src === 'string' && src.startsWith('data:image/'); }
 
-// ---- 通知：この端末の中で起きたできごと（目標達成・連続記録など） ----
+// ---- 通知：この端末の中で起きたできごと（連続記録など） ----
 // サーバーがないので、他の人の行動（いいね・コメントなど）の通知はまだ届かない
 const NOTIFY_KEY = 'zonenow_notifications';
 const NOTIFY_MAX = 50;
 function loadNotifications(){ return loadJSON(NOTIFY_KEY, []); }
-// key：同じできごとを二重に通知しないための目印（例：'goal:2026-10-19'）
+// key：同じできごとを二重に通知しないための目印（例：'streak:3:2026-10-19'）
 function addNotification(type, text, key = null){
   const list = loadNotifications();
   if(key && list.some(n=> n.key === key)) return false;
@@ -1742,7 +1730,7 @@ async function runSyncOp(client, userId, op){
     const p = loadProfile();
     if(!p) return;
     res = await client.from('profiles').upsert({
-      id: userId, name: p.name, grade: p.grade, grade_other: (p.gradeOther || '').slice(0, 20), goal_minutes: loadGoalMinutes(),
+      id: userId, name: p.name, grade: p.grade, grade_other: (p.gradeOther || '').slice(0, 20),
     });
   } else if(op.type === 'log_upsert'){
     const rows = loadStudyLog().filter(e=> !op.ids || op.ids.includes(e.id)).map(e=> studyLogRow(e, userId));
@@ -2919,52 +2907,19 @@ function addStudyEntry(subject, subjectOther, seconds, date, source){
   return true;
 }
 
-// ---- 1日の目標・連続記録 ----
-const GOAL_KEY = 'zonenow_goal_minutes';
-const GOAL_OPTIONS = [0, 30, 60, 90, 120, 180, 240, 300, 360, 480]; // 0 = 目標なし
+// ---- 連続記録 ----
 const STREAK_MILESTONES = [3, 7, 14, 30, 50, 100, 200, 365];
-function loadGoalMinutes(){
-  const m = Number(loadJSON(GOAL_KEY, 0));
-  return GOAL_OPTIONS.includes(m) ? m : 0;
-}
-// 記録を追加したとき：今日の目標達成・連続記録の節目を通知する（同じ日に同じ通知は出さない）
+// 記録を追加したとき：連続記録の節目を通知する（同じ日に同じ通知は出さない）
 function checkStudyMilestones(){
-  const today = localDateKey();
-  const goal = loadGoalMinutes();
-  if(goal && studyTotals().today >= goal * 60){
-    addNotification('goal', `今日の目標（${formatStudyTime(goal * 60)}）を達成しました！`, `goal:${today}`);
-  }
   const streak = studyStats().streak;
   if(STREAK_MILESTONES.includes(streak)){
-    addNotification('streak', `${streak}日連続で勉強しています。この調子！`, `streak:${streak}:${today}`);
+    addNotification('streak', `${streak}日連続で勉強しています。この調子！`, `streak:${streak}:${localDateKey()}`);
   }
 }
-function renderGoal(todaySeconds){
-  const goal = loadGoalMinutes();
-  const select = document.getElementById('goal-select');
-  if(!select.options.length){
-    select.innerHTML = GOAL_OPTIONS.map(m=> `<option value="${m}">${m ? '目標 ' + formatStudyTime(m * 60) : '目標なし'}</option>`).join('');
-  }
-  select.value = String(goal);
-  const bar = document.getElementById('goal-bar');
-  const text = document.getElementById('goal-text');
-  bar.hidden = !goal;
-  if(!goal){ text.textContent = ''; text.classList.remove('done'); }
-  else {
-    const rest = goal * 60 - todaySeconds;
-    document.getElementById('goal-fill').style.width = `${Math.min(100, todaySeconds / (goal * 60) * 100)}%`;
-    text.textContent = rest > 0 ? `目標${formatStudyTime(goal * 60)}まで、あと${formatStudyTime(Math.max(60, rest))}` : '今日の目標を達成！';
-    text.classList.toggle('done', rest <= 0);
-  }
+function renderStreak(){
   const streak = studyStats().streak;
   document.getElementById('streak-badge').innerHTML = `${icon('flame')}<span style="margin-left:6px;">連続${streak}日</span>`;
 }
-document.getElementById('goal-select').addEventListener('change', e=>{
-  saveJSON(GOAL_KEY, Number(e.target.value));
-  queueSync({ type:'profile' });
-  renderRecordScreen();
-  checkStudyMilestones();
-});
 
 // ---- 学習タイマー ----
 // 経過時間は「開始時刻」との差で計算する。画面を切り替えても、リロードしても、
@@ -3135,7 +3090,7 @@ function renderRecordScreen(){
   document.getElementById('study-today').textContent = formatStudyTime(totals.today);
   document.getElementById('study-week').textContent = formatStudyTime(totals.week);
   document.getElementById('study-total').textContent = formatStudyTime(totals.total);
-  renderGoal(totals.today);
+  renderStreak();
 
   // 記録画面の下には「今日」の分だけ出す。過去の分はカレンダーで見る
   const todayEntries = log.filter(e=> e.date === localDateKey());
@@ -3243,7 +3198,7 @@ document.getElementById('record-reset').addEventListener('click', async ()=>{
 });
 
 // ---- 通知画面：開いたら既読にする ----
-const NOTIFY_ICONS = { goal:'check', streak:'flame' };
+const NOTIFY_ICONS = { streak:'flame' };
 document.getElementById('notify-empty-icon').innerHTML = icon('bell');
 function renderNotificationsScreen(){
   const list = loadNotifications();
@@ -4395,7 +4350,7 @@ document.getElementById('settings-hidden-reset').addEventListener('click', ()=>{
 });
 
 // バックアップ：記録や設定をファイルに書き出す／読み込む（投稿した動画・写真は大きいので含めない）
-const BACKUP_KEYS = [PROFILE_KEY, STUDY_LOG_KEY, GOAL_KEY, FOLLOW_KEY, LIKES_KEY, SAVES_KEY,
+const BACKUP_KEYS = [PROFILE_KEY, STUDY_LOG_KEY, FOLLOW_KEY, LIKES_KEY, SAVES_KEY,
   COMMENTS_KEY, HIDDEN_VIDEOS_KEY, BLOCKED_CREATORS_KEY, NOTIFY_KEY, AI_CHAT_KEY];
 document.getElementById('backup-export').addEventListener('click', async ()=>{
   const data = {};
@@ -4438,7 +4393,6 @@ function validBackupEntries(data){
     if(k === PROFILE_KEY) return v && typeof v === 'object' && typeof v.name === 'string' && v.name.trim() && typeof v.grade === 'string';
     if(k === STUDY_LOG_KEY) return Array.isArray(v) && v.every(e=> e && /^[A-Za-z0-9]+$/.test(e.id) && typeof e.subject === 'string'
       && Number.isFinite(e.seconds) && e.seconds > 0 && /^\d{4}-\d{2}-\d{2}$/.test(e.date));
-    if(k === GOAL_KEY) return GOAL_OPTIONS.includes(v);
     if(k === COMMENTS_KEY) return v && typeof v === 'object' && !Array.isArray(v);
     return Array.isArray(v);
   });

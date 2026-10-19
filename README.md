@@ -34,7 +34,7 @@ npm run check:live       # 本物のSupabaseで確認（確認用アカウント
 ```
 
 - `tests/full.test.js`：全画面・全機能のチェック。`tests/ai.test.js`：AIコーチ（AIなし／模擬AIあり／AIサーバー）。
-- `tests/features.test.js`：キーワード検索・目標と連続記録・興味なし・通知・設定（バックアップ／全削除）・iPhoneの案内。
+- `tests/features.test.js`：キーワード検索・連続記録・興味なし・通知・設定（バックアップ／全削除）・iPhoneの案内。
 - `tests/layout.test.js`：スマホ（幅320〜430px）とパソコンで、はみ出し・入力欄の文字サイズ・ボタンの押しやすさを確認。
 - テスト用のサーバー（ポート8139、`PORT` で変更可）はテストが自分で起動します。
 - AIはにせもの（決まった文を返す）に置き換えて動かすので、APIの料金はかかりません。

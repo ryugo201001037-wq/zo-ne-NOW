@@ -132,8 +132,6 @@ function startFakeSupabase() {
   check('記録がサーバーに保存される', await waitFor(() => logsOf().length === 1 && logsOf()[0].seconds === 2700 && logsOf()[0].subject === 'math' && logsOf()[0].user_id === uid), JSON.stringify(logsOf()));
   await page.click('#today-list .study-row-delete'); await page.click('#confirm-ok');
   check('記録を消すとサーバーからも消える', await waitFor(() => logsOf().length === 0));
-  await page.selectOption('#goal-select', '90');
-  check('目標もサーバーに保存', await waitFor(() => fake.profiles.get(uid).goal_minutes === 90));
 
   state.section = '電波がないとき';
   fake.offline = true;

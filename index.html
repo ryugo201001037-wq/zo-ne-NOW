@@ -4434,14 +4434,22 @@ document.getElementById('settings-hidden-reset').addEventListener('click', ()=>{
 // バックアップ：記録や設定をファイルに書き出す／読み込む（投稿した動画・写真は大きいので含めない）
 const BACKUP_KEYS = [PROFILE_KEY, USER_ID_KEY, STUDY_LOG_KEY, GOAL_KEY, FRIENDS_KEY, FOLLOW_KEY, LIKES_KEY, SAVES_KEY,
   COMMENTS_KEY, HIDDEN_VIDEOS_KEY, BLOCKED_CREATORS_KEY, NOTIFY_KEY, AI_CHAT_KEY];
-document.getElementById('backup-export').addEventListener('click', ()=>{
+document.getElementById('backup-export').addEventListener('click', async ()=>{
   const data = {};
   BACKUP_KEYS.forEach(k=>{ const v = loadJSON(k, null); if(v !== null) data[k] = v; });
-  const blob = new Blob([JSON.stringify({ app:'zonenow', version:1, exportedAt: Date.now(), data })], { type:'application/json' });
-  const url = URL.createObjectURL(blob);
+  const json = JSON.stringify({ app:'zonenow', version:1, exportedAt: Date.now(), data });
+  const filename = `zonenow-backup-${localDateKey()}.json`;
+  // claude.ai のプレビューでは普通のダウンロードができないので、その場合はプレビューの保存機能を使う
+  const downloads = window.claude && window.claude.use ? await window.claude.use('downloads').catch(()=> null) : null;
+  if(downloads){
+    try{ await downloads.save({ filename, data: json }); showToast('バックアップを書き出しました'); }
+    catch(err){ if(!err || err.code !== 'declined') showToast('書き出せませんでした'); }
+    return;
+  }
+  const url = URL.createObjectURL(new Blob([json], { type:'application/json' }));
   const a = document.createElement('a');
   a.href = url;
-  a.download = `zonenow-backup-${localDateKey()}.json`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();

@@ -80,6 +80,10 @@ const MIN_TAP = 40; // 押せる大きさの下限（px）
     await nav('profile'); await capture('プロフィール');
     await page.click('[data-people-tab="following"]'); await page.waitForTimeout(420); await capture('フォロー一覧');
     await page.click('#people-back'); await page.waitForTimeout(300);
+    await page.click('#profile-gear'); await page.waitForTimeout(420); await capture('設定');
+    await page.click('#settings-back'); await page.waitForTimeout(300);
+    await page.click('#profile-bell'); await page.waitForTimeout(420); await capture('通知');
+    await page.click('#notifications-back'); await page.waitForTimeout(300);
     await nav('ai'); await page.click('[data-ai-suggest="今日の勉強プランを作って"]'); await capture('AI');
 
     for (const [label, r] of screens) {

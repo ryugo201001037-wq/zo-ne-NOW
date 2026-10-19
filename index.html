@@ -749,6 +749,81 @@
   #install-banner button.ib-close{ color:var(--muted); font-size:18px; padding:4px; }
 
   /* ============================================================
+     キーワード検索・ハッシュタグ
+  ============================================================ */
+  .search-box{ padding:14px 20px 0; }
+  .search-input{
+    width:100%; padding:12px 16px; border-radius:14px; border:1px solid rgba(0,0,0,.12); background:#fff;
+    color:var(--ink-text); font-family:var(--font-ui); font-size:16px; -webkit-appearance:none; appearance:none;
+  }
+  .search-input::placeholder{ color:rgba(0,0,0,.35); }
+  .caption-tag{ position:relative; color:inherit; font:inherit; padding:0; margin-right:6px; }
+  .caption-tag::after{ content:''; position:absolute; inset:-12px -3px; }
+
+  /* ============================================================
+     1日の目標・連続記録（記録画面）
+  ============================================================ */
+  .goal-bar{ height:8px; max-width:280px; margin:14px auto 0; border-radius:99px; background:rgba(255,255,255,.08); overflow:hidden; }
+  .goal-bar[hidden]{ display:none; }
+  .goal-bar-fill{ height:100%; width:0; border-radius:99px; background:linear-gradient(90deg, var(--cta-from), var(--cta-to)); transition:width .4s ease; }
+  .goal-text{ font-family:var(--font-ui); font-size:12.5px; color:rgba(255,255,255,.75); margin-top:8px; min-height:1em; }
+  .goal-text.done{ color:var(--mint); font-weight:700; }
+  .record-meta-row{ display:flex; justify-content:center; align-items:center; gap:10px; margin-top:12px; flex-wrap:wrap; }
+  .streak-badge svg{ width:16px; height:16px; color:#FF8A4C; }
+  .streak-badge{
+    display:inline-flex; align-items:center; min-height:40px; padding:0 16px; border-radius:99px;
+    background:rgba(255,255,255,.07); font-family:var(--font-ui); font-size:13px; font-weight:700;
+  }
+  .goal-select{
+    min-height:40px; padding:0 14px; border-radius:99px; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.14);
+    color:#fff; font-family:var(--font-ui); font-size:16px; color-scheme:dark;
+  }
+
+  /* ============================================================
+     友達（勉強時間の見せ合い）
+  ============================================================ */
+  .friend-row{ display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid rgba(255,255,255,.07); }
+  .friend-row .avatar{ width:40px; height:40px; font-size:15px; border-width:1.5px; flex-shrink:0; }
+  .friend-rank{ width:20px; text-align:center; font-family:var(--font-ui); font-size:14px; font-weight:800; color:rgba(255,255,255,.5); flex-shrink:0; }
+  .friend-main{ flex:1; min-width:0; }
+  .friend-name{ font-family:var(--font-ui); font-size:14px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .friend-sub{ font-family:var(--font-ui); font-size:11.5px; color:rgba(255,255,255,.5); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .friend-time{ text-align:right; flex-shrink:0; }
+  .friend-week{ font-family:var(--font-ui); font-size:15px; font-weight:800; }
+  .friend-today{ font-family:var(--font-ui); font-size:11px; color:rgba(255,255,255,.5); margin-top:2px; }
+  .friend-row.me .friend-name{ color:#A5B4FF; }
+  .me-tag{ font-size:10px; padding:2px 7px; border-radius:99px; background:rgba(255,255,255,.12); margin-left:6px; color:#fff; }
+  .friends-actions{ display:flex; gap:8px; margin-top:14px; }
+  .friends-actions .study-btn{ flex:1; margin-top:0; }
+  .friends-howto{ font-family:var(--font-ui); font-size:12px; color:rgba(255,255,255,.55); line-height:1.7; margin:12px 0 0; }
+  .friends-ranking-title{ font-family:var(--font-ui); font-size:12px; font-weight:700; color:rgba(255,255,255,.55); margin:18px 0 2px; }
+
+  /* ============================================================
+     通知・設定
+  ============================================================ */
+  .notify-row{ display:flex; gap:12px; padding:14px 0; border-bottom:1px solid rgba(255,255,255,.07); }
+  .notify-icon{ width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,.08); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .notify-icon svg{ width:18px; height:18px; }
+  .notify-row.unread .notify-icon{ background:linear-gradient(135deg, var(--cta-from), var(--cta-to)); }
+  .notify-text{ font-family:var(--font-ui); font-size:13.5px; line-height:1.6; margin:0; }
+  .notify-time{ font-family:var(--font-ui); font-size:11px; color:rgba(255,255,255,.45); margin-top:2px; }
+  .profile-bell.has-unread::before, .nav-btn.has-unread .nav-icon::after{
+    content:''; position:absolute; top:4px; right:4px; width:9px; height:9px; border-radius:50%; background:var(--ember); border:2px solid var(--ink);
+  }
+  .nav-icon{ position:relative; }
+  .nav-btn.has-unread .nav-icon::after{ top:-3px; right:-5px; }
+  .profile-gear{ position:absolute; top:0; left:0; }
+  .settings-section{ margin-bottom:26px; }
+  .settings-row{ display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,.07); font-family:var(--font-ui); font-size:14px; }
+  .settings-row > span{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .settings-text{ font-family:var(--font-ui); font-size:12.5px; color:rgba(255,255,255,.6); line-height:1.75; margin:0; }
+  .settings-text b{ color:#fff; }
+  .settings-actions{ display:flex; gap:8px; margin-top:12px; }
+  .settings-actions .study-btn{ flex:1; margin-top:0; }
+  .share-hide{ margin-top:12px; padding-top:4px; border-top:1px solid rgba(255,255,255,.08); }
+  .share-hide-btn{ display:block; width:100%; min-height:44px; padding:12px 4px; text-align:left; font-family:var(--font-ui); font-size:14px; color:#fff; }
+
+  /* ============================================================
      スマホの画面に合わせる調整
   ============================================================ */
   /* 入力欄の文字は16px以上：これより小さいと、iPhoneで入力欄を押したときに画面が勝手に拡大される */
@@ -844,7 +919,10 @@
         <button class="back-btn on-paper" id="search-back">←</button>
       </div>
       <h1>探す</h1>
-      <p>学年・教科・単元から、いま必要な一本を見つける</p>
+      <p>キーワードや学年・教科・単元から、いま必要な一本を見つける</p>
+    </div>
+    <div class="search-box">
+      <input type="search" class="search-input" id="search-input" placeholder="キーワード・#ハッシュタグで探す" enterkeyhint="search" aria-label="キーワードで探す" />
     </div>
 
     <div class="filter-group">
@@ -927,6 +1005,12 @@
       <div class="record-hero">
         <div class="record-hero-value" id="study-today">0分</div>
         <div class="record-hero-label">今日の勉強時間</div>
+        <div class="goal-bar" id="goal-bar" hidden><div class="goal-bar-fill" id="goal-fill"></div></div>
+        <div class="goal-text" id="goal-text"></div>
+        <div class="record-meta-row">
+          <span class="streak-badge" id="streak-badge">連続0日</span>
+          <select class="goal-select" id="goal-select" aria-label="1日の目標時間"></select>
+        </div>
       </div>
 
       <div class="record-stat-row">
@@ -1018,6 +1102,7 @@
   <section id="profile-screen" class="screen dark-screen">
     <div class="record-wrap">
       <div class="profile-head">
+        <button class="icon-btn profile-gear" id="profile-gear" aria-label="設定"></button>
         <button class="icon-btn profile-bell" id="profile-bell" aria-label="通知"></button>
         <label class="profile-avatar" aria-label="アイコンを変更">
           <input type="file" id="profile-avatar-input" accept="image/*" hidden />
@@ -1065,21 +1150,24 @@
             <div class="profile-study-label">直近7日間</div>
           </div>
         </div>
-        <p class="profile-hint">友達機能ができたら、この勉強時間を友達と見せ合えるようになります。</p>
       </div>
 
       <div class="study-card">
-        <div class="record-section-title">友達</div>
-        <div class="friends-empty">
+        <div class="record-section-title">友達と勉強時間を見せ合う</div>
+        <div class="friends-empty" id="friends-empty">
           <div class="friends-icon" id="friends-icon"></div>
           <p class="friends-title">友達と勉強時間を見せ合おう</p>
-          <p class="friends-sub">お互いに友達になると、今日・今週の勉強時間を見せ合えます。<br>一緒にがんばる仲間を作りましょう。</p>
-          <button class="study-btn full" disabled>友達を招待する（準備中）</button>
+          <p class="friends-sub">あなたの記録をLINEなどで友達に送り、友達からも送ってもらうと、<br>お互いの勉強時間をランキングで見られます。</p>
+        </div>
+        <div id="profile-friends-ranking"></div>
+        <div class="friends-actions">
+          <button class="study-btn primary" id="friends-send">自分の記録を送る</button>
+          <button class="study-btn" id="friends-open">友達一覧</button>
         </div>
       </div>
 
 
-      <p class="record-note" style="margin-top:28px;">※ プロフィールはこの端末のブラウザ内にのみ保存されます。フォロワー・友達はサーバー機能ができてから使えるようになります。</p>
+      <p class="record-note" style="margin-top:28px;">※ プロフィールと記録はこの端末のブラウザ内にのみ保存されます。フォロワーはサーバー機能ができてから使えるようになります。</p>
     </div>
     <div class="bottom-nav solid-dark" data-active-nav="profile"></div>
   </section>
@@ -1101,6 +1189,7 @@
         <div class="friends-icon" id="people-empty-icon"></div>
         <p class="friends-title" id="people-empty-title"></p>
         <p class="friends-sub" id="people-empty-sub"></p>
+        <button class="study-btn primary full" id="people-empty-send" style="display:none;">自分の記録を友達に送る</button>
       </div>
     </div>
     <div class="bottom-nav solid-dark" data-active-nav="profile"></div>
@@ -1108,11 +1197,59 @@
 
   <!-- ============ 通知画面（プロフィールから開く） ============ -->
   <section id="notifications-screen" class="screen dark-screen">
-    <div class="notifications-header">
-      <button class="back-btn" id="notifications-back">←</button>
-      <h1 class="post-form-title">通知</h1>
+    <div class="record-wrap">
+      <div class="post-form-header">
+        <button class="back-btn" id="notifications-back">←</button>
+        <h1 class="post-form-title">通知</h1>
+      </div>
+      <div id="notify-list"></div>
+      <div class="people-empty" id="notify-empty">
+        <div class="friends-icon" id="notify-empty-icon"></div>
+        <p class="friends-title">まだ通知はありません</p>
+        <p class="friends-sub">友達の記録が届いたときや、目標を達成したとき、<br>勉強が続いたときに、ここにお知らせが届きます。</p>
+      </div>
     </div>
-    <div class="placeholder-wrap" data-placeholder="notifications"></div>
+    <div class="bottom-nav solid-dark" data-active-nav="profile"></div>
+  </section>
+
+  <!-- ============ 設定（プロフィールから開く） ============ -->
+  <section id="settings-screen" class="screen dark-screen">
+    <div class="record-wrap">
+      <div class="post-form-header">
+        <button class="back-btn" id="settings-back">←</button>
+        <h1 class="post-form-title">設定</h1>
+      </div>
+
+      <div class="settings-section">
+        <div class="record-section-title">表示しないクリエイター</div>
+        <div id="settings-blocked"></div>
+        <p class="settings-text" id="settings-blocked-empty">ありません。動画の「シェア」から、見たくないクリエイターを表示しないようにできます。</p>
+        <div class="settings-row" id="settings-hidden-row">
+          <span id="settings-hidden-count"></span>
+          <button class="people-action" id="settings-hidden-reset">すべて戻す</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="record-section-title">データのバックアップ</div>
+        <p class="settings-text">記録はこの端末の中にだけ保存されています。機種変更のときなどは、書き出したファイルを新しい端末で読み込んでください。<br>（投稿した動画・写真はファイルに含まれません）</p>
+        <div class="settings-actions">
+          <button class="study-btn" id="backup-export">書き出す</button>
+          <label class="study-btn" id="backup-import-label" style="text-align:center;">読み込む<input type="file" id="backup-import" accept="application/json,.json" hidden /></label>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="record-section-title">ホーム画面に追加する方法</div>
+        <p class="settings-text"><b>iPhone（Safari）</b>：画面下の共有ボタン（□に↑）→「ホーム画面に追加」<br><b>Android（Chrome）</b>：右上の︙ →「ホーム画面に追加」または「アプリをインストール」<br>追加すると、アプリのようにワンタップで開けます。</p>
+      </div>
+
+      <div class="settings-section">
+        <div class="record-section-title">データの削除</div>
+        <p class="settings-text">プロフィール・勉強記録・友達・投稿など、この端末に保存したゾーンNOWのデータをすべて削除して、最初の状態に戻します。</p>
+        <button class="study-btn full" id="settings-delete-all">すべてのデータを削除する</button>
+      </div>
+    </div>
     <div class="bottom-nav solid-dark" data-active-nav="profile"></div>
   </section>
 
@@ -1228,6 +1365,10 @@
         <button class="share-option" data-share="native" id="share-native"><span class="share-icon" id="share-native-icon"></span>その他</button>
       </div>
       <p class="sheet-note" id="share-note"></p>
+      <div class="share-hide" id="share-hide-options">
+        <button class="share-hide-btn" data-hide="video">興味なし（この動画を表示しない）</button>
+        <button class="share-hide-btn" data-hide="creator" id="share-hide-creator">このクリエイターの動画を表示しない</button>
+      </div>
     </div>
   </div>
 
@@ -1512,6 +1653,45 @@ function loadProfile(){
 // アイコン画像は自分でリサイズしたdata URLだけを受け付ける
 function isSafeAvatar(src){ return typeof src === 'string' && src.startsWith('data:image/'); }
 
+// この端末のユーザーID（友達の記録カードで「誰の記録か」を見分けるため。ログイン機能ができたらアカウントIDに置き換える）
+const USER_ID_KEY = 'zonenow_user_id';
+function myUserId(){
+  let id = loadJSON(USER_ID_KEY, null);
+  if(typeof id !== 'string' || !/^[A-Za-z0-9-]{16,64}$/.test(id)){
+    id = crypto.randomUUID ? crypto.randomUUID()
+      : [...crypto.getRandomValues(new Uint8Array(16))].map(b=> b.toString(16).padStart(2, '0')).join('');
+    saveJSON(USER_ID_KEY, id);
+  }
+  return id;
+}
+
+// ---- 通知：この端末の中で起きたできごと（友達の記録が届いた・目標達成・連続記録など） ----
+// サーバーがないので、他の人の行動（いいね・コメントなど）の通知はまだ届かない
+const NOTIFY_KEY = 'zonenow_notifications';
+const NOTIFY_MAX = 50;
+function loadNotifications(){ return loadJSON(NOTIFY_KEY, []); }
+// key：同じできごとを二重に通知しないための目印（例：'goal:2026-10-19'）
+function addNotification(type, text, key = null){
+  const list = loadNotifications();
+  if(key && list.some(n=> n.key === key)) return false;
+  list.unshift({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), type, text, key, at: Date.now(), read:false });
+  saveJSON(NOTIFY_KEY, list.slice(0, NOTIFY_MAX));
+  updateNotifyBadges();
+  return true;
+}
+function updateNotifyBadges(){
+  const unread = loadNotifications().some(n=> !n.read);
+  document.getElementById('profile-bell').classList.toggle('has-unread', unread);
+  document.querySelectorAll('.nav-btn[data-nav="profile"]').forEach(b=> b.classList.toggle('has-unread', unread));
+}
+
+// ---- 表示しない動画・クリエイター（「興味なし」） ----
+const HIDDEN_VIDEOS_KEY = 'zonenow_hidden_videos';
+const BLOCKED_CREATORS_KEY = 'zonenow_blocked_creators';
+function isHiddenVideo(v){
+  return loadJSON(HIDDEN_VIDEOS_KEY, []).includes(v.id) || loadJSON(BLOCKED_CREATORS_KEY, []).includes(v.creator);
+}
+
 // フォロー中のクリエイター（今は投稿者名で管理。アカウントIDができたら置き換える）
 const FOLLOW_KEY = 'zonenow_following';
 function loadFollowing(){ return loadJSON(FOLLOW_KEY, []); }
@@ -1595,6 +1775,8 @@ const ICON_PATHS = {
   link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7.1-7.1l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7.1 7.1l1.7-1.7"/>',
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
   camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  flame: '<path d="M12 2c1 3.5 5 6 5 11a5 5 0 0 1-10 0c0-2.5 1.2-4 2.5-5.5C10 9.5 11 11 12 11c0-3-1-5.5 0-9z"/>',
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-5.6 6.5-5.6s6.5 2 6.5 5.6"/><circle cx="17" cy="9" r="2.8"/><path d="M16.2 14.5c3 0 5.3 1.8 5.3 5"/>',
 };
 function icon(name){
@@ -1706,9 +1888,10 @@ const screens = {
   history: document.getElementById('history-screen'),
   people: document.getElementById('people-screen'),
   preview: document.getElementById('preview-screen'),
+  settings: document.getElementById('settings-screen'),
 };
 // ボトムナビに無い画面は、どのタブの中の画面かを決めておく（そのタブを点灯させる）
-const NAV_PARENT = { search:'home', notifications:'profile', history:'record', people:'profile', preview:'create' };
+const NAV_PARENT = { search:'home', notifications:'profile', history:'record', people:'profile', preview:'create', settings:'profile' };
 function showScreen(name){
   Object.values(screens).forEach(s=>s.classList.remove('active'));
   screens[name].classList.add('active');
@@ -1717,6 +1900,8 @@ function showScreen(name){
   if(name === 'history') renderHistoryScreen();
   if(name === 'people') renderPeopleScreen();
   if(name === 'ai') renderAiScreen();
+  if(name === 'notifications') renderNotificationsScreen();
+  if(name === 'settings') renderSettingsScreen();
   const activeTab = NAV_PARENT[name] || name;
   document.querySelectorAll('[data-nav]').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.nav === activeTab);
@@ -1764,14 +1949,15 @@ let viewedCount = 0;
 let lastNudgeAt = 0;
 
 // 投稿者が付けたハッシュタグがあればそれを、なければ種類・教科・学年から自動で付ける
-function hashtagsOf(v){
-  if(v.hashtags && v.hashtags.length) return v.hashtags.map(t=> '#' + t).join(' ');
-  const tags = { lesson:['#勉強'], motivation:['#やる気', '#勉強習慣'], trivia:['#豆知識', '#雑学'], other:['#' + kindLabelOf(v)] }[kindOf(v)].slice();
+// （タグは「#」なしの文字列の配列で返す）
+function hashtagListOf(v){
+  if(v.hashtags && v.hashtags.length) return v.hashtags.slice();
+  const tags = { lesson:['勉強'], motivation:['やる気', '勉強習慣'], trivia:['豆知識', '雑学'], other:[kindLabelOf(v)] }[kindOf(v)].slice();
   const subject = subjectLabelOf(v);
-  if(subject) tags.push('#' + subject);
+  if(subject) tags.push(subject);
   const level = schoolLevelOf(v.grade);
-  if(level) tags.push(level === 'junior' ? '#中学生' : '#高校生');
-  return tags.join(' ');
+  if(level) tags.push(level === 'junior' ? '中学生' : '高校生');
+  return tags;
 }
 
 function createSlide(v){
@@ -1827,7 +2013,7 @@ function createSlide(v){
 
     <div class="caption-block">
       <p class="caption-text">${escapeHtml(v.title)}</p>
-      <p class="caption-hashtags">${escapeHtml(hashtagsOf(v))} ・ @${escapeHtml(v.creator)}</p>
+      <p class="caption-hashtags">${hashtagListOf(v).map(t=> `<button class="caption-tag" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}</button>`).join('')}・ @${escapeHtml(v.creator)}</p>
       ${musicLine ? `<p class="caption-music">${escapeHtml(musicLine)}</p>` : ''}
     </div>
   `;
@@ -1902,6 +2088,11 @@ function attachSlideEvents(slide, v){
 
   slide.querySelector('[data-role="comment"]').addEventListener('click', ()=> openComments(v));
   slide.querySelector('[data-role="share"]').addEventListener('click', ()=> openShare(v));
+
+  // ハッシュタグを押すと、そのタグで検索（投稿前のプレビューでは何もしない）
+  slide.querySelectorAll('[data-tag]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ if(slide.closest('#feed')) openSearchWithKeyword('#' + btn.dataset.tag); });
+  });
 }
 
 // いいね・保存・コメント数の表示を、画面上にある同じ動画のスライドすべてで最新にする
@@ -1967,11 +2158,12 @@ function pickWeighted(pool, n, weightOf){
 
 function appendFeedBatch(){
   const recentIds = [...feedEl.children].slice(-FEED_RECENT_AVOID).map(el=> el.dataset.id);
-  let pool = VIDEOS.filter(v=> !recentIds.includes(v.id));
+  const visible = VIDEOS.filter(v=> !isHiddenVideo(v)); // 「興味なし」にした動画は出さない
+  let pool = visible.filter(v=> !recentIds.includes(v.id));
   if(pool.length < FEED_BATCH_SIZE){
     // 動画が少ないときは直前の1本だけ避ける（同じ動画が2本続かないように）
     const lastId = recentIds[recentIds.length - 1];
-    pool = VIDEOS.filter(v=> v.id !== lastId);
+    pool = visible.filter(v=> v.id !== lastId);
   }
   const userGrade = (loadProfile() || {}).grade;
   const batch = pickWeighted(pool, Math.min(FEED_BATCH_SIZE, pool.length), v=> feedWeight(v, userGrade));
@@ -2290,8 +2482,9 @@ commentSheet.addEventListener('click', async (e)=>{
 });
 
 // ---- シェア ----
-// 共有リンクは「このアプリのURL ?v=動画ID」。開くとその動画がフィードの先頭に出る
-let shareVideo = null;
+// 動画の共有リンクは「このアプリのURL ?v=動画ID」。開くとその動画がフィードの先頭に出る
+// 同じシートで「自分の勉強記録を友達に送る」もできる（shareTarget.video がないとき）
+let shareTarget = null; // { url, text, note, video? }
 const shareSheet = document.getElementById('share-sheet');
 document.getElementById('share-copy-icon').innerHTML = icon('link');
 document.getElementById('share-native-icon').innerHTML = icon('share');
@@ -2299,16 +2492,30 @@ document.getElementById('share-native-icon').innerHTML = icon('share');
 function shareUrlOf(v){ return `${location.href.split(/[?#]/)[0]}?v=${encodeURIComponent(v.id)}`; }
 function shareTextOf(v){ return `${v.title}｜ゾーンNOW`; }
 
-function openShare(v){
-  shareVideo = v;
+function openShareSheet(target){
+  shareTarget = target;
+  const v = target.video;
+  document.getElementById('share-sheet-title').textContent = target.title || 'シェア';
   document.getElementById('share-native').style.display = navigator.share ? 'flex' : 'none';
-  // 自分の投稿は今はこの端末の中だけにあるので、リンクを開いた人には見えない（正直に伝える）
-  document.getElementById('share-note').textContent = v.id.startsWith('u')
-    ? '※ この投稿は今はこの端末の中だけにあるため、リンクを開いた人には表示されません（サーバー対応後に見られるようになります）。'
-    : 'リンクを開くと、この動画から再生されます。';
+  document.querySelector('.share-option[data-share="x"]').style.display = v ? 'flex' : 'none';
+  document.getElementById('share-note').textContent = target.note;
+  // 「興味なし」は他の人の動画だけ
+  const profile = loadProfile();
+  const othersVideo = !!v && !v.own && !(profile && v.creator === profile.name);
+  document.getElementById('share-hide-options').style.display = othersVideo ? 'block' : 'none';
+  if(othersVideo) document.getElementById('share-hide-creator').textContent = `${v.creator}の動画を表示しない`;
   shareSheet.classList.add('show');
 }
-function closeShare(){ shareSheet.classList.remove('show'); shareVideo = null; }
+function openShare(v){
+  openShareSheet({
+    video: v, url: shareUrlOf(v), text: shareTextOf(v),
+    // 自分の投稿は今はこの端末の中だけにあるので、リンクを開いた人には見えない（正直に伝える）
+    note: v.id.startsWith('u')
+      ? '※ この投稿は今はこの端末の中だけにあるため、リンクを開いた人には表示されません（サーバー対応後に見られるようになります）。'
+      : 'リンクを開くと、この動画から再生されます。',
+  });
+}
+function closeShare(){ shareSheet.classList.remove('show'); shareTarget = null; }
 
 async function copyText(text){
   try{ await navigator.clipboard.writeText(text); return true; }
@@ -2331,9 +2538,15 @@ async function copyText(text){
 document.getElementById('share-sheet-close').addEventListener('click', closeShare);
 shareSheet.addEventListener('click', async (e)=>{
   if(e.target === shareSheet){ closeShare(); return; }
+  const hide = e.target.closest('[data-hide]');
+  if(hide && shareTarget && shareTarget.video){
+    hideFromFeed(shareTarget.video, hide.dataset.hide);
+    closeShare();
+    return;
+  }
   const opt = e.target.closest('[data-share]');
-  if(!opt || !shareVideo) return;
-  const url = shareUrlOf(shareVideo), text = shareTextOf(shareVideo);
+  if(!opt || !shareTarget) return;
+  const { url, text } = shareTarget;
   const how = opt.dataset.share;
   if(how === 'line'){
     window.open(`https://line.me/R/share?text=${encodeURIComponent(text + '\n' + url)}`, '_blank', 'noopener');
@@ -2348,6 +2561,38 @@ shareSheet.addEventListener('click', async (e)=>{
   }
   closeShare();
 });
+
+// 「興味なし」：動画1本、またはそのクリエイターの動画を、フィードと検索に出さないようにする
+function hideFromFeed(v, what){
+  const key = what === 'creator' ? BLOCKED_CREATORS_KEY : HIDDEN_VIDEOS_KEY;
+  const value = what === 'creator' ? v.creator : v.id;
+  const list = loadJSON(key, []);
+  if(!list.includes(value)) list.push(value);
+  saveJSON(key, list);
+
+  // 今フィードにある該当の動画を取り除き、次の動画から続ける
+  const slides = [...feedEl.querySelectorAll('.short-slide')];
+  const current = currentSlide;
+  const startIndex = Math.max(0, slides.indexOf(current));
+  const isHiddenSlide = s=>{ const x = VIDEOS.find(y=> y.id === s.dataset.id); return !!x && isHiddenVideo(x); };
+  const next = slides.slice(startIndex).find(s=> !isHiddenSlide(s)) || null;
+  slides.filter(isHiddenSlide).forEach(s=>{
+    feedObserver.unobserve(s);
+    deactivateSlide(s);
+    s.remove();
+  });
+  if(feedEl.children.length < 3) appendFeedBatch();
+  const target = next || feedEl.lastElementChild;
+  if(target){
+    feedEl.scrollTop = [...feedEl.children].indexOf(target) * feedEl.clientHeight;
+    if(current && current !== target) deactivateSlide(current);
+    currentSlide = target;
+    syncFeedMedia(target);
+    if(screens.home.classList.contains('active')) enterSlide(target);
+  }
+  renderResults();
+  showToast(what === 'creator' ? `${v.creator}の動画を表示しないようにしました（設定で戻せます）` : 'この動画を表示しないようにしました（設定で戻せます）');
+}
 
 // 共有リンク（?v=動画ID）から開いたときは、その動画をフィードの先頭にする
 const SHARED_VIDEO = (()=>{
@@ -2391,9 +2636,24 @@ function chipHtml(list, activeId){
   return list.map(item=>`<button class="chip ${item.id===activeId?'active':''}" data-id="${item.id}">${item.label}</button>`).join('');
 }
 
-// 学年で絞り込んだときも「全学年向け」の動画は含める
+// キーワード：全角・半角、大文字・小文字、先頭の「#」の違いは無視する。スペース区切りはすべてを含むもの
+const searchInput = document.getElementById('search-input');
+function normalizeForSearch(text){
+  return String(text || '').normalize('NFKC').toLowerCase().replace(/#/g, ' ').trim();
+}
+function searchTerms(){ return normalizeForSearch(searchInput.value).split(/\s+/).filter(Boolean); }
+function searchTextOf(v){
+  return normalizeForSearch([
+    v.title, v.unit, v.creator, ...hashtagListOf(v), kindLabelOf(v), subjectLabelOf(v), gradeLabelOf(v),
+  ].join(' '));
+}
+
+// 学年で絞り込んだときも「全学年向け」の動画は含める。「興味なし」にした動画は出さない
 function filteredVideos(){
+  const terms = searchTerms();
   return VIDEOS.filter(v=>
+    !isHiddenVideo(v) &&
+    (!terms.length || (text=> terms.every(t=> text.includes(t)))(searchTextOf(v))) &&
     (activeKind==='all' || kindOf(v)===activeKind) &&
     (activeGrade==='all' || v.grade===activeGrade || v.grade==='everyone') &&
     (activeSubject==='all' || v.subject===activeSubject) &&
@@ -2436,6 +2696,9 @@ function metaTextOf(v){
 function renderResults(){
   const results = filteredVideos();
   document.getElementById('result-count').textContent = `${results.length}件の動画`;
+  document.getElementById('empty-state').innerHTML = searchTerms().length
+    ? `「${escapeHtml(searchInput.value.trim())}」に合う動画がまだありません。<br>別の言葉や条件で探してみてください。`
+    : '条件に合う動画がまだありません。<br>条件を変えて探してみてください。';
   const grid = document.getElementById('result-grid');
   const empty = document.getElementById('empty-state');
   grid.style.display = results.length ? 'grid' : 'none';
@@ -2470,6 +2733,17 @@ function jumpToShort(id){
 }
 
 document.getElementById('search-back').addEventListener('click', ()=> showScreen('home'));
+searchInput.addEventListener('input', renderResults);
+searchInput.addEventListener('keydown', e=>{ if(e.key === 'Enter' && !e.isComposing) searchInput.blur(); }); // キーボードを閉じて結果を見せる
+
+// フィードのハッシュタグから：そのタグだけで探す（他の絞り込みは外す）
+function openSearchWithKeyword(keyword){
+  searchInput.value = keyword;
+  activeKind = activeGrade = activeSubject = activeUnit = 'all';
+  renderChips();
+  renderResults();
+  showScreen('search');
+}
 
 renderChips();
 renderResults();
@@ -2528,8 +2802,55 @@ function addStudyEntry(subject, subjectOther, seconds, date, source){
     showToast('この端末では記録を保存できませんでした');
     return false;
   }
+  if(date === localDateKey()) checkStudyMilestones();
   return true;
 }
+
+// ---- 1日の目標・連続記録 ----
+const GOAL_KEY = 'zonenow_goal_minutes';
+const GOAL_OPTIONS = [0, 30, 60, 90, 120, 180, 240, 300, 360, 480]; // 0 = 目標なし
+const STREAK_MILESTONES = [3, 7, 14, 30, 50, 100, 200, 365];
+function loadGoalMinutes(){
+  const m = Number(loadJSON(GOAL_KEY, 0));
+  return GOAL_OPTIONS.includes(m) ? m : 0;
+}
+// 記録を追加したとき：今日の目標達成・連続記録の節目を通知する（同じ日に同じ通知は出さない）
+function checkStudyMilestones(){
+  const today = localDateKey();
+  const goal = loadGoalMinutes();
+  if(goal && studyTotals().today >= goal * 60){
+    addNotification('goal', `今日の目標（${formatStudyTime(goal * 60)}）を達成しました！`, `goal:${today}`);
+  }
+  const streak = studyStats().streak;
+  if(STREAK_MILESTONES.includes(streak)){
+    addNotification('streak', `${streak}日連続で勉強しています。この調子！`, `streak:${streak}:${today}`);
+  }
+}
+function renderGoal(todaySeconds){
+  const goal = loadGoalMinutes();
+  const select = document.getElementById('goal-select');
+  if(!select.options.length){
+    select.innerHTML = GOAL_OPTIONS.map(m=> `<option value="${m}">${m ? '目標 ' + formatStudyTime(m * 60) : '目標なし'}</option>`).join('');
+  }
+  select.value = String(goal);
+  const bar = document.getElementById('goal-bar');
+  const text = document.getElementById('goal-text');
+  bar.hidden = !goal;
+  if(!goal){ text.textContent = ''; text.classList.remove('done'); }
+  else {
+    const rest = goal * 60 - todaySeconds;
+    document.getElementById('goal-fill').style.width = `${Math.min(100, todaySeconds / (goal * 60) * 100)}%`;
+    text.textContent = rest > 0 ? `目標${formatStudyTime(goal * 60)}まで、あと${formatStudyTime(Math.max(60, rest))}` : '今日の目標を達成！';
+    text.classList.toggle('done', rest <= 0);
+  }
+  const streak = studyStats().streak;
+  document.getElementById('streak-badge').innerHTML = `${icon('flame')}<span style="margin-left:6px;">連続${streak}日</span>`;
+}
+document.getElementById('goal-select').addEventListener('change', e=>{
+  saveJSON(GOAL_KEY, Number(e.target.value));
+  renderRecordScreen();
+  checkStudyMilestones();
+});
 
 // ---- 学習タイマー ----
 // 経過時間は「開始時刻」との差で計算する。画面を切り替えても、リロードしても、
@@ -2689,7 +3010,7 @@ function renderStudyRows(el, entries){
           <div class="study-row-meta">${e.source === 'timer' ? 'タイマー' : '手入力'}</div>
         </div>
         <div class="study-row-time">${formatStudyTime(e.seconds)}</div>
-        <button class="study-row-delete" data-id="${e.id}" aria-label="この記録を削除">×</button>
+        <button class="study-row-delete" data-id="${escapeHtml(e.id)}" aria-label="この記録を削除">×</button>
       </div>
     `).join('');
 }
@@ -2700,6 +3021,7 @@ function renderRecordScreen(){
   document.getElementById('study-today').textContent = formatStudyTime(totals.today);
   document.getElementById('study-week').textContent = formatStudyTime(totals.week);
   document.getElementById('study-total').textContent = formatStudyTime(totals.total);
+  renderGoal(totals.today);
 
   // 記録画面の下には「今日」の分だけ出す。過去の分はカレンダーで見る
   const todayEntries = log.filter(e=> e.date === localDateKey());
@@ -2804,18 +3126,26 @@ document.getElementById('record-reset').addEventListener('click', async ()=>{
   showToast('勉強記録を削除しました');
 });
 
-// ---- 通知：準備中プレースホルダーの中身 ----
-const PLACEHOLDER_CONTENT = {
-  notifications: { iconName:'bell', title:'まだ通知はありません', sub:'フォローや友達の機能ができると、ここにお知らせが届きます' },
-};
-document.querySelectorAll('[data-placeholder]').forEach(el=>{
-  const c = PLACEHOLDER_CONTENT[el.dataset.placeholder];
-  el.innerHTML = `
-    <div class="placeholder-icon">${icon(c.iconName)}</div>
-    <p class="placeholder-title">${c.title}</p>
-    <p class="placeholder-sub">${c.sub}</p>
-  `;
-});
+// ---- 通知画面：開いたら既読にする ----
+const NOTIFY_ICONS = { friend:'users', goal:'check', streak:'flame' };
+document.getElementById('notify-empty-icon').innerHTML = icon('bell');
+function renderNotificationsScreen(){
+  const list = loadNotifications();
+  document.getElementById('notify-list').innerHTML = list.map(n=>`
+    <div class="notify-row ${n.read ? '' : 'unread'}">
+      <div class="notify-icon">${icon(NOTIFY_ICONS[n.type] || 'bell')}</div>
+      <div>
+        <p class="notify-text">${escapeHtml(n.text)}</p>
+        <div class="notify-time">${timeAgo(n.at)}</div>
+      </div>
+    </div>
+  `).join('');
+  document.getElementById('notify-empty').style.display = list.length ? 'none' : 'block';
+  if(list.some(n=> !n.read)){
+    saveJSON(NOTIFY_KEY, list.map(n=> ({ ...n, read:true })));
+    updateNotifyBadges();
+  }
+}
 
 // ---- 投稿画面 ----
 // 今はバックエンドがないため、投稿した動画はブラウザ内のメモリ(Object URL)に
@@ -3710,6 +4040,10 @@ document.getElementById('onboarding-submit').addEventListener('click', ()=>{
 // ---- プロフィール画面 ----
 document.getElementById('friends-icon').innerHTML = icon('users');
 document.getElementById('profile-edit').addEventListener('click', openProfileEditor);
+document.getElementById('friends-send').addEventListener('click', openFriendShare);
+document.getElementById('friends-open').addEventListener('click', ()=> openPeople('friends'));
+document.getElementById('profile-gear').innerHTML = icon('gear');
+document.getElementById('profile-gear').addEventListener('click', ()=> showScreen('settings'));
 document.getElementById('profile-bell').innerHTML = icon('bell');
 document.getElementById('profile-bell').addEventListener('click', ()=> showScreen('notifications'));
 document.getElementById('notifications-back').addEventListener('click', ()=> showScreen('profile'));
@@ -3733,7 +4067,14 @@ function renderProfileScreen(){
 
   document.getElementById('profile-following-count').textContent = loadFollowing().length;
   document.getElementById('profile-followers-count').textContent = 0; // サーバー機能ができるまでは常に0
-  document.getElementById('profile-friends-count').textContent = 0;
+  const friends = loadFriends();
+  document.getElementById('profile-friends-count').textContent = friends.length;
+  document.getElementById('friends-empty').style.display = friends.length ? 'none' : 'block';
+  const ranking = friendRanking();
+  document.getElementById('profile-friends-ranking').innerHTML = friends.length
+    ? `<div class="friends-ranking-title" style="margin-top:0;">直近7日間のランキング</div>${ranking.slice(0, 3).map((e, i)=> friendRowHtml(e, i + 1, false)).join('')}`
+    : '';
+  updateNotifyBadges();
 
   renderProfileGrid();
 
@@ -3787,12 +4128,165 @@ document.getElementById('profile-grid').addEventListener('click', async (e)=>{
   if(card) jumpToShort(card.dataset.id);
 });
 
+// ---- 友達：勉強時間の見せ合い ----
+// サーバーがないので「記録カード」をリンクで交換する方式。
+// 自分の記録をリンクにしてLINEなどで送り、相手がそのリンクを開くと、相手の端末に友達として保存される。
+// 見えるのはリンクを送った時点の記録。新しい記録を見せるにはもう一度送る（サーバーができたら自動で更新する）
+const FRIENDS_KEY = 'zonenow_friends';
+const FRIEND_CARD_DAYS = 14;   // カードに入れる日数（日ごとの合計だけ。教科別は直近7日）
+const FRIEND_NAME_MAX = 20;
+function loadFriends(){ return loadJSON(FRIENDS_KEY, []); }
+
+// 日本語を含むJSONを、URLに入れられる文字だけにする（base64url）
+function toBase64Url(text){
+  let bin = '';
+  new TextEncoder().encode(text).forEach(b=>{ bin += String.fromCharCode(b); });
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function fromBase64Url(str){
+  const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(b64 + '='.repeat((4 - b64.length % 4) % 4));
+  return new TextDecoder().decode(Uint8Array.from(bin, c=> c.charCodeAt(0)));
+}
+
+function myFriendCard(){
+  const p = loadProfile() || {};
+  const log = loadStudyLog();
+  const from = dateKeyDaysAgo(FRIEND_CARD_DAYS - 1), weekStart = dateKeyDaysAgo(6), today = localDateKey();
+  const byDay = {}, bySubject = {};
+  const subjectIds = SUBJECTS.map(x=> x.id);
+  log.forEach(e=>{
+    if(e.date < from || e.date > today) return;
+    byDay[e.date] = (byDay[e.date] || 0) + e.seconds;
+    if(e.date >= weekStart){
+      const k = subjectIds.includes(e.subject) ? e.subject : 'other';
+      bySubject[k] = (bySubject[k] || 0) + e.seconds;
+    }
+  });
+  return { v:1, id: myUserId(), n: (p.name || '').slice(0, FRIEND_NAME_MAX), g: (gradeLabelOf(p) || '').slice(0, 20), t: Date.now(), d: Object.entries(byDay), s: bySubject };
+}
+function friendLinkUrl(){
+  return `${location.href.split(/[?#]/)[0]}?friend=${toBase64Url(JSON.stringify(myFriendCard()))}`;
+}
+
+// リンクから届いたカードを確かめて、保存する形にする。おかしければ null（他人が作ったデータなので全部確かめる）
+function parseFriendCard(raw){
+  let c;
+  try{ c = JSON.parse(fromBase64Url(raw)); }catch(e){ return null; }
+  if(!c || c.v !== 1 || typeof c.id !== 'string' || !/^[A-Za-z0-9-]{16,64}$/.test(c.id)) return null;
+  const name = typeof c.n === 'string' ? c.n.trim().slice(0, FRIEND_NAME_MAX) : '';
+  if(!name) return null;
+  const grade = typeof c.g === 'string' ? c.g.slice(0, 20) : '';
+  if(typeof c.t !== 'number' || !isFinite(c.t) || c.t < 1.6e12 || c.t > Date.now() + 86400000) return null;
+  if(!Array.isArray(c.d) || c.d.length > 31) return null;
+  const days = {};
+  for(const item of c.d){
+    if(!Array.isArray(item) || !/^\d{4}-\d{2}-\d{2}$/.test(item[0]) || !Number.isInteger(item[1]) || item[1] < 0 || item[1] > 10 * 86400) return null;
+    days[item[0]] = item[1];
+  }
+  const subjects = {};
+  if(c.s && typeof c.s === 'object'){
+    for(const [k, sec] of Object.entries(c.s)){
+      if(SUBJECTS.some(x=> x.id === k) && Number.isInteger(sec) && sec >= 0 && sec <= 70 * 86400) subjects[k] = sec;
+    }
+  }
+  return { id: c.id, name, grade, updatedAt: c.t, days, subjects };
+}
+
+// 今日から見た「今日」「直近7日間」（古いカードは、日が経つほど直近7日間から外れていく）
+function friendStats(f){
+  const today = localDateKey(), weekStart = dateKeyDaysAgo(6);
+  let week = 0;
+  Object.entries(f.days).forEach(([date, sec])=>{ if(date >= weekStart && date <= today) week += sec; });
+  return { today: f.days[today] || 0, week };
+}
+
+function formatUpdatedAt(ts){
+  const d = new Date(ts);
+  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}時点`;
+}
+
+// 自分＋友達を直近7日間の勉強時間でならべる
+function friendRanking(){
+  const p = loadProfile() || {};
+  const mine = studyTotals();
+  return [
+    { me:true, name: p.name || 'あなた', grade: gradeLabelOf(p), week: mine.week, today: mine.today },
+    ...loadFriends().map(f=> ({ ...friendStats(f), id: f.id, name: f.name, grade: f.grade, updatedAt: f.updatedAt })),
+  ].sort((a, b)=> b.week - a.week || (a.me ? -1 : b.me ? 1 : 0));
+}
+function friendRowHtml(entry, rank, deletable){
+  const sub = entry.me ? (entry.grade || '') : [entry.grade, formatUpdatedAt(entry.updatedAt)].filter(Boolean).join(' ・ ');
+  return `
+    <div class="friend-row ${entry.me ? 'me' : ''}">
+      <div class="friend-rank">${rank}</div>
+      <div class="avatar">${escapeHtml(entry.name.charAt(0))}</div>
+      <div class="friend-main">
+        <div class="friend-name">${escapeHtml(entry.name)}${entry.me ? '<span class="me-tag">あなた</span>' : ''}</div>
+        <div class="friend-sub">${escapeHtml(sub)}</div>
+      </div>
+      <div class="friend-time">
+        <div class="friend-week">${formatStudyTime(entry.week)}</div>
+        <div class="friend-today">今日 ${formatStudyTime(entry.today)}</div>
+      </div>
+      ${deletable && !entry.me ? `<button class="study-row-delete" data-remove-friend="${escapeHtml(entry.id)}" aria-label="${escapeHtml(entry.name)}を友達から外す">×</button>` : ''}
+    </div>`;
+}
+
+function openFriendShare(){
+  const p = loadProfile();
+  if(!p){ showToast('先にプロフィールを設定してください'); return; }
+  openShareSheet({
+    title: '自分の記録を友達に送る',
+    url: friendLinkUrl(),
+    text: `${p.name}さんの勉強記録｜ゾーンNOW（直近7日間：${formatStudyTime(studyTotals().week)}）`,
+    note: 'リンクを開いた友達のゾーンNOWに、今のあなたの勉強時間が届きます。新しい記録を見せたいときは、もう一度送ってね。',
+  });
+}
+
+// 友達の記録リンク（?friend=...）から開いたとき
+async function handleFriendLink(raw){
+  // 再読み込みで同じリンクを何度も処理しないよう、URLから外しておく
+  const params = new URLSearchParams(location.search);
+  params.delete('friend');
+  history.replaceState(null, '', location.pathname + (params.toString() ? '?' + params : '') + location.hash);
+
+  const card = parseFriendCard(raw);
+  if(!card){ showToast('友達の記録リンクを読み取れませんでした'); return; }
+  if(card.id === myUserId()){ showToast('これはあなた自身の記録リンクです。友達に送ってね'); return; }
+
+  const friends = loadFriends();
+  const existing = friends.find(f=> f.id === card.id);
+  const myWeek = studyTotals().week;
+  if(existing){
+    if(card.updatedAt <= existing.updatedAt){ showToast(`${card.name}さんの記録は最新です`); }
+    else {
+      const wasBehind = friendStats(existing).week <= myWeek;
+      Object.assign(existing, card);
+      saveJSON(FRIENDS_KEY, friends);
+      addNotification('friend', `${card.name}さんの勉強記録が更新されました（直近7日間：${formatStudyTime(friendStats(card).week)}）`);
+      if(wasBehind && friendStats(card).week > myWeek){
+        addNotification('friend', `${card.name}さんに、直近7日間の勉強時間で抜かれました。巻き返そう！`, `overtaken:${card.id}:${localDateKey()}`);
+      }
+      showToast(`${card.name}さんの記録を更新しました`);
+    }
+  } else {
+    const label = card.grade ? `${card.name}さん（${card.grade}）` : `${card.name}さん`;
+    if(!await confirmDialog(`${label}の勉強記録が届きました。友達に追加して、勉強時間を見せ合いますか？`, '友達に追加')) return;
+    friends.push({ ...card, addedAt: Date.now() });
+    if(!saveJSON(FRIENDS_KEY, friends)){ showToast('この端末では保存できませんでした'); return; }
+    addNotification('friend', `${card.name}さんと友達になりました。あなたの記録も送ってあげよう`);
+    showToast(`${card.name}さんを友達に追加しました`);
+  }
+  if(loadProfile()) openPeople('friends');
+}
+
 // ---- フォロー中・フォロワー・友達の一覧 ----
-// フォロワーと友達は、サーバー機能（アカウント同士のつながり）ができるまで空のまま
+// フォロワーは、サーバー機能（アカウント同士のつながり）ができるまで空のまま
 const PEOPLE_TABS = {
   following: { label:'フォロー中', emptyIcon:'user', emptyTitle:'まだ誰もフォローしていません', emptySub:'動画のアイコンの「＋」から、気になるクリエイターをフォローできます。' },
   followers: { label:'フォロワー', emptyIcon:'users', emptyTitle:'まだフォロワーはいません', emptySub:'動画を投稿して、あなたを見つけてもらおう。' },
-  friends:   { label:'友達',       emptyIcon:'users', emptyTitle:'友達機能は準備中です', emptySub:'友達になると、お互いの今日・今週の勉強時間を見せ合えるようになります。' },
+  friends:   { label:'友達',       emptyIcon:'users', emptyTitle:'まだ友達はいません', emptySub:'下のボタンから自分の記録をLINEなどで友達に送り、友達からも送ってもらうと、お互いの勉強時間を見せ合えます。' },
 };
 let peopleTab = 'following';
 
@@ -3811,16 +4305,30 @@ function renderPeopleScreen(){
     btn.setAttribute('aria-selected', active);
   });
 
-  const people = peopleTab === 'following' ? loadFollowing() : [];
-  document.getElementById('people-list').innerHTML = people.map(name=>`
-    <div class="people-row">
-      <div class="avatar">${escapeHtml(name.charAt(0))}</div>
-      <div class="people-name">${escapeHtml(name)}</div>
-      <button class="people-action" data-unfollow="${escapeHtml(name)}">フォロー解除</button>
-    </div>
-  `).join('');
+  const listEl = document.getElementById('people-list');
+  let count;
+  if(peopleTab === 'friends'){
+    // 友達：自分も入れた直近7日間のランキング
+    count = loadFriends().length;
+    const send = `<button class="study-btn primary full" id="people-friends-send">自分の記録を友達に送る</button>
+      <p class="friends-howto">見えるのは、友達がリンクを送った時点の記録です。新しい記録は、もう一度送ってもらうと更新されます。</p>`;
+    listEl.innerHTML = count
+      ? `${send}<div class="friends-ranking-title">直近7日間のランキング</div>${friendRanking().map((e, i)=> friendRowHtml(e, i + 1, true)).join('')}`
+      : '';
+  } else {
+    const people = peopleTab === 'following' ? loadFollowing() : [];
+    count = people.length;
+    listEl.innerHTML = people.map(name=>`
+      <div class="people-row">
+        <div class="avatar">${escapeHtml(name.charAt(0))}</div>
+        <div class="people-name">${escapeHtml(name)}</div>
+        <button class="people-action" data-unfollow="${escapeHtml(name)}">フォロー解除</button>
+      </div>
+    `).join('');
+  }
 
-  document.getElementById('people-empty').style.display = people.length ? 'none' : 'block';
+  document.getElementById('people-empty').style.display = count ? 'none' : 'block';
+  document.getElementById('people-empty-send').style.display = peopleTab === 'friends' && !count ? 'block' : 'none';
   document.getElementById('people-empty-icon').innerHTML = icon(tab.emptyIcon);
   document.getElementById('people-empty-title').textContent = tab.emptyTitle;
   document.getElementById('people-empty-sub').textContent = tab.emptySub;
@@ -3833,7 +4341,18 @@ document.querySelectorAll('.people-tab').forEach(btn=>{
   btn.addEventListener('click', ()=>{ peopleTab = btn.dataset.tab; renderPeopleScreen(); });
 });
 document.getElementById('people-back').addEventListener('click', ()=> showScreen('profile'));
+document.getElementById('people-empty-send').addEventListener('click', openFriendShare);
 document.getElementById('people-list').addEventListener('click', async (e)=>{
+  if(e.target.closest('#people-friends-send')){ openFriendShare(); return; }
+  const remove = e.target.closest('[data-remove-friend]');
+  if(remove){
+    const f = loadFriends().find(x=> x.id === remove.dataset.removeFriend);
+    if(!f || !await confirmDialog(`${f.name}さんを友達から外しますか？`, '外す')) return;
+    saveJSON(FRIENDS_KEY, loadFriends().filter(x=> x.id !== f.id));
+    renderPeopleScreen();
+    showToast(`${f.name}さんを友達から外しました`);
+    return;
+  }
   const btn = e.target.closest('[data-unfollow]');
   if(!btn) return;
   const name = btn.dataset.unfollow;
@@ -3882,8 +4401,101 @@ document.getElementById('profile-avatar-input').addEventListener('change', async
   }
 });
 
+// ---- 設定画面 ----
+function renderSettingsScreen(){
+  const blocked = loadJSON(BLOCKED_CREATORS_KEY, []);
+  document.getElementById('settings-blocked').innerHTML = blocked.map(name=>`
+    <div class="settings-row"><span>${escapeHtml(name)}</span><button class="people-action" data-unblock="${escapeHtml(name)}">表示する</button></div>
+  `).join('');
+  document.getElementById('settings-blocked-empty').style.display = blocked.length ? 'none' : 'block';
+  const hidden = loadJSON(HIDDEN_VIDEOS_KEY, []).length;
+  document.getElementById('settings-hidden-row').style.display = hidden ? 'flex' : 'none';
+  document.getElementById('settings-hidden-count').textContent = `「興味なし」にした動画：${hidden}本`;
+}
+// 表示しない設定を戻したら、フィードを作り直してまた出るようにする
+function afterUnhide(message){
+  renderSettingsScreen();
+  renderFeed();
+  renderResults();
+  showToast(message);
+}
+document.getElementById('settings-back').addEventListener('click', ()=> showScreen('profile'));
+document.getElementById('settings-blocked').addEventListener('click', e=>{
+  const btn = e.target.closest('[data-unblock]');
+  if(!btn) return;
+  saveJSON(BLOCKED_CREATORS_KEY, loadJSON(BLOCKED_CREATORS_KEY, []).filter(n=> n !== btn.dataset.unblock));
+  afterUnhide(`${btn.dataset.unblock}の動画をまた表示します`);
+});
+document.getElementById('settings-hidden-reset').addEventListener('click', ()=>{
+  saveJSON(HIDDEN_VIDEOS_KEY, []);
+  afterUnhide('「興味なし」にした動画をまた表示します');
+});
+
+// バックアップ：記録や設定をファイルに書き出す／読み込む（投稿した動画・写真は大きいので含めない）
+const BACKUP_KEYS = [PROFILE_KEY, USER_ID_KEY, STUDY_LOG_KEY, GOAL_KEY, FRIENDS_KEY, FOLLOW_KEY, LIKES_KEY, SAVES_KEY,
+  COMMENTS_KEY, HIDDEN_VIDEOS_KEY, BLOCKED_CREATORS_KEY, NOTIFY_KEY, AI_CHAT_KEY];
+document.getElementById('backup-export').addEventListener('click', ()=>{
+  const data = {};
+  BACKUP_KEYS.forEach(k=>{ const v = loadJSON(k, null); if(v !== null) data[k] = v; });
+  const blob = new Blob([JSON.stringify({ app:'zonenow', version:1, exportedAt: Date.now(), data })], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `zonenow-backup-${localDateKey()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=> URL.revokeObjectURL(url), 2000);
+  showToast('バックアップを書き出しました');
+});
+// 読み込むファイルは中身を確かめる（形が違うものは使わない）
+function validBackupEntries(data){
+  if(!data || typeof data !== 'object') return [];
+  return Object.entries(data).filter(([k, v])=>{
+    if(!BACKUP_KEYS.includes(k)) return false;
+    if(k === PROFILE_KEY) return v && typeof v === 'object' && typeof v.name === 'string' && v.name.trim() && typeof v.grade === 'string';
+    if(k === STUDY_LOG_KEY) return Array.isArray(v) && v.every(e=> e && /^[A-Za-z0-9]+$/.test(e.id) && typeof e.subject === 'string'
+      && Number.isFinite(e.seconds) && e.seconds > 0 && /^\d{4}-\d{2}-\d{2}$/.test(e.date));
+    if(k === USER_ID_KEY) return typeof v === 'string' && /^[A-Za-z0-9-]{16,64}$/.test(v);
+    if(k === GOAL_KEY) return GOAL_OPTIONS.includes(v);
+    if(k === COMMENTS_KEY) return v && typeof v === 'object' && !Array.isArray(v);
+    return Array.isArray(v);
+  });
+}
+document.getElementById('backup-import').addEventListener('change', async e=>{
+  const file = e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+  let parsed = null;
+  try{ parsed = JSON.parse(await file.text()); }catch(err){}
+  const entries = parsed && parsed.app === 'zonenow' && parsed.version === 1 ? validBackupEntries(parsed.data) : [];
+  if(!entries.length){ showToast('ゾーンNOWのバックアップファイルではないようです'); return; }
+  if(!await confirmDialog('今のデータを、このファイルの内容に置き換えます。よろしいですか？', '読み込む')) return;
+  entries.forEach(([k, v])=> saveJSON(k, v));
+  location.reload();
+});
+
+// すべてのデータを削除（退会のかわり）：端末内のゾーンNOWのデータを消して最初からにする
+document.getElementById('settings-delete-all').addEventListener('click', async ()=>{
+  if(!await confirmDialog('この端末のゾーンNOWのデータ（勉強記録・友達・投稿など）をすべて削除します。元に戻せません。本当に削除しますか？', 'すべて削除')) return;
+  try{ Object.keys(localStorage).filter(k=> k.startsWith('zonenow_')).forEach(k=> localStorage.removeItem(k)); }catch(err){}
+  await new Promise(resolve=>{
+    try{
+      const req = indexedDB.deleteDatabase(POST_DB_NAME);
+      req.onsuccess = req.onerror = req.onblocked = ()=> resolve();
+    }catch(err){ resolve(); }
+    setTimeout(resolve, 1500);
+  });
+  location.href = location.pathname;
+});
+
 if(!loadProfile()) showScreen('onboarding');
 restoreOwnPosts();
+updateNotifyBadges();
+
+// 友達の記録リンク（?friend=...）から開いたとき
+const FRIEND_PARAM = new URLSearchParams(location.search).get('friend');
+if(FRIEND_PARAM) handleFriendLink(FRIEND_PARAM);
 
 // ---- PWA: ホーム画面追加バナー ----
 let deferredPrompt = null;
@@ -3902,7 +4514,25 @@ document.getElementById('install-btn').addEventListener('click', async ()=>{
 });
 document.getElementById('install-close').addEventListener('click', ()=>{
   document.getElementById('install-banner').classList.remove('show');
+  if(iosInstallHint) saveJSON(IOS_HINT_KEY, true); // 一度閉じたらもう出さない（方法は設定画面にある）
 });
+
+// iPhoneは「追加」ボタンを出せない（ブラウザが対応していない）ので、やり方を案内する
+const IOS_HINT_KEY = 'zonenow_ios_hint_closed';
+const iosInstallHint = (()=>{
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+  let inFrame = true;
+  try{ inFrame = window.self !== window.top; }catch(e){}
+  return isIos && !standalone && !inFrame && !loadJSON(IOS_HINT_KEY, false);
+})();
+if(iosInstallHint){
+  const banner = document.getElementById('install-banner');
+  banner.querySelector('.ib-title').textContent = 'ホーム画面に追加しよう';
+  banner.querySelector('.ib-sub').textContent = '下の共有ボタン（□に↑）→「ホーム画面に追加」';
+  document.getElementById('install-btn').style.display = 'none';
+  banner.classList.add('show');
+}
 
 // ---- Service Worker登録 ----
 if('serviceWorker' in navigator){

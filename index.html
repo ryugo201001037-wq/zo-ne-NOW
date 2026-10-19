@@ -748,6 +748,53 @@
   #install-banner button.ib-cta{ background:var(--ink); color:#fff; font-size:12px; font-weight:700; padding:8px 12px; border-radius:99px; }
   #install-banner button.ib-close{ color:var(--muted); font-size:18px; padding:4px; }
 
+  /* ============================================================
+     スマホの画面に合わせる調整
+  ============================================================ */
+  /* 入力欄の文字は16px以上：これより小さいと、iPhoneで入力欄を押したときに画面が勝手に拡大される */
+  .post-input{ font-size:16px; }
+
+  /* 指で押しやすい大きさ（目安44px）。見た目はそのままで、押せる範囲だけ広げるものもある */
+  .bottom-nav{ padding-left:8px; padding-right:8px; }
+  .nav-btn{ flex:1; min-height:44px; justify-content:center; }
+  .nav-btn.nav-center-btn{ flex:0 0 46px; min-height:46px; }
+  .nav-text{ white-space:nowrap; }
+  .back-btn, .cal-nav{ width:40px; height:40px; }
+  .icon-btn{ width:40px; height:40px; }
+  .action-item{ min-width:44px; }
+  .mute-item{ min-width:44px; min-height:44px; justify-content:center; }
+  .ai-plan .chip{ min-height:38px; }
+  .sheet-close{ min-width:44px; min-height:44px; display:flex; align-items:center; justify-content:center; }
+  .study-row-delete{ min-width:44px; min-height:44px; }
+  .profile-edit-btn, .people-action{ min-height:40px; }
+  .ai-suggestions .chip{ min-height:38px; }
+  .text-link{ padding:12px 14px; margin-top:0; }
+  .record-reset{ padding:12px 14px; margin-top:18px; }
+  .follow-badge::after, .ai-attach-remove::after{ content:''; position:absolute; inset:-10px; }
+  .ai-attach-remove{ position:relative; }
+
+  /* 幅の狭いスマホ（320px）では、カレンダーの余白を詰めて日付を押しやすくする */
+  @media (max-width:340px){
+    #history-screen .record-wrap{ padding-left:12px; padding-right:12px; }
+    #history-screen .study-card{ padding-left:10px; padding-right:10px; }
+    .cal-weekdays, .cal-grid{ gap:3px; }
+  }
+
+  /* 背の低いスマホ（iPhone SEなど）でも、投稿画面の選択エリアで画面が埋まらないように */
+  .post-upload{ width:min(220px, 30vh); }
+
+  /* パソコン・タブレットで開いたときは、スマホの画面サイズで真ん中に表示する */
+  @media (min-width:600px){
+    html, body{ background:#06080D; }
+    #app{ width:430px; margin:0 auto; }
+  }
+  @media (min-width:600px) and (min-height:700px){
+    #app{
+      height:min(932px, calc(100% - 48px)); margin:auto; border-radius:32px;
+      border:1px solid rgba(255,255,255,.1); box-shadow:0 30px 80px rgba(0,0,0,.6);
+    }
+  }
+
   @media (prefers-reduced-motion: reduce){
     .zone-meter-fill{ transition:none; }
   }

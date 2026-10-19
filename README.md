@@ -27,7 +27,8 @@ npm test                 # アプリ全体（AIサーバーとのやりとりも
 (cd server && npm test)  # AIサーバー単体
 ```
 
-- `tests/full.test.js`：全画面・全機能のチェック。`tests/ai.test.js`：AIコーチ（AIなし／模擬AIあり）。
+- `tests/full.test.js`：全画面・全機能のチェック。`tests/ai.test.js`：AIコーチ（AIなし／模擬AIあり／AIサーバー）。
+- `tests/layout.test.js`：スマホ（幅320〜430px）とパソコンで、はみ出し・入力欄の文字サイズ・ボタンの押しやすさを確認。
 - テスト用のサーバー（ポート8139、`PORT` で変更可）はテストが自分で起動します。
 - AIはにせもの（決まった文を返す）に置き換えて動かすので、APIの料金はかかりません。
 - Playwright付属のブラウザが無い環境では、`CHROMIUM_PATH` にChromiumの場所を指定してください。

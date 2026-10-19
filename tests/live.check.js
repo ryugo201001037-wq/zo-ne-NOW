@@ -58,6 +58,12 @@ const today = new Date().toISOString().slice(0, 10);
     const stillA = await a.from('study_logs').select('seconds').eq('id', 'live1');
     check('Aの記録はそのまま', stillA.data && stillA.data[0].seconds === 1800);
 
+    state.section = 'ご意見';
+    const fb = await a.from('feedback').insert({ message: '確認用のご意見（自動で消えます）', app_version: 'check', platform: 'web' });
+    check('ご意見を送れる（supabase/schema.sql の feedback を実行済みか）', !fb.error, fb.error && fb.error.message);
+    const fbRead = await a.from('feedback').select('id');
+    check('ご意見はアプリからは読めない', !fbRead.error && fbRead.data.length === 0, JSON.stringify(fbRead.data || fbRead.error));
+
     state.section = 'ログインしていない人';
     const gp = await guest.from('profiles').select('id');
     const gl = await guest.from('study_logs').select('id');

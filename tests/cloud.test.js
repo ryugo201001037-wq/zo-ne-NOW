@@ -7,7 +7,7 @@ const { check, state, report } = createChecker();
 
 // ---- にせSupabase（ログイン：GoTrue、データ：PostgREST の必要なところだけ） ----
 function startFakeSupabase() {
-  const fake = { users: new Map(), profiles: new Map(), logs: new Map(), signups: 0, offline: false, rejectNextLog: false, rpcCalls: 0 };
+  const fake = { users: new Map(), profiles: new Map(), logs: new Map(), feedback: [], signups: 0, offline: false, rejectNextLog: false, rpcCalls: 0 };
   const userOf = req => {
     const m = /^Bearer tok-(.+)$/.exec(req.headers.authorization || '');
     return m && fake.users.has(m[1]) ? m[1] : null;
@@ -53,6 +53,14 @@ function startFakeSupabase() {
         if (row.user_id !== uid) return send(403, { code: '42501', message: 'row-level security' });
         if (!(row.seconds > 0)) return send(400, { code: '23514', message: 'check violation' });
         fake.logs.set(`${uid}/${row.id}`, row);
+      }
+      return send(201);
+    }
+    if (p === '/rest/v1/feedback' && req.method === 'POST') {
+      for (const row of [].concat(body)) {
+        if (row.user_id && row.user_id !== uid) return send(403, { code: '42501', message: 'row-level security' });
+        if (!row.message || row.message.length > 1000) return send(400, { code: '23514', message: 'check violation' });
+        fake.feedback.push({ ...row, user_id: uid });
       }
       return send(201);
     }
@@ -149,6 +157,14 @@ function startFakeSupabase() {
   check('送れたらキューは空', await waitFor(() => page.evaluate(() => JSON.parse(localStorage.getItem('zonenow_sync_queue')).length === 0)));
   await page.click('#settings-back'); await page.waitForTimeout(150); await page.click('#profile-gear'); await page.waitForTimeout(200);
   check('設定に「ログイン中」', (await page.textContent('#settings-account')).includes('ログイン中'));
+
+  state.section = 'ご意見';
+  await nav(page, 'profile'); await page.click('#profile-gear'); await page.waitForTimeout(200);
+  await page.fill('#feedback-input', 'AIの画面の送信ボタンが押しにくい');
+  await page.click('#feedback-send');
+  check('ご意見がサーバーに届く（誰からか・バージョン・ウェブ）', await waitFor(() => fake.feedback.length === 1 && fake.feedback[0].user_id === uid && fake.feedback[0].message.includes('押しにくい') && fake.feedback[0].platform === 'web' && fake.feedback[0].app_version === '1.0.0'), JSON.stringify(fake.feedback));
+  check('送ったら入力欄は空に', (await page.inputValue('#feedback-input')) === '');
+  await page.click('#settings-back'); await page.waitForTimeout(150);
 
   state.section = '断られた変更';
   fake.rejectNextLog = true;

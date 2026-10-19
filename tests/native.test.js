@@ -12,7 +12,10 @@ async function open(browser, native) {
   page.on('pageerror', e => errors.push(e.message));
   await page.addInitScript(native => {
     window.confirm = () => false;
-    if (native) window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'ios' };
+    if (native) {
+      window.__haptics = [];
+      window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'ios', Plugins: { Haptics: { impact: async o => { window.__haptics.push(o.style); } } } };
+    }
     localStorage.setItem('zonenow_profile', JSON.stringify({ name: 'テスト', grade: 'junior2', createdAt: 1 }));
   }, native);
   await page.goto(APP_URL);
@@ -32,11 +35,17 @@ async function open(browser, native) {
   check('「ホーム画面に追加」の案内は出さない', !(await p.$eval('#install-banner', el => el.classList.contains('show'))));
   await p.click('.screen.active [data-nav="profile"]'); await p.click('#profile-gear'); await p.waitForTimeout(200);
   check('設定の「ホーム画面に追加する方法」も出さない', !(await p.isVisible('#settings-install-section')));
+  check('バージョンに「iPhoneアプリ」', (await p.textContent('#settings-version')).includes('（iPhoneアプリ）'));
   await p.click('#settings-back'); await p.waitForTimeout(150);
   await p.click('.screen.active [data-nav="home"]'); await p.waitForTimeout(200);
   await p.click('#feed .short-slide:first-child [data-role="share"]');
   check('公開ページがまだ無いときは、タイトルだけ送ると伝える', (await p.textContent('#share-note')).includes('公開ページができたら'));
   check('共有のURLに capacitor:// を使わない', await p.evaluate(() => shareUrlOf(VIDEOS[0]) === ''));
+  await p.click('#share-sheet-close'); await p.waitForTimeout(150);
+  await p.click('#feed .short-slide:first-child [data-role="like"]');
+  check('いいねで軽く振動', await p.evaluate(() => window.__haptics.includes('LIGHT')));
+  check('ボタンや文字は長押しで選択されない', await p.evaluate(() => getComputedStyle(document.body).webkitUserSelect === 'none' || getComputedStyle(document.body).userSelect === 'none'));
+  check('AIの回答は選んでコピーできる', await p.evaluate(() => { const b = document.createElement('div'); b.className = 'ai-bubble'; document.body.appendChild(b); const v = getComputedStyle(b).userSelect || getComputedStyle(b).webkitUserSelect; b.remove(); return v === 'text'; }));
   check('エラーなし', !app.errors.length, app.errors.join(' / '));
   await app.context.close();
 

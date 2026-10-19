@@ -83,6 +83,13 @@ check('おかしなIDは入らない', !as(A, `insert into study_logs (id, subje
 check('記録の種類は timer / manual だけ', !as(A, `insert into study_logs (id, subject, seconds, date, source) values ('z2', 'math', 60, '2026-10-19', 'hack')`).ok);
 check('長い時間（上限なし）も入る', as(A, `insert into study_logs (id, subject, seconds, date) values ('long1', 'math', 200000, '2026-10-19')`).ok);
 
+state.section = 'ご意見';
+check('ご意見を送れる（送った人は自動で自分）', as(A, `insert into feedback (message, app_version, platform) values ('使いやすい', '1.0.0', 'ios')`).ok && psql(`select user_id from feedback`) === A);
+check('自分が送ったご意見も、アプリからは読めない', as(A, 'select count(*) from feedback').out === '0');
+check('他人の名前では送れない', !as(A, `insert into feedback (user_id, message) values ('${B}', 'なりすまし')`).ok);
+check('空のご意見は送れない', !as(A, `insert into feedback (message) values ('')`).ok);
+check('ログインしていないと送れない', !as(null, `insert into feedback (message) values ('匿名')`).ok);
+
 state.section = '未ログイン';
 check('ログインしていないと何も見えない', as(null, 'select count(*) from profiles').out === '0' && as(null, 'select count(*) from study_logs').out === '0');
 check('ログインしていないと書き込めない', !as(null, `insert into study_logs (user_id, id, subject, seconds, date) values ('${A}', 'anon1', 'math', 60, '2026-10-19')`).ok);
@@ -91,6 +98,7 @@ state.section = '退会';
 check('ログインしていないと退会の関数は使えない', !as(null, 'select public.delete_my_account()').ok);
 check('退会できる', as(A, 'select public.delete_my_account()').ok);
 check('退会すると自分のアカウントとデータが消える', psql(`select count(*) from auth.users where id = '${A}'`) === '0'
+  && psql(`select count(*) from feedback where user_id = '${A}'`) === '0'
   && psql(`select count(*) from profiles where id = '${A}'`) === '0' && psql(`select count(*) from study_logs where user_id = '${A}'`) === '0');
 check('他の人のアカウントとデータは残る', psql(`select count(*) from auth.users where id = '${B}'`) === '1' && psql(`select count(*) from study_logs where user_id = '${B}'`) === '1');
 

@@ -7,6 +7,9 @@ const { check, state, report } = createChecker();
   const browser = await launchBrowser(['--autoplay-policy=no-user-gesture-required']);
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: ORIGIN });
+  // 見本動画（外部のサーバー）は環境によって読めないので、テスト用の短い動画を返す
+  const sampleVideo = require('fs').readFileSync(A + 'sample.webm');
+  await context.route('**/*.mp4', route => route.fulfill({ status: 200, contentType: 'video/webm', body: sampleVideo }));
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));

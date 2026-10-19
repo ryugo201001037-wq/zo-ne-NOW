@@ -796,8 +796,50 @@
   .settings-text b{ color:#fff; }
   .settings-actions{ display:flex; gap:8px; margin-top:12px; }
   .settings-actions .study-btn{ flex:1; margin-top:0; }
+  .feedback-input{ display:block; margin-top:12px; resize:none; line-height:1.6; }
   .share-hide{ margin-top:12px; padding-top:4px; border-top:1px solid rgba(255,255,255,.08); }
   .share-hide-btn{ display:block; width:100%; min-height:44px; padding:12px 4px; text-align:left; font-family:var(--font-ui); font-size:14px; color:#fff; }
+
+  /* ============================================================
+     アプリらしい操作感
+  ============================================================ */
+  /* 長押しで文字選択やコピーのメニューが出ないように（入力欄・AIの回答・コメントは選んでコピーできる） */
+  body{ -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; touch-action:manipulation; }
+  input, textarea, .ai-bubble, .comment-text, .notify-text{ -webkit-user-select:text; user-select:text; -webkit-touch-callout:default; }
+  img, video{ -webkit-user-drag:none; }
+  /* 押した瞬間に少し縮む（押せたことが分かる） */
+  .study-btn, .chip, .nav-btn, .icon-btn, .back-btn, .post-submit, .share-option, .share-hide-btn, .people-action,
+  .tool-btn, .profile-tab, .people-tab, .result-card, .ai-photo-btn, .cal-day, .action-item svg, .video-retry{
+    transition:transform .12s ease, opacity .12s ease, background .18s ease, color .18s ease, border-color .18s ease;
+  }
+  .study-btn:active:not(:disabled), .chip:active, .nav-btn:active, .icon-btn:active, .back-btn:active, .post-submit:active:not(:disabled),
+  .share-option:active, .share-hide-btn:active, .people-action:active, .tool-btn:active, .profile-tab:active, .people-tab:active,
+  .result-card:active, .ai-photo-btn:active, .cal-day:active:not(:disabled), .video-retry:active{ transform:scale(.96); opacity:.85; }
+  .action-item:active svg{ transform:scale(.86); }
+
+  /* ============================================================
+     読み込み中・オフライン
+  ============================================================ */
+  .video-status{
+    position:absolute; inset:0; z-index:2; display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    pointer-events:none; font-family:var(--font-ui); font-size:13px; color:rgba(255,255,255,.85); text-align:center; padding:0 40px;
+  }
+  .short-slide.is-loading .video-status, .short-slide.is-error .video-status{ display:flex; }
+  .spinner{ width:38px; height:38px; border-radius:50%; border:3px solid rgba(255,255,255,.2); border-top-color:#fff; animation:spin .9s linear infinite; }
+  .short-slide.is-error .spinner{ display:none; }
+  .video-status-text{ margin:0; line-height:1.6; }
+  .video-retry{
+    display:none; pointer-events:auto; min-height:44px; padding:0 22px; border-radius:99px; font-family:var(--font-ui); font-size:14px; font-weight:700;
+    color:#fff; background:linear-gradient(135deg, var(--cta-from), var(--cta-to));
+  }
+  .short-slide.is-error .video-retry{ display:block; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .offline-banner{
+    position:absolute; top:calc(var(--safe-top) + 8px); left:12px; right:12px; z-index:70; padding:9px 14px; border-radius:12px;
+    background:rgba(30,33,44,.95); border:1px solid rgba(255,255,255,.14); color:#fff; font-family:var(--font-ui); font-size:12.5px;
+    line-height:1.5; text-align:center; pointer-events:none;
+  }
+  .offline-banner[hidden]{ display:none; }
 
   /* ============================================================
      スマホの画面に合わせる調整
@@ -855,6 +897,7 @@
 <body>
 
 <div id="app">
+  <div class="offline-banner" id="offline-banner" role="status" hidden>オフラインです。動画とAIは電波のあるところで使えます（勉強の記録はこの端末に保存されます）</div>
 
   <!-- ============ ホーム画面（ショート動画フィード） ============ -->
   <section id="home-screen" class="screen active">
@@ -1188,6 +1231,13 @@
       </div>
 
       <div class="settings-section">
+        <div class="record-section-title">ご意見・不具合を送る</div>
+        <p class="settings-text">使ってみて気になったこと、ほしい機能、うまく動かないところを教えてください。運営チームが読みます（返信はできません）。</p>
+        <textarea class="post-input feedback-input" id="feedback-input" maxlength="1000" rows="4" placeholder="例：AIの画面で、送信ボタンが押しにくい"></textarea>
+        <button class="study-btn primary full" id="feedback-send">送る</button>
+      </div>
+
+      <div class="settings-section">
         <div class="record-section-title">アカウント</div>
         <p class="settings-text" id="settings-account"></p>
       </div>
@@ -1221,6 +1271,8 @@
         <p class="settings-text">アカウントと、プロフィール・勉強記録・投稿など、ゾーンNOWのデータをすべて削除して、最初の状態に戻します。</p>
         <button class="study-btn full" id="settings-delete-all">すべてのデータを削除する</button>
       </div>
+
+      <p class="record-note" id="settings-version"></p>
     </div>
     <div class="bottom-nav solid-dark" data-active-nav="profile"></div>
   </section>
@@ -1645,6 +1697,9 @@ function updateNotifyBadges(){
   document.querySelectorAll('.nav-btn[data-nav="profile"]').forEach(b=> b.classList.toggle('has-unread', unread));
 }
 
+// アプリのバージョン（iPhoneアプリの版を上げるときは ios の MARKETING_VERSION もそろえる）
+const APP_VERSION = '1.0.0';
+
 // ---- どこで動いているか（ウェブ／iPhoneアプリ） ----
 // iPhoneアプリ（Capacitor）の中では window.Capacitor がある。ウェブ用の仕組み（Service Worker・ホーム画面に追加）は使わない
 const IS_NATIVE_APP = !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
@@ -1652,6 +1707,14 @@ const IS_NATIVE_APP = !!(window.Capacitor && typeof window.Capacitor.isNativePla
 // iPhoneアプリの中では自分のURLが capacitor://localhost になって共有に使えないので、こちらを使う
 const APP_WEB_URL = '';
 function appWebBaseUrl(){ return IS_NATIVE_APP ? APP_WEB_URL : location.href.split(/[?#]/)[0]; }
+
+// 軽い振動で「押せた」ことを伝える（iPhoneアプリの中だけ。ウェブでは何もしない）
+function tapFeedback(style = 'LIGHT'){
+  const haptics = IS_NATIVE_APP && window.Capacitor.Plugins && window.Capacitor.Plugins.Haptics;
+  if(haptics) haptics.impact({ style }).catch(()=>{});
+}
+// iPhoneのSafariでは、タッチの受け口がないとボタンの「押した見た目」が出ないので、空の受け口を置く
+document.addEventListener('touchstart', ()=>{}, { passive:true });
 
 // ---- アカウントとデータベース（Supabase） ----
 // テスト期間は「名前だけで登録」：初回設定のときにSupabaseの匿名ログインでアカウントを作る。
@@ -1709,7 +1772,7 @@ async function ensureAccount(){
 }
 
 // ---- サーバーへ送る変更のキュー（端末に保存。送れたものから消す） ----
-// { type:'profile' } / { type:'log_upsert', ids? } / { type:'log_delete', id } / { type:'log_clear' }
+// { type:'profile' } / { type:'log_upsert', ids? } / { type:'log_delete', id } / { type:'log_clear' } / { type:'feedback', message, version, platform }
 function queueSync(op){
   if(!cloudEnabled()) return;
   const queue = loadJSON(SYNC_QUEUE_KEY, []);
@@ -1737,6 +1800,8 @@ async function runSyncOp(client, userId, op){
     if(rows.length) res = await client.from('study_logs').upsert(rows);
   } else if(op.type === 'log_delete'){
     res = await client.from('study_logs').delete().eq('id', op.id);
+  } else if(op.type === 'feedback'){
+    res = await client.from('feedback').insert({ message: op.message, app_version: op.version, platform: op.platform });
   } else if(op.type === 'log_clear'){
     res = await client.from('study_logs').delete().eq('user_id', userId);
   }
@@ -1775,6 +1840,12 @@ function flushSync(){
   return syncRunning;
 }
 window.addEventListener('online', ()=> flushSync());
+
+// 電波がないときは上に帯を出す
+function updateOfflineBanner(){ document.getElementById('offline-banner').hidden = navigator.onLine; }
+window.addEventListener('online', updateOfflineBanner);
+window.addEventListener('offline', updateOfflineBanner);
+updateOfflineBanner();
 
 // アカウントを消す（サーバー側のプロフィール・記録も消える）
 async function deleteCloudAccount(){
@@ -2077,7 +2148,8 @@ function createSlide(v){
   slide.dataset.music = track ? track.id : '';
   slide.innerHTML = `
     <div class="zone-meter"><div class="zone-meter-fill"></div></div>
-    ${isImage ? photoMediaHtml(v) : `<video src="${v.short}" data-src="${v.short}" muted loop playsinline preload="none"></video>`}
+    ${isImage ? photoMediaHtml(v) : `<video src="${v.short}" data-src="${v.short}" muted loop playsinline preload="none"></video>
+    <div class="video-status"><div class="spinner" aria-hidden="true"></div><p class="video-status-text"></p><button class="video-retry">もう一度読み込む</button></div>`}
 
     <div class="pause-indicator" aria-hidden="true">${icon('play')}</div>
 
@@ -2137,6 +2209,27 @@ function photoMediaHtml(v){
 function attachSlideEvents(slide, v){
   const video = slide.querySelector('video');
 
+  // 動画の読み込み中はくるくる、読み込めなかったら「もう一度読み込む」
+  if(video){
+    const statusText = slide.querySelector('.video-status-text');
+    const loaded = ()=> slide.classList.remove('is-loading', 'is-error');
+    video.addEventListener('playing', loaded);
+    video.addEventListener('canplay', loaded);
+    video.addEventListener('error', ()=>{
+      if(!video.getAttribute('src')) return; // 離れた動画の読み込みを手放したとき
+      slide.classList.remove('is-loading');
+      slide.classList.add('is-error');
+      statusText.textContent = navigator.onLine ? '動画を読み込めませんでした' : 'オフラインのため、動画を読み込めません';
+    });
+    slide.querySelector('.video-retry').addEventListener('click', ()=>{
+      slide.classList.remove('is-error');
+      slide.classList.add('is-loading');
+      statusText.textContent = '';
+      video.load();
+      if(slide.classList.contains('is-active')) video.play().catch(()=>{});
+    });
+  }
+
   // 写真カルーセル：今何枚目かをドットと「1/3」表示に反映
   const track = slide.querySelector('.photo-track');
   if(track){
@@ -2166,11 +2259,12 @@ function attachSlideEvents(slide, v){
 
   // いいね・保存（端末内に保存。同じ動画の他のスライドの表示もそろえる）
   slide.querySelector('[data-role="like"]').addEventListener('click', ()=>{
-    toggleIdInList(LIKES_KEY, v.id);
+    if(toggleIdInList(LIKES_KEY, v.id)) tapFeedback();
     syncEngagement(v.id);
   });
   slide.querySelector('[data-role="bookmark"]').addEventListener('click', ()=>{
     const saved = toggleIdInList(SAVES_KEY, v.id);
+    if(saved) tapFeedback();
     syncEngagement(v.id);
     showToast(saved ? '保存しました（プロフィールから見られます）' : '保存を取り消しました');
   });
@@ -2180,6 +2274,7 @@ function attachSlideEvents(slide, v){
   if(followBtn){
     followBtn.addEventListener('click', ()=>{
       const follow = !isFollowing(v.creator);
+      if(follow) tapFeedback();
       setFollowing(v.creator, follow);
       syncFollowButtons(v.creator, follow);
       showToast(follow ? `${v.creator}をフォローしました` : `${v.creator}のフォローを外しました`);
@@ -2360,6 +2455,10 @@ function activateSlide(slide){
   if(video){
     video.currentTime = 0;
     video.play().catch(()=>{});
+    // すぐ再生できないときだけ「読み込み中」を出す（一瞬だけ出てチラつかないよう少し待つ）
+    setTimeout(()=>{
+      if(slide.classList.contains('is-active') && !slide.classList.contains('is-error') && video.readyState < 3) slide.classList.add('is-loading');
+    }, 300);
     const start = ()=> runZoneMeter(slide, meter, video.duration && isFinite(video.duration) ? video.duration : 20, onComplete);
     if(video.readyState >= 1) start();
     else video.addEventListener('loadedmetadata', ()=>{
@@ -2375,7 +2474,7 @@ function activateSlide(slide){
 
 function deactivateSlide(slide){
   if(!slide) return;
-  slide.classList.remove('is-active', 'is-paused');
+  slide.classList.remove('is-active', 'is-paused', 'is-loading');
   meterStates.delete(slide);
   const video = slide.querySelector('video');
   const meter = slide.querySelector('.zone-meter-fill');
@@ -2903,6 +3002,7 @@ function addStudyEntry(subject, subjectOther, seconds, date, source){
     return false;
   }
   if(date === localDateKey()) checkStudyMilestones();
+  tapFeedback('MEDIUM');
   queueSync({ type:'log_upsert', ids:[log[log.length - 1].id] });
   return true;
 }
@@ -4308,6 +4408,20 @@ document.getElementById('profile-avatar-input').addEventListener('change', async
 });
 
 // ---- 設定画面 ----
+document.getElementById('settings-version').textContent = `ゾーンNOW バージョン ${APP_VERSION}（${IS_NATIVE_APP ? 'iPhoneアプリ' : 'ウェブ'}）`;
+
+// ご意見・不具合：サーバーに送る（電波がないときは、つながったときに送る）
+document.getElementById('feedback-send').addEventListener('click', ()=>{
+  const input = document.getElementById('feedback-input');
+  const message = input.value.trim();
+  if(!message){ showToast('送る内容を入力してください'); return; }
+  if(!cloudEnabled()){ showToast('この画面からは送れません（アプリから送れます）'); return; }
+  queueSync({ type:'feedback', message: message.slice(0, 1000), version: APP_VERSION, platform: IS_NATIVE_APP ? 'ios' : 'web' });
+  input.value = '';
+  input.blur();
+  tapFeedback();
+  showToast('送りました。ありがとうございます！');
+});
 if(IS_NATIVE_APP) document.getElementById('settings-install-section').style.display = 'none';
 async function renderAccountStatus(){
   const el = document.getElementById('settings-account');

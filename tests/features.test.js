@@ -134,6 +134,40 @@ const entry = (id, subject, minutes, daysAgo) => ({ id, subject, subjectOther: '
   check('エラーなし（検索・連続記録・設定）', !c.errors.length, c.errors.join(' / '));
   await c.context.close();
 
+  // ========== 読み込み中・読み込めないとき・オフライン ==========
+  state.section = '読み込み表示';
+  {
+    const f = await openApp(browser, { name: 'ヨミコミ' });
+    let blockVideos = true;
+    await f.context.route('**/*.mp4', route => (blockVideos ? route.abort() : route.fulfill({ status: 200, contentType: 'video/webm', body: fs.readFileSync(require('path').join(__dirname, 'assets', 'sample.webm')) })));
+    await f.page.reload(); await f.page.waitForTimeout(1200);
+    const first = '#feed .short-slide:first-child';
+    const isVideo = await f.page.$eval(first, s => !!s.querySelector('video'));
+    if (isVideo) {
+      check('読み込めない動画には「もう一度読み込む」', await f.page.$eval(first, s => s.classList.contains('is-error')) && await f.page.isVisible(`${first} .video-retry`));
+      check('理由を表示', (await f.page.textContent(`${first} .video-status-text`)).includes('読み込めませんでした'));
+      blockVideos = false;
+      await f.page.click(`${first} .video-retry`);
+      check('もう一度読み込むと、読み込めたら表示が消える', await f.page.waitForFunction(s => !document.querySelector(s).classList.contains('is-error') && !document.querySelector(s).classList.contains('is-loading'), first, { timeout: 5000 }).then(() => true).catch(() => false));
+    }
+    check('最初は「オフライン」の帯を出さない', !(await f.page.isVisible('#offline-banner')));
+    await f.context.setOffline(true);
+    await f.page.waitForTimeout(200);
+    check('電波がなくなると「オフライン」の帯', await f.page.isVisible('#offline-banner'));
+    await f.context.setOffline(false);
+    await f.page.waitForTimeout(200);
+    check('電波が戻ると帯が消える', !(await f.page.isVisible('#offline-banner')));
+    await f.page.click('.screen.active [data-nav="profile"]'); await f.page.click('#profile-gear'); await f.page.waitForTimeout(200);
+    check('設定にバージョン', (await f.page.textContent('#settings-version')).includes('バージョン 1.0.0（ウェブ）'));
+    await f.page.click('#feedback-send');
+    check('ご意見：空では送らない', (await f.page.textContent('#toast')).includes('入力'));
+    await f.page.fill('#feedback-input', 'テストの意見');
+    await f.page.click('#feedback-send');
+    check('ご意見：サーバーがない画面では送れないと伝える', (await f.page.textContent('#toast')).includes('この画面からは送れません'));
+    check('エラーなし（読み込み表示）', !f.errors.length, f.errors.join(' / '));
+    await f.context.close();
+  }
+
   // ========== iPhoneでホーム画面追加の案内 ==========
   state.section = 'iPhoneの案内';
   const iphoneUa = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';

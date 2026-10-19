@@ -32,9 +32,21 @@ create table if not exists public.study_logs (
 );
 create index if not exists study_logs_user_date on public.study_logs (user_id, date);
 
+-- ---- ご意見・不具合（アプリの設定画面から送られる） ----
+-- 送るだけで、アプリからは読めない。運営は Supabase の Table Editor で読む
+create table if not exists public.feedback (
+  id          bigint generated always as identity primary key,
+  user_id     uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  message     text not null check (char_length(message) between 1 and 1000),
+  app_version text not null default '' check (char_length(app_version) <= 20),
+  platform    text not null default '' check (platform in ('', 'web', 'ios')),
+  created_at  timestamptz not null default now()
+);
+
 -- ---- 行ごとの権限：自分の行だけ ----
 alter table public.profiles   enable row level security;
 alter table public.study_logs enable row level security;
+alter table public.feedback   enable row level security;
 
 -- （すでにあるルールはそのまま。何度実行しても同じ結果になる）
 do $$ begin
@@ -58,6 +70,9 @@ do $$ begin
   end if;
   if not exists (select from pg_policies where schemaname = 'public' and tablename = 'study_logs' and policyname = 'study_logs: 自分だけ変える') then
     create policy "study_logs: 自分だけ変える" on public.study_logs for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+  end if;
+  if not exists (select from pg_policies where schemaname = 'public' and tablename = 'feedback' and policyname = 'feedback: 自分の名前で送るだけ') then
+    create policy "feedback: 自分の名前で送るだけ" on public.feedback for insert to authenticated with check (user_id = auth.uid());
   end if;
   if not exists (select from pg_policies where schemaname = 'public' and tablename = 'study_logs' and policyname = 'study_logs: 自分だけ消す') then
     create policy "study_logs: 自分だけ消す" on public.study_logs for delete to authenticated using (user_id = auth.uid());

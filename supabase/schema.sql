@@ -1,5 +1,6 @@
 -- ゾーンNOW のデータベース（Supabase / PostgreSQL）
--- 使い方：Supabase の「SQL Editor」にこのファイルの中身を貼り付けて「Run」。何度実行しても大丈夫
+-- 使い方：Supabase の「SQL Editor」にこのファイルの中身を全部貼り付けて「Run」。何度実行しても大丈夫
+-- （消す命令を含まないので、確認の画面は出ずにそのまま実行される）
 --
 -- 守り方：Row Level Security（行ごとの権限）で「自分のデータだけ読み書きできる」をDBが強制する。
 -- アプリ側にバグがあっても、他人のデータは読めないし書き換えられない。
@@ -35,23 +36,33 @@ create index if not exists study_logs_user_date on public.study_logs (user_id, d
 alter table public.profiles   enable row level security;
 alter table public.study_logs enable row level security;
 
-drop policy if exists "profiles: 自分だけ読む"   on public.profiles;
-drop policy if exists "profiles: 自分だけ作る"   on public.profiles;
-drop policy if exists "profiles: 自分だけ変える" on public.profiles;
-drop policy if exists "profiles: 自分だけ消す"   on public.profiles;
-create policy "profiles: 自分だけ読む"   on public.profiles for select to authenticated using (id = auth.uid());
-create policy "profiles: 自分だけ作る"   on public.profiles for insert to authenticated with check (id = auth.uid());
-create policy "profiles: 自分だけ変える" on public.profiles for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
-create policy "profiles: 自分だけ消す"   on public.profiles for delete to authenticated using (id = auth.uid());
-
-drop policy if exists "study_logs: 自分だけ読む" on public.study_logs;
-drop policy if exists "study_logs: 自分だけ作る" on public.study_logs;
-drop policy if exists "study_logs: 自分だけ変える" on public.study_logs;
-drop policy if exists "study_logs: 自分だけ消す" on public.study_logs;
-create policy "study_logs: 自分だけ読む"   on public.study_logs for select to authenticated using (user_id = auth.uid());
-create policy "study_logs: 自分だけ作る"   on public.study_logs for insert to authenticated with check (user_id = auth.uid());
-create policy "study_logs: 自分だけ変える" on public.study_logs for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
-create policy "study_logs: 自分だけ消す"   on public.study_logs for delete to authenticated using (user_id = auth.uid());
+-- （すでにあるルールはそのまま。何度実行しても同じ結果になる）
+do $$ begin
+  if not exists (select from pg_policies where schemaname = 'public' and tablename = 'profiles' and policyname = 'profiles: 自分だけ読む') then
+    create policy "profiles: 自分だけ読む" on public.profiles for select to authenticated using (id = auth.uid());
+  end if;
+  if not exists (select from pg_policies where schemaname = 'public' and tablename = 'profiles' and policyname = 'profiles: 自分だけ作る') then
+    create policy "profiles: 自分だけ作る" on public.profiles for insert to authenticated with check (id = auth.uid());
+  end if;
+  if not exists (select from pg_policies where schemaname = 'public' and tablename = 'profiles' and policyname = 'profiles: 自分だけ変える') then
+    create policy "profiles: 自分だけ変える" on public.profiles for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
+  end if;
+  if not exists (select from pg_policies where schemaname = 'public' and tablename = 'profiles' and policyname = 'profiles: 自分だけ消す') then
+    create policy "profiles: 自分だけ消す" on public.profiles for delete to authenticated using (id = auth.uid());
+  end if;
+  if not exists (select from pg_policies where schemaname = 'public' and tablename = 'study_logs' and policyname = 'study_logs: 自分だけ読む') then
+    create policy "study_logs: 自分だけ読む" on public.study_logs for select to authenticated using (user_id = auth.uid());
+  end if;
+  if not exists (select from pg_policies where schemaname = 'public' and tablename = 'study_logs' and policyname = 'study_logs: 自分だけ作る') then
+    create policy "study_logs: 自分だけ作る" on public.study_logs for insert to authenticated with check (user_id = auth.uid());
+  end if;
+  if not exists (select from pg_policies where schemaname = 'public' and tablename = 'study_logs' and policyname = 'study_logs: 自分だけ変える') then
+    create policy "study_logs: 自分だけ変える" on public.study_logs for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+  end if;
+  if not exists (select from pg_policies where schemaname = 'public' and tablename = 'study_logs' and policyname = 'study_logs: 自分だけ消す') then
+    create policy "study_logs: 自分だけ消す" on public.study_logs for delete to authenticated using (user_id = auth.uid());
+  end if;
+end $$;
 
 -- ---- updated_at を自動で更新 ----
 create or replace function public.touch_updated_at() returns trigger
@@ -60,8 +71,7 @@ begin
   new.updated_at := now();
   return new;
 end $$;
-drop trigger if exists profiles_touch on public.profiles;
-create trigger profiles_touch before update on public.profiles
+create or replace trigger profiles_touch before update on public.profiles
   for each row execute function public.touch_updated_at();
 
 -- ---- 退会：自分のアカウントを消す（プロフィール・記録も一緒に消える） ----

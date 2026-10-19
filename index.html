@@ -703,6 +703,10 @@
   .tag-chip{ display:inline-flex; align-items:center; gap:4px; padding:7px 8px 7px 13px; }
   .tag-chip button{ color:rgba(255,255,255,.55); font-size:15px; line-height:1; padding:0 4px; }
   .dark-screen .chip{ background:rgba(255,255,255,.07); border-color:rgba(255,255,255,.16); color:#fff; }
+  /* 教科（タイマー・手入力）：主要5教科を1行にそろえ、「その他」だけ次の行に */
+  .chip-row.subject-grid{ display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:8px 6px; }
+  .chip-row.subject-grid .chip{ padding-left:0; padding-right:0; text-align:center; white-space:nowrap; }
+  .chip-row.subject-grid .chip[data-id="other"]{ grid-column:1 / span 2; }
   .dark-screen .chip.active{
     background:linear-gradient(135deg, var(--cta-from), var(--cta-to));
     border-color:transparent; color:#fff;
@@ -834,6 +838,7 @@
     #history-screen .record-wrap{ padding-left:12px; padding-right:12px; }
     #history-screen .study-card{ padding-left:10px; padding-right:10px; }
     .cal-weekdays, .cal-grid{ gap:3px; }
+    .manual-row{ flex-direction:column; } /* 分と日付を縦に並べて、日付が切れないように */
   }
 
   /* 背の低いスマホ（iPhone SEなど）でも、投稿画面の選択エリアで画面が埋まらないように */
@@ -1009,7 +1014,7 @@
       <div class="study-card">
         <div class="record-section-title">学習タイマー</div>
         <div class="timer-display" id="timer-display">00:00:00</div>
-        <div class="chip-row" id="timer-subject-chips"></div>
+        <div class="chip-row subject-grid" id="timer-subject-chips"></div>
         <input type="text" class="post-input other-input" id="timer-subject-chips-other" placeholder="教科名を入力（例：情報）" maxlength="40" />
         <div class="timer-actions">
           <button class="study-btn primary" id="timer-toggle">開始</button>
@@ -1021,7 +1026,7 @@
       <!-- 手入力 -->
       <div class="study-card">
         <div class="record-section-title">手入力で追加</div>
-        <div class="chip-row" id="manual-subject-chips"></div>
+        <div class="chip-row subject-grid" id="manual-subject-chips"></div>
         <input type="text" class="post-input other-input" id="manual-subject-chips-other" placeholder="教科名を入力（例：情報）" maxlength="40" />
         <div class="manual-row">
           <input type="number" class="post-input" id="manual-minutes" placeholder="分（例：90）" min="1" inputmode="numeric" />

@@ -943,7 +943,7 @@
       <div class="post-field">
         <label class="post-label">学年</label>
         <div class="chip-row" id="onboarding-grade-chips"></div>
-        <input type="text" class="post-input other-input" id="onboarding-grade-chips-other" placeholder="具体的に入力（例：浪人生、大学生）" />
+        <input type="text" class="post-input other-input" id="onboarding-grade-chips-other" placeholder="具体的に入力（例：浪人生、大学生）" maxlength="20" />
       </div>
 
       <button class="post-submit" id="onboarding-submit">はじめる</button>
@@ -1010,7 +1010,7 @@
         <div class="record-section-title">学習タイマー</div>
         <div class="timer-display" id="timer-display">00:00:00</div>
         <div class="chip-row" id="timer-subject-chips"></div>
-        <input type="text" class="post-input other-input" id="timer-subject-chips-other" placeholder="教科名を入力（例：情報）" />
+        <input type="text" class="post-input other-input" id="timer-subject-chips-other" placeholder="教科名を入力（例：情報）" maxlength="40" />
         <div class="timer-actions">
           <button class="study-btn primary" id="timer-toggle">開始</button>
           <button class="study-btn" id="timer-finish">終了して記録</button>
@@ -1022,7 +1022,7 @@
       <div class="study-card">
         <div class="record-section-title">手入力で追加</div>
         <div class="chip-row" id="manual-subject-chips"></div>
-        <input type="text" class="post-input other-input" id="manual-subject-chips-other" placeholder="教科名を入力（例：情報）" />
+        <input type="text" class="post-input other-input" id="manual-subject-chips-other" placeholder="教科名を入力（例：情報）" maxlength="40" />
         <div class="manual-row">
           <input type="number" class="post-input" id="manual-minutes" placeholder="分（例：90）" min="1" inputmode="numeric" />
           <input type="date" class="post-input" id="manual-date" />
@@ -1195,6 +1195,11 @@
       </div>
 
       <div class="settings-section">
+        <div class="record-section-title">アカウント</div>
+        <p class="settings-text" id="settings-account"></p>
+      </div>
+
+      <div class="settings-section">
         <div class="record-section-title">表示しないクリエイター</div>
         <div id="settings-blocked"></div>
         <p class="settings-text" id="settings-blocked-empty">ありません。動画の「シェア」から、見たくないクリエイターを表示しないようにできます。</p>
@@ -1220,7 +1225,7 @@
 
       <div class="settings-section">
         <div class="record-section-title">データの削除</div>
-        <p class="settings-text">プロフィール・勉強記録・友達・投稿など、この端末に保存したゾーンNOWのデータをすべて削除して、最初の状態に戻します。</p>
+        <p class="settings-text">アカウントと、プロフィール・勉強記録・投稿など、ゾーンNOWのデータをすべて削除して、最初の状態に戻します。</p>
         <button class="study-btn full" id="settings-delete-all">すべてのデータを削除する</button>
       </div>
     </div>
@@ -1645,6 +1650,134 @@ function updateNotifyBadges(){
   const unread = loadNotifications().some(n=> !n.read);
   document.getElementById('profile-bell').classList.toggle('has-unread', unread);
   document.querySelectorAll('.nav-btn[data-nav="profile"]').forEach(b=> b.classList.toggle('has-unread', unread));
+}
+
+// ---- アカウントとデータベース（Supabase） ----
+// テスト期間は「名前だけで登録」：初回設定のときにSupabaseの匿名ログインでアカウントを作る。
+// ログイン状態は端末に保存されるので、次からは開くだけで自動でログインしている（TikTokと同じ）。
+// ※ ブラウザのデータを消すと同じアカウントには戻れない（あとでメール登録を足して引き継げるようにする）
+// 画面の表示は今まで通り端末の記録から行い、変更をサーバーへ送る（電波がないときは、つながったときに送る）。
+// SUPABASE_URL_DEFAULT が空なら、今まで通りこの端末の中だけで動く
+const SUPABASE_URL_DEFAULT = '';      // 例：'https://xxxx.supabase.co'
+const SUPABASE_ANON_KEY_DEFAULT = ''; // Supabaseの「anon public」キー（公開してよいキー。データは行ごとの権限で守る）
+const SUPABASE_URL = (window.ZONENOW_CONFIG && window.ZONENOW_CONFIG.supabaseUrl) || SUPABASE_URL_DEFAULT;
+const SUPABASE_ANON_KEY = (window.ZONENOW_CONFIG && window.ZONENOW_CONFIG.supabaseAnonKey) || SUPABASE_ANON_KEY_DEFAULT;
+const SYNC_QUEUE_KEY = 'zonenow_sync_queue';
+let cloudClientPromise = null;
+
+function cloudEnabled(){ return !!(SUPABASE_URL && SUPABASE_ANON_KEY); }
+
+// Supabaseのライブラリ（vendor/supabase.js）は、使うときだけ読み込む
+function getCloud(){
+  if(!cloudEnabled()) return Promise.resolve(null);
+  if(!cloudClientPromise){
+    cloudClientPromise = new Promise((resolve, reject)=>{
+      if(window.supabase) return resolve(window.supabase);
+      const script = document.createElement('script');
+      script.src = 'vendor/supabase.js';
+      script.onload = ()=> resolve(window.supabase);
+      script.onerror = ()=> reject(new Error('supabase load failed'));
+      document.head.appendChild(script);
+    }).then(lib=> lib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth:{ persistSession:true, autoRefreshToken:true, storageKey:'zonenow_auth' },
+    })).catch(err=>{ cloudClientPromise = null; throw err; });
+  }
+  return cloudClientPromise;
+}
+
+async function cloudUserId(){
+  const client = await getCloud();
+  if(!client) return null;
+  const { data } = await client.auth.getSession();
+  return data && data.session ? data.session.user.id : null;
+}
+
+// アカウントがなければ作る（名前だけ登録＝匿名ログイン）。アカウントのIDを返す
+async function ensureAccount(){
+  const client = await getCloud();
+  if(!client) return null;
+  const existing = await cloudUserId();
+  if(existing) return existing;
+  const { data, error } = await client.auth.signInAnonymously();
+  if(error) throw error;
+  return data.user.id;
+}
+
+// ---- サーバーへ送る変更のキュー（端末に保存。送れたものから消す） ----
+// { type:'profile' } / { type:'log_upsert', ids? } / { type:'log_delete', id } / { type:'log_clear' }
+function queueSync(op){
+  if(!cloudEnabled()) return;
+  const queue = loadJSON(SYNC_QUEUE_KEY, []);
+  queue.push(op);
+  saveJSON(SYNC_QUEUE_KEY, queue);
+  flushSync();
+}
+function studyLogRow(e, userId){
+  return {
+    user_id: userId, id: String(e.id), subject: String(e.subject || '').slice(0, 20),
+    subject_other: String(e.subjectOther || '').slice(0, 40), seconds: Math.max(1, Math.round(e.seconds)),
+    date: e.date, source: e.source === 'timer' ? 'timer' : 'manual',
+  };
+}
+async function runSyncOp(client, userId, op){
+  let res = null;
+  if(op.type === 'profile'){
+    const p = loadProfile();
+    if(!p) return;
+    res = await client.from('profiles').upsert({
+      id: userId, name: p.name, grade: p.grade, grade_other: (p.gradeOther || '').slice(0, 20), goal_minutes: loadGoalMinutes(),
+    });
+  } else if(op.type === 'log_upsert'){
+    const rows = loadStudyLog().filter(e=> !op.ids || op.ids.includes(e.id)).map(e=> studyLogRow(e, userId));
+    if(rows.length) res = await client.from('study_logs').upsert(rows);
+  } else if(op.type === 'log_delete'){
+    res = await client.from('study_logs').delete().eq('id', op.id);
+  } else if(op.type === 'log_clear'){
+    res = await client.from('study_logs').delete().eq('user_id', userId);
+  }
+  if(res && res.error){
+    // 中身がおかしくてサーバーに断られたもの（400番台）は、何度送っても通らないので捨てる（後ろの変更が止まらないように）
+    // ログイン切れ（401）・混雑（429）・通信やサーバーの不調はキューに残して、あとで送り直す
+    if(res.status >= 400 && res.status < 500 && ![401, 408, 429].includes(res.status)){
+      console.warn('sync dropped', op, res.error);
+      return;
+    }
+    throw res.error;
+  }
+}
+let syncRunning = null, syncAgain = false;
+function flushSync(){
+  if(!cloudEnabled()) return Promise.resolve();
+  if(syncRunning){ syncAgain = true; return syncRunning; }
+  syncRunning = (async ()=>{
+    try{
+      do{
+        syncAgain = false;
+        const client = await getCloud();
+        const userId = await cloudUserId();
+        if(!userId) return; // まだアカウントがない（初回設定の前）
+        while(loadJSON(SYNC_QUEUE_KEY, []).length){
+          await runSyncOp(client, userId, loadJSON(SYNC_QUEUE_KEY, [])[0]);
+          saveJSON(SYNC_QUEUE_KEY, loadJSON(SYNC_QUEUE_KEY, []).slice(1)); // 送れたものを消す（送っている間に足されたものは残る）
+        }
+      } while(syncAgain);
+    }catch(err){
+      // 電波がない・サーバーの不調など：キューに残しておき、次の機会に送る
+    }finally{
+      syncRunning = null;
+    }
+  })();
+  return syncRunning;
+}
+window.addEventListener('online', ()=> flushSync());
+
+// アカウントを消す（サーバー側のプロフィール・記録も消える）
+async function deleteCloudAccount(){
+  const client = await getCloud();
+  if(!client || !(await cloudUserId())) return;
+  const { error } = await client.rpc('delete_my_account');
+  if(error) throw error;
+  await client.auth.signOut().catch(()=>{});
 }
 
 // ---- 表示しない動画・クリエイター（「興味なし」） ----
@@ -2762,6 +2895,7 @@ function addStudyEntry(subject, subjectOther, seconds, date, source){
     return false;
   }
   if(date === localDateKey()) checkStudyMilestones();
+  queueSync({ type:'log_upsert', ids:[log[log.length - 1].id] });
   return true;
 }
 
@@ -2807,6 +2941,7 @@ function renderGoal(todaySeconds){
 }
 document.getElementById('goal-select').addEventListener('change', e=>{
   saveJSON(GOAL_KEY, Number(e.target.value));
+  queueSync({ type:'profile' });
   renderRecordScreen();
   checkStudyMilestones();
 });
@@ -3071,6 +3206,7 @@ async function onStudyRowDelete(e){
   const btn = e.target.closest('.study-row-delete');
   if(!btn || !await confirmDialog('この記録を削除しますか？', '削除する')) return;
   saveJSON(STUDY_LOG_KEY, loadStudyLog().filter(entry=> entry.id !== btn.dataset.id));
+  queueSync({ type:'log_delete', id: btn.dataset.id });
   renderRecordScreen();
   if(screens.history.classList.contains('active')) renderHistoryScreen();
 }
@@ -3080,6 +3216,7 @@ document.getElementById('history-list').addEventListener('click', onStudyRowDele
 document.getElementById('record-reset').addEventListener('click', async ()=>{
   if(!await confirmDialog('勉強時間の記録をすべて削除します。元に戻せません。よろしいですか？', 'すべて削除')) return;
   try{ localStorage.removeItem(STUDY_LOG_KEY); }catch(e){}
+  queueSync({ type:'log_clear' });
   renderRecordScreen();
   renderHistoryScreen();
   showToast('勉強記録を削除しました');
@@ -3970,12 +4107,31 @@ function openProfileEditor(){
 
 document.getElementById('onboarding-back').addEventListener('click', ()=> showScreen('profile'));
 
-document.getElementById('onboarding-submit').addEventListener('click', ()=>{
+let onboardingBusy = false;
+document.getElementById('onboarding-submit').addEventListener('click', async ()=>{
+  if(onboardingBusy) return;
   const name = document.getElementById('onboarding-name').value.trim();
   if(!name){ showToast('アカウント名を入力してください'); return; }
   if(name.length > PROFILE_NAME_MAX){ showToast(`アカウント名は${PROFILE_NAME_MAX}文字以内にしてください`); return; }
   const gradeError = onboardingGrade.error('学年');
   if(gradeError){ showToast(gradeError); return; }
+
+  // 初めての登録：サーバーにアカウントを作る（名前だけ登録）。作れなければ先に進まない
+  const submitBtn = document.getElementById('onboarding-submit');
+  if(!profileEditMode && cloudEnabled()){
+    onboardingBusy = true;
+    submitBtn.disabled = true;
+    submitBtn.textContent = '登録中…';
+    try{ await ensureAccount(); }
+    catch(err){
+      showToast('登録できませんでした。電波の状態を確かめて、もう一度押してね');
+      return;
+    }finally{
+      onboardingBusy = false;
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'はじめる';
+    }
+  }
 
   const prev = loadProfile() || {};
   const gradeChanged = prev.grade !== onboardingGrade.id;
@@ -3984,6 +4140,8 @@ document.getElementById('onboarding-submit').addEventListener('click', ()=>{
     showToast('この端末では保存できませんでした');
     return;
   }
+  queueSync({ type:'profile' });
+  if(!profileEditMode && loadStudyLog().length) queueSync({ type:'log_upsert' }); // 前から端末にあった記録も送る
 
   if(profileEditMode){
     if(gradeChanged) renderFeed(); // おすすめの学年を切り替える
@@ -4175,7 +4333,18 @@ document.getElementById('profile-avatar-input').addEventListener('change', async
 });
 
 // ---- 設定画面 ----
+async function renderAccountStatus(){
+  const el = document.getElementById('settings-account');
+  if(!cloudEnabled()){ el.textContent = '記録はこの端末の中だけに保存しています（サーバーには送っていません）。'; return; }
+  let id = null;
+  try{ id = await cloudUserId(); }catch(e){}
+  const pending = loadJSON(SYNC_QUEUE_KEY, []).length;
+  el.innerHTML = (id ? 'ログイン中です。記録はサーバーにも保存しています。' : 'まだサーバーに登録できていません（電波がつながったら自動で登録します）。')
+    + (pending ? `<br>まだ送れていない変更：${pending}件（電波がつながったら自動で送ります）` : '')
+    + '<br>※ テスト期間は名前だけの登録です。ブラウザのデータを消すと、このアカウントには戻れません。';
+}
 function renderSettingsScreen(){
+  renderAccountStatus();
   const blocked = loadJSON(BLOCKED_CREATORS_KEY, []);
   document.getElementById('settings-blocked').innerHTML = blocked.map(name=>`
     <div class="settings-row"><span>${escapeHtml(name)}</span><button class="people-action" data-unblock="${escapeHtml(name)}">表示する</button></div>
@@ -4252,12 +4421,20 @@ document.getElementById('backup-import').addEventListener('change', async e=>{
   if(!entries.length){ showToast('ゾーンNOWのバックアップファイルではないようです'); return; }
   if(!await confirmDialog('今のデータを、このファイルの内容に置き換えます。よろしいですか？', '読み込む')) return;
   entries.forEach(([k, v])=> saveJSON(k, v));
+  if(cloudEnabled()) saveJSON(SYNC_QUEUE_KEY, [...loadJSON(SYNC_QUEUE_KEY, []), { type:'profile' }, { type:'log_clear' }, { type:'log_upsert' }]);
   location.reload();
 });
 
 // すべてのデータを削除（退会のかわり）：端末内のゾーンNOWのデータを消して最初からにする
 document.getElementById('settings-delete-all').addEventListener('click', async ()=>{
-  if(!await confirmDialog('この端末のゾーンNOWのデータ（勉強記録・友達・投稿など）をすべて削除します。元に戻せません。本当に削除しますか？', 'すべて削除')) return;
+  const message = cloudEnabled()
+    ? 'ゾーンNOWのアカウントと、サーバー・この端末に保存したデータ（勉強記録・投稿など）をすべて削除します。元に戻せません。本当に削除しますか？'
+    : 'この端末のゾーンNOWのデータ（勉強記録・投稿など）をすべて削除します。元に戻せません。本当に削除しますか？';
+  if(!await confirmDialog(message, 'すべて削除')) return;
+  if(cloudEnabled()){
+    try{ await deleteCloudAccount(); }
+    catch(err){ showToast('サーバーのデータを削除できませんでした。電波の状態を確かめて、もう一度試してね'); return; }
+  }
   try{ Object.keys(localStorage).filter(k=> k.startsWith('zonenow_')).forEach(k=> localStorage.removeItem(k)); }catch(err){}
   await new Promise(resolve=>{
     try{
@@ -4272,6 +4449,16 @@ document.getElementById('settings-delete-all').addEventListener('click', async (
 if(!loadProfile()) showScreen('onboarding');
 restoreOwnPosts();
 updateNotifyBadges();
+
+// サーバーができる前から使っていた人：アカウントを自動で作り、端末の記録を送る。それ以外は残っている変更を送る
+if(cloudEnabled() && loadProfile()){
+  cloudUserId().then(async id=>{
+    if(id){ flushSync(); return; }
+    await ensureAccount();
+    queueSync({ type:'profile' });
+    queueSync({ type:'log_upsert' });
+  }).catch(()=>{ /* 電波がないなど。次に開いたときにまた試す */ });
+}
 
 
 // ---- PWA: ホーム画面追加バナー ----

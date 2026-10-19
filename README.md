@@ -13,6 +13,8 @@ sw.js          Service Worker（コアファイルのみキャッシュ、動画
 icons/         ホーム画面アイコン
 tests/         ブラウザで全機能を動かして確かめる自動テスト（Playwright）
 server/        AIサーバー（Cloudflare Workers）。APIキーを預かり、AIコーチの質問をClaudeに中継する
+supabase/      データベースの設計（schema.sql）。Supabase の SQL Editor で実行する
+vendor/        Supabase のライブラリ（npm run vendor で更新）。サーバー設定があるときだけ読み込む
 ```
 
 - 動画データは `index.html` 内の `VIDEOS` 配列にハードコードされたデモ用サンプル動画。
@@ -23,7 +25,8 @@ server/        AIサーバー（Cloudflare Workers）。APIキーを預かり、
 ```
 npm install
 (cd server && npm install)
-npm test                 # アプリ全体（AIサーバーとのやりとりも含む）
+npm test                 # アプリ全体（AIサーバー・データベースとのやりとりも含む）
+npm run test:db          # データベース設計（PostgreSQLが必要。他人のデータを読めない・書けないかを確認）
 (cd server && npm test)  # AIサーバー単体
 ```
 
@@ -34,6 +37,26 @@ npm test                 # アプリ全体（AIサーバーとのやりとりも
 - AIはにせもの（決まった文を返す）に置き換えて動かすので、APIの料金はかかりません。
 - Playwright付属のブラウザが無い環境では、`CHROMIUM_PATH` にChromiumの場所を指定してください。
 - スクリーンショットは `tests/output/` に出ます（git管理外）。
+
+## ログインとデータベース（Supabase）
+
+テスト期間は**名前だけで登録**（Supabaseの匿名ログイン）。初回設定で名前と学年を入れるとアカウントができ、
+ログイン状態は端末に保存されるので、次からは開くだけで自動でログインしている。
+
+- 画面は今まで通り端末の記録で表示し、変更をサーバーへ送る。電波がないときは端末に残し、つながったら自動で送る
+- データは「行ごとの権限」で守る：自分のプロフィールと記録だけ読み書きできる（`supabase/schema.sql`、`npm run test:db` で確認）
+- 設定の「すべてのデータを削除」で、サーバーのアカウントとデータも消える
+- 注意：名前だけの登録なので、**ブラウザのデータを消したり機種変更したりすると、同じアカウントには戻れない**。本番ではメール登録などを足して引き継げるようにする
+- `index.html` の `SUPABASE_URL_DEFAULT` が空のときは、今まで通り端末の中だけで動く
+
+### つなぐ手順
+
+1. [Supabase](https://supabase.com/) でプロジェクトを作る（無料プランで可。リージョンは Tokyo がおすすめ）
+2. 「SQL Editor」で `supabase/schema.sql` の中身を貼り付けて「Run」
+3. 「Authentication」→「Sign In / Providers」で **Allow anonymous sign-ins** をオンにする
+4. 「Project Settings」→「API」の **Project URL** と **anon public** キーを、`index.html` の `SUPABASE_URL_DEFAULT` と `SUPABASE_ANON_KEY_DEFAULT` に書く
+   - anon キーはアプリに入れてよい公開用のキー。**service_role キーは絶対にアプリやチャットに貼らない**
+5. 1つの学校（同じWi-Fi）から一度にたくさん登録する場合は、「Authentication」→「Rate Limits」の匿名ログインの回数上限を上げておく
 
 ## AIサーバー（server/）
 

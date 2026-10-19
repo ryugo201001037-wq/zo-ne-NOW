@@ -11,7 +11,8 @@ id = "REPLACE_WITH_KV_NAMESPACE_ID"
 
 [vars]
 # アプリを公開するURL（カンマ区切りで複数可）。ここに無いサイトからは呼べない
-ALLOWED_ORIGINS = "http://localhost:8139"
+# capacitor://localhost はiPhoneアプリ（Capacitor）の中から呼ぶときのもの
+ALLOWED_ORIGINS = "capacitor://localhost, http://localhost:8139"
 # 1端末あたり1日の質問回数
 DAILY_LIMIT = "20"
 # 使うモデル

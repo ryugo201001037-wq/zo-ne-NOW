@@ -1218,7 +1218,7 @@
         </div>
       </div>
 
-      <div class="settings-section">
+      <div class="settings-section" id="settings-install-section">
         <div class="record-section-title">ホーム画面に追加する方法</div>
         <p class="settings-text"><b>iPhone（Safari）</b>：画面下の共有ボタン（□に↑）→「ホーム画面に追加」<br><b>Android（Chrome）</b>：右上の︙ →「ホーム画面に追加」または「アプリをインストール」<br>追加すると、アプリのようにワンタップで開けます。</p>
       </div>
@@ -1651,6 +1651,14 @@ function updateNotifyBadges(){
   document.getElementById('profile-bell').classList.toggle('has-unread', unread);
   document.querySelectorAll('.nav-btn[data-nav="profile"]').forEach(b=> b.classList.toggle('has-unread', unread));
 }
+
+// ---- どこで動いているか（ウェブ／iPhoneアプリ） ----
+// iPhoneアプリ（Capacitor）の中では window.Capacitor がある。ウェブ用の仕組み（Service Worker・ホーム画面に追加）は使わない
+const IS_NATIVE_APP = !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
+// アプリを公開するウェブページのURL（共有リンクに使う。例：'https://zonenow.example.com/'）
+// iPhoneアプリの中では自分のURLが capacitor://localhost になって共有に使えないので、こちらを使う
+const APP_WEB_URL = '';
+function appWebBaseUrl(){ return IS_NATIVE_APP ? APP_WEB_URL : location.href.split(/[?#]/)[0]; }
 
 // ---- アカウントとデータベース（Supabase） ----
 // テスト期間は「名前だけで登録」：初回設定のときにSupabaseの匿名ログインでアカウントを作る。
@@ -2587,7 +2595,8 @@ const shareSheet = document.getElementById('share-sheet');
 document.getElementById('share-copy-icon').innerHTML = icon('link');
 document.getElementById('share-native-icon').innerHTML = icon('share');
 
-function shareUrlOf(v){ return `${location.href.split(/[?#]/)[0]}?v=${encodeURIComponent(v.id)}`; }
+// 公開ページのURLがまだ無いとき（iPhoneアプリでAPP_WEB_URLが空）は '' を返し、タイトルだけを共有する
+function shareUrlOf(v){ const base = appWebBaseUrl(); return base ? `${base}?v=${encodeURIComponent(v.id)}` : ''; }
 function shareTextOf(v){ return `${v.title}｜ゾーンNOW`; }
 
 function openShareSheet(target){
@@ -2608,6 +2617,7 @@ function openShare(v){
     // 自分の投稿は今はこの端末の中だけにあるので、リンクを開いた人には見えない（正直に伝える）
     note: v.id.startsWith('u')
       ? '※ この投稿は今はこの端末の中だけにあるため、リンクを開いた人には表示されません（サーバー対応後に見られるようになります）。'
+      : !shareUrlOf(v) ? '※ 公開ページができたら、リンクで共有できるようになります。今は動画のタイトルだけを送ります。'
       : 'リンクを開くと、この動画から再生されます。',
   });
 }
@@ -2645,14 +2655,15 @@ shareSheet.addEventListener('click', async (e)=>{
   const { url, text } = shareTarget;
   const how = opt.dataset.share;
   if(how === 'line'){
-    window.open(`https://line.me/R/share?text=${encodeURIComponent(text + '\n' + url)}`, '_blank', 'noopener');
+    window.open(`https://line.me/R/share?text=${encodeURIComponent(url ? text + '\n' + url : text)}`, '_blank', 'noopener');
   } else if(how === 'x'){
-    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank', 'noopener');
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}${url ? '&url=' + encodeURIComponent(url) : ''}`, '_blank', 'noopener');
   } else if(how === 'copy'){
-    if(await copyText(url)) showToast('リンクをコピーしました');
-    else { document.getElementById('share-note').textContent = `コピーできませんでした。このリンクを長押ししてコピーしてください：${url}`; return; }
+    const copied = url || text;
+    if(await copyText(copied)) showToast(url ? 'リンクをコピーしました' : 'タイトルをコピーしました');
+    else { document.getElementById('share-note').textContent = `コピーできませんでした。長押ししてコピーしてください：${copied}`; return; }
   } else if(how === 'native'){
-    try{ await navigator.share({ title: text, text, url }); }
+    try{ await navigator.share(url ? { title: text, text, url } : { title: text, text }); }
     catch(err){ return; } // キャンセルされたらシートは開いたまま
   }
   closeShare();
@@ -4337,6 +4348,7 @@ document.getElementById('profile-avatar-input').addEventListener('change', async
 });
 
 // ---- 設定画面 ----
+if(IS_NATIVE_APP) document.getElementById('settings-install-section').style.display = 'none';
 async function renderAccountStatus(){
   const el = document.getElementById('settings-account');
   if(!cloudEnabled()){ el.textContent = '記録はこの端末の中だけに保存しています（サーバーには送っていません）。'; return; }
@@ -4385,6 +4397,17 @@ document.getElementById('backup-export').addEventListener('click', async ()=>{
   BACKUP_KEYS.forEach(k=>{ const v = loadJSON(k, null); if(v !== null) data[k] = v; });
   const json = JSON.stringify({ app:'zonenow', version:1, exportedAt: Date.now(), data });
   const filename = `zonenow-backup-${localDateKey()}.json`;
+  if(IS_NATIVE_APP){
+    // アプリの中ではダウンロードができないので、共有シート（「ファイルに保存」など）で渡す
+    const file = new File([json], filename, { type:'application/json' });
+    if(navigator.canShare && navigator.canShare({ files:[file] })){
+      try{ await navigator.share({ files:[file], title:'ゾーンNOWのバックアップ' }); showToast('バックアップを書き出しました'); }
+      catch(err){ if(err && err.name !== 'AbortError') showToast('書き出せませんでした'); }
+    } else {
+      showToast('この端末では書き出せませんでした');
+    }
+    return;
+  }
   // claude.ai のプレビューでは普通のダウンロードができないので、その場合はプレビューの保存機能を使う
   const downloads = window.claude && window.claude.use ? await window.claude.use('downloads').catch(()=> null) : null;
   if(downloads){
@@ -4492,7 +4515,7 @@ const iosInstallHint = (()=>{
   const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
   let inFrame = true;
   try{ inFrame = window.self !== window.top; }catch(e){}
-  return isIos && !standalone && !inFrame && !loadJSON(IOS_HINT_KEY, false);
+  return !IS_NATIVE_APP && isIos && !standalone && !inFrame && !loadJSON(IOS_HINT_KEY, false);
 })();
 if(iosInstallHint){
   const banner = document.getElementById('install-banner');
@@ -4503,7 +4526,7 @@ if(iosInstallHint){
 }
 
 // ---- Service Worker登録 ----
-if('serviceWorker' in navigator){
+if('serviceWorker' in navigator && !IS_NATIVE_APP){ // iPhoneアプリの中ではファイルがアプリに入っているので不要
   // 新しい版のService Workerに切り替わったら1回だけ再読み込みして最新の画面にする
   // （初めて開いたときは切り替えではないので再読み込みしない）
   const hadController = !!navigator.serviceWorker.controller;

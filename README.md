@@ -15,6 +15,8 @@ tests/         ブラウザで全機能を動かして確かめる自動テス�
 server/        AIサーバー（Cloudflare Workers）。APIキーを預かり、AIコーチの質問をClaudeに中継する
 supabase/      データベースの設計（schema.sql）。Supabase の SQL Editor で実行する
 vendor/        Supabase のライブラリ（npm run vendor で更新）。サーバー設定があるときだけ読み込む
+ios/           iPhoneアプリ（Capacitor）のXcodeプロジェクト
+scripts/       www/ へのコピー、iPhoneアプリのアイコン・起動画面の作成
 ```
 
 - 動画データは `index.html` 内の `VIDEOS` 配列にハードコードされたデモ用サンプル動画。
@@ -38,6 +40,26 @@ npm run check:live       # 本物のSupabaseで確認（確認用アカウント
 - AIはにせもの（決まった文を返す）に置き換えて動かすので、APIの料金はかかりません。
 - Playwright付属のブラウザが無い環境では、`CHROMIUM_PATH` にChromiumの場所を指定してください。
 - スクリーンショットは `tests/output/` に出ます（git管理外）。
+
+## iPhoneアプリ（Capacitor・TestFlight向け）
+
+同じ index.html を、Capacitor でiPhoneアプリに包む（作り直しはしない）。
+
+```
+npm run ios:sync     # index.html などを www/ にまとめて、iOSプロジェクトに入れる
+npm run ios:assets   # アイコン（1024px・透明なし）と起動画面を作り直す
+```
+
+- アプリID（Bundle ID）は `jp.zonenow.app`、名前は「ゾーンNOW」、iPhone専用・縦向きのみ
+- 写真・カメラ・マイクを使う理由の文（Info.plist）を入れてある（審査で必要）
+- アプリの中では、Service Worker・「ホーム画面に追加」の案内を使わない。共有リンクは `index.html` の `APP_WEB_URL`（公開ページのURL）で作る
+- AIサーバーは `capacitor://localhost` からの呼び出しを許可する（`server/wrangler.toml` の `ALLOWED_ORIGINS`）
+- Macがなくても、GitHub Actions のMacでビルドを確かめている（`.github/workflows/ios-build.yml`。署名なし・シミュレーター向け）
+
+TestFlightに出すには、さらに次が必要：
+1. Apple Developer Program への登録（年99米ドル。18歳未満は保護者の名義）
+2. App Store Connect でアプリを作る（Bundle ID `jp.zonenow.app`）
+3. 署名用の証明書・プロファイル（またはApp Store Connect APIキー）を GitHub の Secrets に入れ、署名してアップロードする仕組みを足す
 
 ## ログインとデータベース（Supabase）
 

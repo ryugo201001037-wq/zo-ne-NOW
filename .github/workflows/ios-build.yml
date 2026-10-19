@@ -1,0 +1,39 @@
+# iPhoneアプリ（Capacitor）がビルドできるかを、GitHubのクラウド上のMacで確かめる
+# 署名なしでシミュレーター向けにビルドするだけ（Apple Developer の登録がなくても動く）
+# TestFlight へのアップロードは、登録ができたら署名の設定を足して別に作る
+name: iOSアプリのビルド確認
+
+on:
+  push:
+    paths:
+      - 'ios/**'
+      - 'index.html'
+      - 'vendor/**'
+      - 'capacitor.config.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/**'
+      - '.github/workflows/ios-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: パッケージを入れる
+        run: npm ci
+      - name: アプリのファイルをiOSプロジェクトに入れる
+        run: npm run ios:sync
+      - name: シミュレーター向けにビルド（署名なし）
+        run: |
+          set -o pipefail
+          xcodebuild -version
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO build | tail -n 80

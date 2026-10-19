@@ -74,6 +74,15 @@ test('許可していないサイトからは呼べない', async () => {
   assert.equal(res.status, 403);
 });
 
+test('iPhoneアプリ（capacitor://localhost）から呼べる', async () => {
+  const { call, e } = setup();
+  e.ALLOWED_ORIGINS = 'capacitor://localhost, https://zonenow.example';
+  const res = await call(ask(question(), { origin: 'capacitor://localhost' }));
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'capacitor://localhost');
+  await readEvents(res);
+});
+
 test('事前確認（OPTIONS）に答える', async () => {
   const { call } = setup();
   const res = await call(ask(null, { method: 'OPTIONS' }));

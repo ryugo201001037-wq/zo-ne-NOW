@@ -148,7 +148,7 @@ function startFakeSupabase() {
   fake.offline = false;
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   check('つながったら自動で送る', await waitFor(() => logsOf().length === 1 && logsOf()[0].subject === 'english'));
-  check('送れたらキューは空', await page.evaluate(() => JSON.parse(localStorage.getItem('zonenow_sync_queue')).length === 0));
+  check('送れたらキューは空', await waitFor(() => page.evaluate(() => JSON.parse(localStorage.getItem('zonenow_sync_queue')).length === 0)));
   await page.click('#settings-back'); await page.waitForTimeout(150); await page.click('#profile-gear'); await page.waitForTimeout(200);
   check('設定に「ログイン中」', (await page.textContent('#settings-account')).includes('ログイン中'));
 

@@ -27,6 +27,7 @@ npm install
 (cd server && npm install)
 npm test                 # アプリ全体（AIサーバー・データベースとのやりとりも含む）
 npm run test:db          # データベース設計（PostgreSQLが必要。他人のデータを読めない・書けないかを確認）
+npm run check:live       # 本物のSupabaseで確認（確認用アカウントを作って最後に消す。npm test には含めない）
 (cd server && npm test)  # AIサーバー単体
 ```
 

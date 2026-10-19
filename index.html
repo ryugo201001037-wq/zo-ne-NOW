@@ -1781,7 +1781,7 @@ async function deleteCloudAccount(){
   if(!client || !(await cloudUserId())) return;
   const { error } = await client.rpc('delete_my_account');
   if(error) throw error;
-  await client.auth.signOut().catch(()=>{});
+  // 端末のログイン情報（zonenow_auth）は、このあと「すべて削除」で消える
 }
 
 // ---- 表示しない動画・クリエイター（「興味なし」） ----

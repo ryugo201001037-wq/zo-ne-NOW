@@ -31,12 +31,29 @@ function startServer() {
   });
 }
 
+// テストのページは、本物のSupabaseにつながない（つなぐと、テストのたびに本番にアカウントができてしまう）
+// サーバーを使うテストは、ページ側で window.ZONENOW_CONFIG を上書きする
+const NO_CLOUD = () => { window.ZONENOW_CONFIG = Object.assign({ supabaseUrl: '', supabaseAnonKey: '' }, window.ZONENOW_CONFIG); };
+
 // CHROMIUM_PATH を指定すると、そのブラウザで動かす（Playwright付属のものが無い環境向け）
-function launchBrowser(extraArgs = []) {
-  return chromium.launch({
+async function launchBrowser(extraArgs = []) {
+  const browser = await chromium.launch({
     executablePath: process.env.CHROMIUM_PATH || undefined,
     args: ['--no-sandbox', ...extraArgs],
   });
+  const newContext = browser.newContext.bind(browser);
+  browser.newContext = async (...args) => {
+    const context = await newContext(...args);
+    await context.addInitScript(NO_CLOUD);
+    return context;
+  };
+  browser.newPage = async (...args) => {
+    const context = await browser.newContext(...args);
+    const page = await context.newPage();
+    page.close = (orig => async (...a) => { await orig.apply(page, a); await context.close(); })(page.close);
+    return page;
+  };
+  return browser;
 }
 
 function createChecker() {

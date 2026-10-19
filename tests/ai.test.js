@@ -10,7 +10,7 @@ async function setup(browser, withAi, aiServerUrl = null) {
   page.on('pageerror', e => errors.push(e.message));
   await page.addInitScript(([withAi, aiServerUrl]) => {
     window.confirm = () => false;
-    if (aiServerUrl) window.ZONENOW_CONFIG = { aiServerUrl };
+    if (aiServerUrl) window.ZONENOW_CONFIG = Object.assign(window.ZONENOW_CONFIG || {}, { aiServerUrl });
     localStorage.setItem('zonenow_profile', JSON.stringify({ name: 'テスト花子', grade: 'junior2', createdAt: 1 }));
     const day = n => { const d = new Date(); const x = new Date(d.getFullYear(), d.getMonth(), d.getDate() - n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
     if (!localStorage.getItem('zonenow_study_log')) {

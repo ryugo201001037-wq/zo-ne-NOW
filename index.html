@@ -1658,10 +1658,14 @@ function updateNotifyBadges(){
 // ※ ブラウザのデータを消すと同じアカウントには戻れない（あとでメール登録を足して引き継げるようにする）
 // 画面の表示は今まで通り端末の記録から行い、変更をサーバーへ送る（電波がないときは、つながったときに送る）。
 // SUPABASE_URL_DEFAULT が空なら、今まで通りこの端末の中だけで動く
-const SUPABASE_URL_DEFAULT = '';      // 例：'https://xxxx.supabase.co'
-const SUPABASE_ANON_KEY_DEFAULT = ''; // Supabaseの「anon public」キー（公開してよいキー。データは行ごとの権限で守る）
-const SUPABASE_URL = (window.ZONENOW_CONFIG && window.ZONENOW_CONFIG.supabaseUrl) || SUPABASE_URL_DEFAULT;
-const SUPABASE_ANON_KEY = (window.ZONENOW_CONFIG && window.ZONENOW_CONFIG.supabaseAnonKey) || SUPABASE_ANON_KEY_DEFAULT;
+// claude.ai のプレビューの中では外のサーバーにつながらないので、端末の中だけで動かす
+const SUPABASE_URL_DEFAULT = 'https://zcsczcaaddmfmvdoyjnp.supabase.co';
+const SUPABASE_ANON_KEY_DEFAULT = 'sb_publishable_qZvTVaAWIFBYoeHk84fdsg_Sfwt_tj9'; // 公開してよいキー（データは行ごとの権限で守る）
+const IN_CLAUDE_PREVIEW = !!(window.claude && window.claude.use);
+// テストでは window.ZONENOW_CONFIG で差し替える（空文字を入れるとサーバーなし）
+const zonenowConfig = window.ZONENOW_CONFIG || {};
+const SUPABASE_URL = IN_CLAUDE_PREVIEW ? '' : ('supabaseUrl' in zonenowConfig ? zonenowConfig.supabaseUrl : SUPABASE_URL_DEFAULT);
+const SUPABASE_ANON_KEY = 'supabaseAnonKey' in zonenowConfig ? zonenowConfig.supabaseAnonKey : SUPABASE_ANON_KEY_DEFAULT;
 const SYNC_QUEUE_KEY = 'zonenow_sync_queue';
 let cloudClientPromise = null;
 

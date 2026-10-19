@@ -200,6 +200,21 @@ function startFakeSupabase() {
   check('Supabaseのライブラリは読み込まない', await p2.evaluate(() => !window.supabase));
   await ctx.close();
 
+  // ========== claude.ai のプレビューの中 ==========
+  state.section = 'プレビュー';
+  const ctx3 = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const realRequests = [];
+  await ctx3.route('**/*.supabase.co/**', route => { realRequests.push(route.request().url()); route.abort(); });
+  const p3 = await ctx3.newPage();
+  // テスト用の「つながない」設定を外し、アプリ本来の設定（本物のSupabase）のまま、プレビューの中として開く
+  await p3.addInitScript(() => { delete window.ZONENOW_CONFIG; window.claude = { use: async () => null }; });
+  await p3.goto(APP_URL); await p3.waitForTimeout(300);
+  check('アプリには本物のSupabaseが設定されている', await p3.evaluate(() => SUPABASE_URL_DEFAULT.endsWith('.supabase.co') && SUPABASE_ANON_KEY_DEFAULT.startsWith('sb_publishable_')));
+  await p3.fill('#onboarding-name', 'プレビュー'); await p3.click('#onboarding-grade-chips .chip[data-id="junior1"]'); await p3.click('#onboarding-submit');
+  await p3.waitForTimeout(300);
+  check('プレビューの中ではサーバーにつながず、そのまま使える', (await active(p3)) === 'home-screen' && realRequests.length === 0, realRequests.join(', '));
+  await ctx3.close();
+
   report();
   fake.close();
   await browser.close();

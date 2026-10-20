@@ -1,0 +1,17 @@
+{
+  "name": "zonenow-ai-server",
+  "private": true,
+  "type": "module",
+  "description": "ゾーンNOWのAIサーバー（Cloudflare Workers）",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.131.0"
+  },
+  "devDependencies": {
+    "wrangler": "4.146.0"
+  }
+}

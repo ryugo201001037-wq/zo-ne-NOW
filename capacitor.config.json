@@ -1,0 +1,12 @@
+{
+  "appId": "jp.zonenow.app",
+  "appName": "ゾーンNOW",
+  "webDir": "www",
+  "backgroundColor": "#10131A",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#10131A",
+    "limitsNavigationsToAppBoundDomains": false,
+    "scrollEnabled": false
+  }
+}

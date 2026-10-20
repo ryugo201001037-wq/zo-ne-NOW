@@ -1,0 +1,21 @@
+# ゾーンNOW AIサーバー（Cloudflare Workers）の設定
+# 手順は ../README.md の「AIサーバー」を参照
+name = "zonenow-ai"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+
+# 1日の質問回数を数える保存場所（KV）。id は `npx wrangler kv namespace create USAGE` で出たものに置き換える
+[[kv_namespaces]]
+binding = "USAGE"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[vars]
+# アプリを公開するURL（カンマ区切りで複数可）。ここに無いサイトからは呼べない
+# capacitor://localhost はiPhoneアプリ（Capacitor）の中から呼ぶときのもの
+ALLOWED_ORIGINS = "capacitor://localhost, http://localhost:8139"
+# 1端末あたり1日の質問回数
+DAILY_LIMIT = "20"
+# 使うモデル
+MODEL = "claude-haiku-5-5"
+
+# APIキーはここに書かない。`npx wrangler secret put ANTHROPIC_API_KEY` で登録する

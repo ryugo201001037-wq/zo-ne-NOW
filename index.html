@@ -476,6 +476,21 @@
     background:rgba(16,19,26,.72); backdrop-filter:blur(8px);
   }
   #confirm-dialog.show{ display:flex; }
+  /* 投稿のアップロード中（動画を軽くする→送る）。終わるまで他の操作はできない */
+  #upload-overlay{
+    position:absolute; inset:0; z-index:55; display:none;
+    align-items:center; justify-content:center; padding:0 28px;
+    background:rgba(16,19,26,.86); backdrop-filter:blur(8px);
+  }
+  #upload-overlay.show{ display:flex; }
+  .upload-card{ width:100%; max-width:320px; text-align:center; color:#fff; }
+  .upload-media{ width:120px; height:160px; margin:0 auto 18px; border-radius:12px; overflow:hidden; background:#000; }
+  .upload-media video, .upload-media img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .upload-title{ font-family:var(--font-ui); font-size:15px; font-weight:700; margin:0 0 12px; }
+  .upload-bar{ height:6px; border-radius:3px; background:rgba(255,255,255,.12); overflow:hidden; }
+  .upload-bar-fill{ height:100%; width:0%; background:linear-gradient(90deg, var(--cta-from), var(--cta-to)); transition:width .2s linear; }
+  .upload-percent{ font-family:var(--font-ui); font-size:13px; margin:8px 0 0; color:rgba(255,255,255,.85); }
+  .upload-note{ font-family:var(--font-ui); font-size:12px; line-height:1.6; margin:14px 0 0; color:rgba(255,255,255,.6); }
   .confirm-card{
     width:100%; max-width:320px; background:#1A1E2B; border:1px solid rgba(255,255,255,.1);
     border-radius:18px; padding:22px 18px 18px; color:#fff;
@@ -1392,7 +1407,20 @@
       <div class="share-hide" id="share-hide-options">
         <button class="share-hide-btn" data-hide="video">興味なし（この動画を表示しない）</button>
         <button class="share-hide-btn" data-hide="creator" id="share-hide-creator">このクリエイターの動画を表示しない</button>
+        <button class="share-hide-btn" id="share-report">通報する</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ============ 通報（シェアの「通報する」から。理由を選ぶと運営に届く） ============ -->
+  <div id="report-sheet" class="sheet-overlay" role="dialog" aria-modal="true" aria-labelledby="report-sheet-title">
+    <div class="sheet-card">
+      <div class="sheet-head">
+        <h2 class="sheet-title" id="report-sheet-title">通報する理由</h2>
+        <button class="sheet-close" id="report-sheet-close" aria-label="閉じる">×</button>
+      </div>
+      <p class="sheet-note">運営が確認し、ルールに合わない投稿は削除します。通報したことは投稿者には伝わりません。</p>
+      <div id="report-reasons"></div>
     </div>
   </div>
 
@@ -1407,6 +1435,17 @@
       <button class="post-submit" id="preview-post">投稿する</button>
     </div>
   </section>
+
+  <!-- ============ 投稿のアップロード中 ============ -->
+  <div id="upload-overlay" role="alertdialog" aria-modal="true" aria-labelledby="upload-title">
+    <div class="upload-card">
+      <div class="upload-media" id="upload-media"></div>
+      <p class="upload-title" id="upload-title">投稿の準備中…</p>
+      <div class="upload-bar"><div class="upload-bar-fill" id="upload-bar-fill"></div></div>
+      <p class="upload-percent" id="upload-percent">0%</p>
+      <p class="upload-note">終わるまで、この画面のままにしてね（アプリを閉じたり、ほかのアプリに切り替えたりすると中止されます）</p>
+    </div>
+  </div>
 
   <!-- ============ 確認ダイアログ（ブラウザ標準のconfirmの代わり） ============ -->
   <div id="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-message">
@@ -1773,6 +1812,7 @@ async function ensureAccount(){
 
 // ---- サーバーへ送る変更のキュー（端末に保存。送れたものから消す） ----
 // { type:'profile' } / { type:'log_upsert', ids? } / { type:'log_delete', id } / { type:'log_clear' } / { type:'feedback', message, version, platform }
+// { type:'report', postId, reason }
 function queueSync(op){
   if(!cloudEnabled()) return;
   const queue = loadJSON(SYNC_QUEUE_KEY, []);
@@ -1802,6 +1842,8 @@ async function runSyncOp(client, userId, op){
     res = await client.from('study_logs').delete().eq('id', op.id);
   } else if(op.type === 'feedback'){
     res = await client.from('feedback').insert({ message: op.message, app_version: op.version, platform: op.platform });
+  } else if(op.type === 'report'){
+    res = await client.from('reports').insert({ post_id: op.postId, reason: op.reason });
   } else if(op.type === 'log_clear'){
     res = await client.from('study_logs').delete().eq('user_id', userId);
   }
@@ -1873,8 +1915,8 @@ function setFollowing(name, follow){
   saveJSON(FOLLOW_KEY, list);
 }
 
-// 自分の投稿：動画・写真のファイルごと IndexedDB（ブラウザ内の大きめの保存場所）に入れておき、
-// リロードしても消えないようにする。ここもサーバーができたらアップロードに置き換える
+// 自分の投稿（サーバーにつながらないとき）：動画・写真のファイルごと IndexedDB（ブラウザ内の大きめの保存場所）に入れておき、
+// リロードしても消えないようにする。サーバーにつながるときは、投稿はサーバーに送る（「みんなに見える投稿」）
 const POST_DB_NAME = 'zonenow';
 const POST_STORE = 'posts';
 function openPostDb(){
@@ -2135,7 +2177,7 @@ function createSlide(v){
   const counts = engagementOf(v.id);
   const isImage = v.mediaType === 'image';
   const profile = loadProfile();
-  const isOwn = !!profile && v.creator === profile.name; // 自分の投稿はフォローボタンを出さない
+  const isOwn = isMyVideo(v); // 自分の投稿はフォローボタンを出さない
   const following = !isOwn && isFollowing(v.creator);
 
   const track = musicById(v.musicId);
@@ -2161,7 +2203,7 @@ function createSlide(v){
 
     <div class="action-rail">
       <div class="avatar-wrap">
-        <div class="avatar">${isOwn && isSafeAvatar(profile.avatar) ? `<img src="${escapeHtml(profile.avatar)}" alt="" />` : escapeHtml(v.creator.charAt(0))}</div>
+        <div class="avatar">${isOwn && profile && isSafeAvatar(profile.avatar) ? `<img src="${escapeHtml(profile.avatar)}" alt="" />` : escapeHtml(v.creator.charAt(0))}</div>
         ${isOwn ? '' : `<button class="follow-badge ${following ? 'active' : ''}" data-role="follow" data-creator="${escapeHtml(v.creator)}">${icon(following ? 'check' : 'plus')}</button>`}
       </div>
       <button class="action-item ${counts.likes ? 'active' : ''}" data-role="like" aria-label="いいね">
@@ -2335,6 +2377,9 @@ function syncFollowButtons(creator, follow){
 const FEED_BATCH_SIZE = 10;
 const FEED_RECENT_AVOID = 8; // 直近に出た動画はしばらく出さない（短い間隔での重複を防ぐ）
 function feedWeight(v, userGrade){
+  return gradeWeight(v, userGrade) * (v.cloud ? CLOUD_FEED_WEIGHT : 1);
+}
+function gradeWeight(v, userGrade){
   if(!userGrade) return 1;
   if(v.grade === userGrade && userGrade !== 'other') return 3; // 自分の学年向け
   if(v.grade === 'everyone') return 2;                            // 全学年向け（やる気・豆知識など）
@@ -2392,6 +2437,19 @@ function syncFeedMedia(current){
 }
 function isNearFeedEnd(slide){
   return Array.prototype.indexOf.call(feedEl.children, slide) >= feedEl.children.length - 3;
+}
+
+// 今見ている動画はそのままで、次から先を新しい並びにする（みんなの投稿を読み込んだあと）
+function refreshUpcomingFeed(){
+  if(!currentSlide){ renderFeed(SHARED_VIDEO || undefined); return; }
+  while(currentSlide.nextElementSibling){
+    const next = currentSlide.nextElementSibling;
+    feedObserver.unobserve(next);
+    deactivateSlide(next);
+    next.remove();
+  }
+  appendFeedBatch();
+  syncFeedMedia(currentSlide);
 }
 
 // pinnedFirst を渡すとその動画を先頭に固定（投稿直後に自分の投稿を見せるため）
@@ -2696,11 +2754,11 @@ function openShareSheet(target){
   const v = target.video;
   document.getElementById('share-native').style.display = navigator.share ? 'flex' : 'none';
   document.getElementById('share-note').textContent = target.note;
-  // 「興味なし」は他の人の動画だけ
-  const profile = loadProfile();
-  const othersVideo = !!v && !v.own && !(profile && v.creator === profile.name);
+  // 「興味なし」は他の人の動画だけ。通報はみんなの投稿（サーバーにある投稿）だけ
+  const othersVideo = !!v && !isMyVideo(v);
   document.getElementById('share-hide-options').style.display = othersVideo ? 'block' : 'none';
   if(othersVideo) document.getElementById('share-hide-creator').textContent = `${v.creator}の動画を表示しない`;
+  document.getElementById('share-report').style.display = othersVideo && v.cloud ? 'block' : 'none';
   shareSheet.classList.add('show');
 }
 function openShare(v){
@@ -2742,6 +2800,12 @@ shareSheet.addEventListener('click', async (e)=>{
     closeShare();
     return;
   }
+  if(e.target.closest('#share-report') && shareTarget && shareTarget.video){
+    const v = shareTarget.video;
+    closeShare();
+    openReport(v);
+    return;
+  }
   const opt = e.target.closest('[data-share]');
   if(!opt || !shareTarget) return;
   const { url, text } = shareTarget;
@@ -2762,7 +2826,7 @@ shareSheet.addEventListener('click', async (e)=>{
 });
 
 // 「興味なし」：動画1本、またはそのクリエイターの動画を、フィードと検索に出さないようにする
-function hideFromFeed(v, what){
+function hideFromFeed(v, what, message){
   const key = what === 'creator' ? BLOCKED_CREATORS_KEY : HIDDEN_VIDEOS_KEY;
   const value = what === 'creator' ? v.creator : v.id;
   const list = loadJSON(key, []);
@@ -2790,14 +2854,13 @@ function hideFromFeed(v, what){
     if(screens.home.classList.contains('active')) enterSlide(target);
   }
   renderResults();
-  showToast(what === 'creator' ? `${v.creator}の動画を表示しないようにしました（設定で戻せます）` : 'この動画を表示しないようにしました（設定で戻せます）');
+  showToast(message || (what === 'creator' ? `${v.creator}の動画を表示しないようにしました（設定で戻せます）` : 'この動画を表示しないようにしました（設定で戻せます）'));
 }
 
 // 共有リンク（?v=動画ID）から開いたときは、その動画をフィードの先頭にする
-const SHARED_VIDEO = (()=>{
-  const id = new URLSearchParams(location.search).get('v');
-  return id ? VIDEOS.find(v=> v.id === id) || null : null;
-})();
+const SHARED_VIDEO_ID = new URLSearchParams(location.search).get('v');
+const SHARED_VIDEO = SHARED_VIDEO_ID ? VIDEOS.find(v=> v.id === SHARED_VIDEO_ID) || null : null;
+let sharedCloudShown = false; // 共有リンクがサーバーの投稿だったとき、先頭に出したか
 
 renderFeed(SHARED_VIDEO || undefined);
 
@@ -3319,12 +3382,12 @@ function renderNotificationsScreen(){
 }
 
 // ---- 投稿画面 ----
-// 今はバックエンドがないため、投稿した動画はブラウザ内のメモリ(Object URL)に
-// 保持するだけで、リロードすると消えます。保存先ができたら送信処理をここに追加します。
+// サーバーにつながるとき（本番）は、投稿をサーバーに送ってみんなのフィードに流す（下の「みんなに見える投稿」）。
+// つながらないとき（claude.ai のプレビューなど）は、この端末の中（IndexedDB）にだけ保存する
 document.getElementById('post-upload-icon').innerHTML = icon('plus');
 
 const MAX_POST_PHOTOS = 10;
-// 端末の容量・あとでサーバーに送るときの通信量を考えた上限（ショート動画アプリなので長い動画は受け付けない）
+// ショート動画アプリなので長い動画は受け付けない。サーバーに送るときは、大きい動画は端末の中で軽くしてから送る
 const MAX_POST_VIDEO_SECONDS = 180;
 // 目安（iPhoneの標準設定で3分撮った場合）：1080p/30fps 約180MB、1080p/60fps 約270MB、4K/30fps 約510MB
 const MAX_POST_VIDEO_MB = 600;
@@ -3386,6 +3449,9 @@ postFileInput.addEventListener('change', ()=>{
   if(videos.length && (videos.length > 1 || images.length)){ showToast('動画は1本だけ、写真とは別々に投稿してください'); return; }
   if(images.length > MAX_POST_PHOTOS){ showToast(`写真は${MAX_POST_PHOTOS}枚まで選べます`); return; }
   if(videos.length && videos[0].size > MAX_POST_VIDEO_MB * MB){ showToast(`動画は${MAX_POST_VIDEO_MB}MBまでです`); return; }
+  if(videos.length && cloudEnabled() && videos[0].size > MAX_UPLOAD_MB * MB && !canCompressVideo()){
+    showToast(`この端末では${MAX_UPLOAD_MB}MBより大きい動画を送れません。短くするか、画質を下げてもう一度選んでね`); return;
+  }
   if(images.some(f=> f.size > MAX_POST_PHOTO_MB * MB)){ showToast(`写真は1枚${MAX_POST_PHOTO_MB}MBまでです`); return; }
 
   clearPostMedia();
@@ -3594,11 +3660,42 @@ document.getElementById('preview-back').addEventListener('click', ()=> showScree
 document.getElementById('preview-post').addEventListener('click', async ()=>{
   if(postSubmitting || !postDraft) return;
   postSubmitting = true;
+  // サーバーに送る動画で、軽くする必要があるものは、押した瞬間に準備しておく（iPhoneの再生の制限のため）
+  const draft = postDraft;
+  const compressor = cloudEnabled() && draft.mediaType === 'video' && needsCompression(draft.files[0], draft.duration) && canCompressVideo()
+    ? prepareCompressor(draft.files[0]) : null;
   const ok = await confirmDialog('本当に投稿しますか？', '投稿する');
-  postSubmitting = false;
-  if(!ok) return;
+  if(!ok){ releaseCompressor(compressor); postSubmitting = false; return; }
 
-  const newPost = postDraft;
+  if(cloudEnabled()){
+    closePreview();
+    let published;
+    try{ published = await publishCloudPost(draft, compressor); }
+    catch(err){
+      hideUploadProgress();
+      releaseCompressor(compressor);
+      postSubmitting = false;
+      showToast(uploadErrorMessage(err));
+      if(screens.preview.classList.contains('active')) openPreview(draft);
+      return;
+    }
+    hideUploadProgress();
+    releaseCompressor(compressor);
+    postSubmitting = false;
+    delete published.files;
+    VIDEOS.unshift(published);
+    tapFeedback('MEDIUM');
+    renderFeed(published);
+    renderChips();
+    renderResults();
+    resetPostForm();
+    showScreen('home');
+    showToast('投稿しました！みんなのフィードに流れます');
+    return;
+  }
+
+  postSubmitting = false;
+  const newPost = draft;
   let stored = true;
   try{
     const record = Object.fromEntries(POST_META_FIELDS.map(k=> [k, newPost[k]]));
@@ -3640,7 +3737,16 @@ async function restoreOwnPosts(){
 async function deleteOwnPost(id){
   const index = VIDEOS.findIndex(v=> v.id === id && v.own);
   if(index < 0) return;
-  try{ await postDb('readwrite', store=> store.delete(id)); }catch(e){}
+  const target = VIDEOS[index];
+  if(target.cloud){
+    // 先に投稿を消して（みんなのフィードから消える）、そのあとファイルを消す。投稿を消せなければ何もしない
+    const client = await getCloud();
+    const { error } = await client.from('posts').delete().eq('id', id);
+    if(error) throw error;
+    client.storage.from(POST_BUCKET).remove(target.mediaPaths).catch(()=>{});
+  } else {
+    try{ await postDb('readwrite', store=> store.delete(id)); }catch(e){}
+  }
   const [post] = VIDEOS.splice(index, 1);
   feedEl.querySelectorAll('.short-slide').forEach(slide=>{
     if(slide.dataset.id !== id) return;
@@ -3656,6 +3762,303 @@ async function deleteOwnPost(id){
 }
 
 document.getElementById('post-back').addEventListener('click', ()=> showScreen('home'));
+
+// ---- みんなに見える投稿（サーバー：Supabase） ----
+// ファイル本体は Storage の posts バケット（<user_id>/<投稿id>/<番号>.<拡張子>）、内容は posts テーブルに入れる。
+// フィードには新しい順に最大 CLOUD_FEED_LIMIT 件を読み込み、見本の動画より出やすくする
+const POST_BUCKET = 'posts';
+const CLOUD_FEED_LIMIT = 100;
+const CLOUD_FEED_WEIGHT = 4;         // 本物の投稿は見本の動画の4倍出やすい
+const CLOUD_FEED_REFRESH_MS = 3 * 60 * 1000; // アプリに戻ってきたとき、これより前に読んでいたら読み直す
+const MAX_UPLOAD_MB = 50;            // 1ファイルの上限（Supabase 無料プランの上限に合わせる）
+// 1秒あたりこれ以下（約2Mbps）の動画は、軽くせずにそのまま送る（テストでは0にして必ず軽くする）
+const KEEP_AS_IS_BYTES_PER_SEC = 'keepAsIsBytesPerSec' in zonenowConfig ? zonenowConfig.keepAsIsBytesPerSec : 256 * 1024;
+// 軽くした動画：長い辺1280px（720p）・映像1.5Mbps・音128kbps → 3分で約37MB
+const COMPRESS_MAX_SIDE = 1280, COMPRESS_VIDEO_BPS = 1500000, COMPRESS_AUDIO_BPS = 128000;
+const UPLOAD_PHOTO_MAX_SIDE = 1440;
+let cloudPostsLoadedAt = 0;
+
+function newUuid(){
+  if(crypto.randomUUID) return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+  const h = [...b].map(x=> x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+function postFileUrl(path){
+  return `${SUPABASE_URL}/storage/v1/object/public/${POST_BUCKET}/${path.split('/').map(encodeURIComponent).join('/')}`;
+}
+// 自分の投稿か（サーバーの投稿はアカウントIDで、端末の中だけの投稿は名前で見分ける）
+function isMyVideo(v){
+  if(v.cloud) return !!v.own;
+  const profile = loadProfile();
+  return !!v.own || (!!profile && v.creator === profile.name);
+}
+
+function cloudPostToVideo(row, myId){
+  const urls = row.media_paths.map(postFileUrl);
+  return {
+    id: row.id, cloud: true, userId: row.user_id, own: row.user_id === myId, mediaPaths: row.media_paths,
+    createdAt: Date.parse(row.created_at) || Date.now(),
+    kind: row.kind, kindOther: row.kind_other, subject: row.subject, subjectOther: row.subject_other,
+    grade: row.grade, gradeOther: row.grade_other, unit: row.unit, hashtags: row.hashtags || [],
+    musicId: row.music_id || null, title: row.title, creator: row.creator, duration: row.duration,
+    mediaType: row.media_type, short: urls[0], images: row.media_type === 'image' ? urls : undefined,
+  };
+}
+
+// みんなの投稿を読み込んで VIDEOS に入れ直す（今見ている動画の次から、新しい並びにする）
+async function loadCloudPosts(){
+  if(!cloudEnabled()) return;
+  try{
+    const client = await getCloud();
+    const myId = await cloudUserId();
+    if(!myId) return;
+    const { data, error } = await client.from('posts').select('*').order('created_at', { ascending:false }).limit(CLOUD_FEED_LIMIT);
+    if(error || !data) return;
+    cloudPostsLoadedAt = Date.now();
+    // 自分がさっき投稿したもの（端末のファイルで表示中）は、そのまま使う
+    const before = new Map(VIDEOS.filter(v=> v.cloud).map(v=> [v.id, v]));
+    for(let i = VIDEOS.length - 1; i >= 0; i--) if(VIDEOS[i].cloud) VIDEOS.splice(i, 1);
+    VIDEOS.unshift(...data.map(row=> before.get(row.id) || cloudPostToVideo(row, myId)));
+  }catch(e){ return; } // 電波がないなど：次に開いたときに読む
+
+  const shared = !SHARED_VIDEO && SHARED_VIDEO_ID && !sharedCloudShown ? VIDEOS.find(v=> v.cloud && v.id === SHARED_VIDEO_ID) : null;
+  if(shared){ sharedCloudShown = true; renderFeed(shared); }
+  else refreshUpcomingFeed();
+  renderChips();
+  renderResults();
+  if(screens.profile.classList.contains('active')) renderProfileScreen();
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(!document.hidden && cloudPostsLoadedAt && Date.now() - cloudPostsLoadedAt > CLOUD_FEED_REFRESH_MS) loadCloudPosts();
+});
+
+// ---- 動画を軽くする ----
+// 端末の中で動画を再生しながら、小さいサイズ・低いビットレートで録り直す（動画の長さと同じだけ時間がかかる）
+function needsCompression(file, seconds){
+  return file.size > MAX_UPLOAD_MB * MB || file.size / Math.max(1, seconds) > KEEP_AS_IS_BYTES_PER_SEC;
+}
+function recorderType(){
+  if(!window.MediaRecorder || !MediaRecorder.isTypeSupported) return '';
+  // iPhoneでも再生できる mp4 を優先する
+  return ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm']
+    .find(t=> MediaRecorder.isTypeSupported(t)) || '';
+}
+function canCompressVideo(){
+  return !!(recorderType() && HTMLCanvasElement.prototype.captureStream && (window.AudioContext || window.webkitAudioContext));
+}
+// 「投稿する」を押した瞬間に準備する：iPhoneは、画面を触った直後でないと音付きの再生を始められないため
+function prepareCompressor(file){
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const audio = new AC();
+  const video = document.createElement('video');
+  video.playsInline = true;
+  video.preload = 'auto';
+  video.src = URL.createObjectURL(file);
+  const dest = audio.createMediaStreamDestination();
+  audio.createMediaElementSource(video).connect(dest); // 音はスピーカーに出さず、録るほうにだけ流す
+  const prep = { audio, video, dest, started:false };
+  video.play().then(()=>{ if(!prep.started) video.pause(); }).catch(()=>{});
+  return prep;
+}
+function releaseCompressor(prep){
+  if(!prep) return;
+  prep.video.pause();
+  URL.revokeObjectURL(prep.video.src);
+  prep.video.removeAttribute('src');
+  prep.video.remove();
+  prep.audio.close().catch(()=>{});
+}
+function compressVideo(prep, onProgress){
+  const { video, dest } = prep;
+  prep.started = true;
+  return new Promise((resolve, reject)=>{
+    const start = ()=>{
+      const scale = Math.min(1, COMPRESS_MAX_SIDE / Math.max(video.videoWidth, video.videoHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(2, Math.round(video.videoWidth * scale / 2) * 2);
+      canvas.height = Math.max(2, Math.round(video.videoHeight * scale / 2) * 2);
+      const g = canvas.getContext('2d');
+      const stream = new MediaStream([...canvas.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]);
+      const type = recorderType();
+      const recorder = new MediaRecorder(stream, { mimeType:type, videoBitsPerSecond:COMPRESS_VIDEO_BPS, audioBitsPerSecond:COMPRESS_AUDIO_BPS });
+      const chunks = [];
+      let failure = null, done = false;
+      const draw = ()=>{
+        if(done) return;
+        g.drawImage(video, 0, 0, canvas.width, canvas.height);
+        onProgress(video.duration ? video.currentTime / video.duration : 0);
+        requestAnimationFrame(draw);
+      };
+      const finish = err=>{
+        if(done) return;
+        done = true;
+        failure = err || null;
+        document.removeEventListener('visibilitychange', onHidden);
+        video.pause();
+        if(recorder.state !== 'inactive') recorder.stop(); else recorder.onstop();
+      };
+      const onHidden = ()=>{ if(document.hidden) finish(Object.assign(new Error('left'), { code:'left' })); };
+      recorder.ondataavailable = e=>{ if(e.data && e.data.size) chunks.push(e.data); };
+      recorder.onstop = ()=>{
+        stream.getTracks().forEach(t=> t.stop());
+        if(failure) reject(failure);
+        else resolve(new Blob(chunks, { type:(recorder.mimeType || type).split(';')[0] }));
+      };
+      video.onended = ()=> finish();
+      video.onerror = ()=> finish(new Error('decode failed'));
+      document.addEventListener('visibilitychange', onHidden);
+      video.currentTime = 0;
+      recorder.start(1000);
+      video.play().then(draw).catch(err=> finish(err));
+    };
+    if(video.readyState >= 1) start();
+    else { video.onloadedmetadata = start; video.onerror = ()=> reject(new Error('decode failed')); }
+  });
+}
+
+function resizePhotoForUpload(file){
+  return loadImageFile(file)
+    .then(img=> new Promise(res=> fitCanvas(img, UPLOAD_PHOTO_MAX_SIDE).toBlob(res, 'image/jpeg', 0.85)))
+    .then(blob=>{ if(!blob) throw new Error('encode failed'); return blob; });
+}
+function extOf(type){
+  return { 'video/mp4':'mp4', 'video/quicktime':'mov', 'video/webm':'webm', 'image/jpeg':'jpg', 'image/png':'png', 'image/webp':'webp' }[type] || 'bin';
+}
+
+// Storage に1ファイル送る（進み具合を出すため、ライブラリではなく XMLHttpRequest で送る）
+async function uploadPostFile(path, blob, onProgress){
+  const client = await getCloud();
+  const { data } = await client.auth.getSession();
+  if(!data || !data.session) throw Object.assign(new Error('not logged in'), { status:401 });
+  return new Promise((resolve, reject)=>{
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${SUPABASE_URL}/storage/v1/object/${POST_BUCKET}/${path.split('/').map(encodeURIComponent).join('/')}`);
+    xhr.setRequestHeader('Authorization', 'Bearer ' + data.session.access_token);
+    xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
+    xhr.setRequestHeader('Content-Type', blob.type || 'application/octet-stream');
+    xhr.setRequestHeader('Cache-Control', 'max-age=31536000'); // 同じ名前のファイルは変わらないので、長く使い回してよい
+    xhr.setRequestHeader('x-upsert', 'false');
+    xhr.upload.onprogress = e=>{ if(e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onload = ()=> xhr.status >= 200 && xhr.status < 300 ? resolve()
+      : reject(Object.assign(new Error('upload failed: ' + xhr.status), { status:xhr.status }));
+    xhr.onerror = ()=> reject(Object.assign(new Error('network error'), { status:0 }));
+    xhr.send(blob);
+  });
+}
+
+// ---- アップロード中の画面 ----
+function showUploadProgress(title, ratio){
+  document.getElementById('upload-overlay').classList.add('show');
+  document.getElementById('upload-title').textContent = title;
+  const pct = Math.max(0, Math.min(100, Math.round(ratio * 100)));
+  document.getElementById('upload-bar-fill').style.width = pct + '%';
+  document.getElementById('upload-percent').textContent = pct + '%';
+}
+function hideUploadProgress(){
+  document.getElementById('upload-overlay').classList.remove('show');
+  document.getElementById('upload-media').innerHTML = '';
+}
+
+// 投稿をサーバーに送る。送れたら投稿（VIDEOS に入れる形）を返す。失敗したら送りかけたファイルを消して投げ直す
+async function publishCloudPost(post, compressor){
+  const client = await getCloud();
+  const userId = await ensureAccount();
+  const postId = newUuid();
+  const media = document.getElementById('upload-media');
+  media.innerHTML = '';
+
+  // 1) 送るファイルを用意する（動画は必要なら軽くする、写真は縮小する）
+  let blobs = post.files;
+  if(post.mediaType === 'video'){
+    const file = post.files[0];
+    if(compressor){
+      compressor.video.muted = false;
+      media.appendChild(compressor.video); // 軽くしている動画をそのまま見せる（音は出ない）
+      showUploadProgress('動画を軽くしています…', 0);
+      const small = await compressVideo(compressor, r=> showUploadProgress('動画を軽くしています…', r));
+      blobs = [small.size < file.size || file.size > MAX_UPLOAD_MB * MB ? small : file];
+    }
+    if(blobs[0].size > MAX_UPLOAD_MB * MB) throw Object.assign(new Error('too big'), { code:'too_big' });
+  } else {
+    showUploadProgress('写真を準備しています…', 0);
+    blobs = [];
+    for(const f of post.files){
+      blobs.push(await resizePhotoForUpload(f));
+      showUploadProgress('写真を準備しています…', blobs.length / post.files.length);
+    }
+  }
+
+  // 2) ファイルを送る
+  const paths = blobs.map((b, i)=> `${userId}/${postId}/${i}.${extOf(b.type)}`);
+  const total = blobs.reduce((n, b)=> n + b.size, 0);
+  let sent = 0;
+  try{
+    for(let i = 0; i < blobs.length; i++){
+      await uploadPostFile(paths[i], blobs[i], r=> showUploadProgress('アップロードしています…', (sent + r * blobs[i].size) / total));
+      sent += blobs[i].size;
+    }
+    showUploadProgress('仕上げています…', 1);
+    // 3) 投稿の内容を書く
+    const { error } = await client.from('posts').insert({
+      id: postId, creator: post.creator, title: post.title, kind: post.kind, kind_other: post.kindOther || '',
+      subject: post.subject || '', subject_other: post.subjectOther || '', grade: post.grade, grade_other: post.gradeOther || '',
+      unit: post.unit || '', hashtags: post.hashtags, music_id: post.musicId || '', media_type: post.mediaType,
+      media_paths: paths, duration: Math.min(200, Math.max(1, Math.round(post.duration) || 1)),
+    });
+    if(error) throw error;
+  }catch(err){
+    client.storage.from(POST_BUCKET).remove(paths).catch(()=>{});
+    throw err;
+  }
+  return { ...post, id: postId, cloud: true, own: true, userId, mediaPaths: paths };
+}
+function uploadErrorMessage(err){
+  if(err && err.code === 'left') return '画面を離れたので、投稿を中止しました。もう一度「投稿する」を押してね';
+  if(err && err.code === 'too_big') return `動画が大きすぎて送れません（${MAX_UPLOAD_MB}MBまで）。短くするか、画質を下げてもう一度選んでね`;
+  if(err && err.status === 413) return `ファイルが大きすぎて送れませんでした（${MAX_UPLOAD_MB}MBまで）`;
+  if(!navigator.onLine || (err && err.status === 0)) return 'アップロードできませんでした。電波の状態を確かめて、もう一度押してね';
+  return '投稿できませんでした。少し時間をおいて、もう一度押してね';
+}
+
+// 退会の前に：自分の投稿のファイルを Storage から消す（投稿の行は、アカウントを消すと一緒に消える）
+async function deleteMyPostFiles(){
+  const client = await getCloud();
+  const userId = await cloudUserId();
+  if(!client || !userId) return;
+  const { data, error } = await client.from('posts').select('media_paths').eq('user_id', userId);
+  if(error) throw error;
+  const paths = (data || []).flatMap(r=> r.media_paths);
+  if(!paths.length) return;
+  const res = await client.storage.from(POST_BUCKET).remove(paths);
+  if(res.error) throw res.error;
+}
+
+// ---- 通報 ----
+const REPORT_REASONS = [
+  { id:'inappropriate', label:'不適切な内容（性的・暴力的など）' },
+  { id:'bullying', label:'いじめ・悪口・嫌がらせ' },
+  { id:'spam', label:'宣伝・スパム' },
+  { id:'unrelated', label:'勉強と関係ない' },
+  { id:'other', label:'その他' },
+];
+let reportTarget = null;
+const reportSheet = document.getElementById('report-sheet');
+document.getElementById('report-reasons').innerHTML = REPORT_REASONS.map(r=>
+  `<button class="share-hide-btn" data-reason="${r.id}">${escapeHtml(r.label)}</button>`).join('');
+function openReport(v){ reportTarget = v; reportSheet.classList.add('show'); }
+function closeReport(){ reportSheet.classList.remove('show'); reportTarget = null; }
+document.getElementById('report-sheet-close').addEventListener('click', closeReport);
+reportSheet.addEventListener('click', e=>{
+  if(e.target === reportSheet){ closeReport(); return; }
+  const btn = e.target.closest('[data-reason]');
+  if(!btn || !reportTarget) return;
+  const v = reportTarget;
+  closeReport();
+  queueSync({ type:'report', postId: v.id, reason: btn.dataset.reason });
+  hideFromFeed(v, 'video', '通報しました。運営が確認します（この投稿はもう表示しません）');
+});
 
 // ---- AIコーチ ----
 // ・メインの役割は「わからない問題の解説」。文字か写真で問題を送ると AI（Claude）が解説する
@@ -4226,6 +4629,7 @@ document.getElementById('onboarding-submit').addEventListener('click', async ()=
     renderFeed(SHARED_VIDEO || undefined); // 学年に合わせたおすすめで作り直す（共有リンクの動画は先頭のまま）
     showScreen('home');
     showToast(`ようこそ、${name}さん`);
+    loadCloudPosts();
   }
 });
 
@@ -4303,7 +4707,8 @@ document.getElementById('profile-grid').addEventListener('click', async (e)=>{
   const del = e.target.closest('[data-delete-post]');
   if(del){
     if(!await confirmDialog('この投稿を削除しますか？元に戻せません。', '削除する')) return;
-    await deleteOwnPost(del.dataset.deletePost);
+    try{ await deleteOwnPost(del.dataset.deletePost); }
+    catch(err){ showToast('削除できませんでした。電波の状態を確かめて、もう一度試してね'); return; }
     renderProfileGrid();
     showToast('投稿を削除しました');
     return;
@@ -4532,7 +4937,7 @@ document.getElementById('settings-delete-all').addEventListener('click', async (
     : 'この端末のゾーンNOWのデータ（勉強記録・投稿など）をすべて削除します。元に戻せません。本当に削除しますか？';
   if(!await confirmDialog(message, 'すべて削除')) return;
   if(cloudEnabled()){
-    try{ await deleteCloudAccount(); }
+    try{ await deleteMyPostFiles(); await deleteCloudAccount(); }
     catch(err){ showToast('サーバーのデータを削除できませんでした。電波の状態を確かめて、もう一度試してね'); return; }
   }
   try{ Object.keys(localStorage).filter(k=> k.startsWith('zonenow_')).forEach(k=> localStorage.removeItem(k)); }catch(err){}
@@ -4553,10 +4958,11 @@ updateNotifyBadges();
 // サーバーができる前から使っていた人：アカウントを自動で作り、端末の記録を送る。それ以外は残っている変更を送る
 if(cloudEnabled() && loadProfile()){
   cloudUserId().then(async id=>{
-    if(id){ flushSync(); return; }
+    if(id){ flushSync(); loadCloudPosts(); return; }
     await ensureAccount();
     queueSync({ type:'profile' });
     queueSync({ type:'log_upsert' });
+    loadCloudPosts();
   }).catch(()=>{ /* 電波がないなど。次に開いたときにまた試す */ });
 }
 

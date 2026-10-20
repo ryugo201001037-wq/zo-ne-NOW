@@ -7,7 +7,8 @@ const { check, state, report } = createChecker();
 
 // ---- にせSupabase（ログイン：GoTrue、データ：PostgREST の必要なところだけ） ----
 function startFakeSupabase() {
-  const fake = { users: new Map(), profiles: new Map(), logs: new Map(), feedback: [], signups: 0, offline: false, rejectNextLog: false, rpcCalls: 0 };
+  const fake = { users: new Map(), profiles: new Map(), logs: new Map(), feedback: [], signups: 0, offline: false, rejectNextLog: false, rpcCalls: 0,
+    posts: [], files: new Map(), reports: [], failUpload: false };
   const userOf = req => {
     const m = /^Bearer tok-(.+)$/.exec(req.headers.authorization || '');
     return m && fake.users.has(m[1]) ? m[1] : null;
@@ -23,10 +24,40 @@ function startFakeSupabase() {
     if (req.method === 'OPTIONS') { res.writeHead(204, cors); res.end(); return; }
     const chunks = [];
     for await (const c of req) chunks.push(c);
-    const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString() || 'null') : null;
+    const raw = Buffer.concat(chunks);
+    const isJson = (req.headers['content-type'] || '').includes('json');
+    const body = isJson && raw.length ? JSON.parse(raw.toString() || 'null') : null;
     const url = new URL(req.url, 'http://x');
     const send = (status, data) => { res.writeHead(status, { ...cors, 'Content-Type': 'application/json' }); res.end(data === undefined ? '' : JSON.stringify(data)); };
     const p = url.pathname;
+
+    // ---- Storage（投稿のファイル置き場） ----
+    const PUBLIC = '/storage/v1/object/public/posts/';
+    if (p.startsWith(PUBLIC) && req.method === 'GET') {
+      const file = fake.files.get(decodeURIComponent(p.slice(PUBLIC.length)));
+      if (!file) return send(404, { message: 'not found' });
+      res.writeHead(200, { ...cors, 'Content-Type': file.type, 'Content-Length': file.body.length });
+      res.end(file.body);
+      return;
+    }
+    if (p.startsWith('/storage/v1/object/posts/') && req.method === 'POST') {
+      const uidUp = userOf(req);
+      const name = p.slice('/storage/v1/object/posts/'.length).split('/').map(decodeURIComponent).join('/');
+      if (!uidUp) return send(400, { statusCode: '403', error: 'Unauthorized', message: 'no token' });
+      if (fake.failUpload) { req.socket.destroy(); return; }
+      if (name.split('/')[0] !== uidUp || name.split('/').length < 2) return send(400, { statusCode: '403', error: 'Unauthorized', message: 'row-level security' });
+      if (fake.files.has(name)) return send(400, { statusCode: '409', error: 'Duplicate', message: 'exists' });
+      fake.files.set(name, { type: req.headers['content-type'], body: raw, owner: uidUp });
+      return send(200, { Key: 'posts/' + name });
+    }
+    if (p === '/storage/v1/object/posts' && req.method === 'DELETE') {
+      const uidDel = userOf(req);
+      const removed = [];
+      for (const name of (body && body.prefixes) || []) {
+        if (fake.files.has(name) && fake.files.get(name).owner === uidDel) { fake.files.delete(name); removed.push({ name }); }
+      }
+      return send(200, removed);
+    }
 
     if (p === '/auth/v1/signup' && req.method === 'POST') {
       fake.signups++;
@@ -64,6 +95,30 @@ function startFakeSupabase() {
       }
       return send(201);
     }
+    if (p === '/rest/v1/posts' && req.method === 'GET') {
+      const user = (url.searchParams.get('user_id') || '').replace(/^eq\./, '');
+      return send(200, fake.posts.filter(r => !user || r.user_id === user).slice().sort((a, b) => b.created_at.localeCompare(a.created_at)));
+    }
+    if (p === '/rest/v1/posts' && req.method === 'POST') {
+      for (const row of [].concat(body)) {
+        if (row.user_id && row.user_id !== uid) return send(403, { code: '42501', message: 'row-level security' });
+        if (!row.title || !row.media_paths || !row.media_paths.length || !(row.duration >= 1 && row.duration <= 200)) return send(400, { code: '23514', message: 'check violation' });
+        fake.posts.push({ ...row, user_id: uid, created_at: new Date().toISOString() });
+      }
+      return send(201);
+    }
+    if (p === '/rest/v1/posts' && req.method === 'DELETE') {
+      const id = (url.searchParams.get('id') || '').replace(/^eq\./, '');
+      fake.posts = fake.posts.filter(r => !(r.id === id && r.user_id === uid));
+      return send(204);
+    }
+    if (p === '/rest/v1/reports' && req.method === 'POST') {
+      for (const row of [].concat(body)) {
+        if (fake.reports.some(r => r.post_id === row.post_id && r.user_id === uid)) return send(409, { code: '23505', message: 'duplicate' });
+        fake.reports.push({ ...row, user_id: uid });
+      }
+      return send(201);
+    }
     if (p === '/rest/v1/study_logs' && req.method === 'DELETE') {
       const id = (url.searchParams.get('id') || '').replace(/^eq\./, '');
       const user = (url.searchParams.get('user_id') || '').replace(/^eq\./, '');
@@ -75,6 +130,7 @@ function startFakeSupabase() {
     if (p === '/rest/v1/rpc/delete_my_account' && req.method === 'POST') {
       fake.rpcCalls++;
       fake.users.delete(uid); fake.profiles.delete(uid);
+      fake.posts = fake.posts.filter(r => r.user_id !== uid);
       for (const [k, row] of fake.logs) if (row.user_id === uid) fake.logs.delete(k);
       return send(204);
     }
@@ -90,20 +146,20 @@ function startFakeSupabase() {
   const logsOf = () => [...fake.logs.values()];
   const waitFor = async (fn, ms = 4000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await fn()) return true; await new Promise(r => setTimeout(r, 100)); } return false; };
 
-  async function openApp(init = {}) {
+  async function openApp(init = {}, config = {}, query = '') {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    await page.addInitScript(([url, init]) => {
+    await page.addInitScript(([url, init, config]) => {
       window.confirm = () => false;
-      window.ZONENOW_CONFIG = { supabaseUrl: url, supabaseAnonKey: 'test-anon-key' };
+      window.ZONENOW_CONFIG = { supabaseUrl: url, supabaseAnonKey: 'test-anon-key', ...config };
       if (!sessionStorage.getItem('seeded')) {
         sessionStorage.setItem('seeded', '1');
         Object.entries(init).forEach(([k, v]) => localStorage.setItem(k, JSON.stringify(v)));
       }
-    }, [fake.url, init]);
-    await page.goto(APP_URL);
+    }, [fake.url, init, config]);
+    await page.goto(APP_URL + query);
     await page.waitForTimeout(400);
     return { context, page, errors };
   }
@@ -175,6 +231,117 @@ function startFakeSupabase() {
   check('サーバーに断られた変更で、後ろの変更が止まらない', await waitFor(() => logsOf().some(r => r.seconds === 1200)) && await page.evaluate(() => JSON.parse(localStorage.getItem('zonenow_sync_queue')).length === 0));
   await page.screenshot({ path: OUT + 'cloud-record.png' });
 
+  // ========== 投稿をみんなに見せる ==========
+  state.section = '投稿（動画）';
+  const ASSETS = require('path').join(__dirname, 'assets');
+  const postVideo = async (pg, title) => {
+    await nav(pg, 'create');
+    await pg.setInputFiles('#post-file-input', require('path').join(ASSETS, 'sample.webm'));
+    await pg.waitForTimeout(500);
+    await pg.fill('#post-title', title);
+    await pg.click('#post-grade-chips .chip[data-id="high1"]');
+    await pg.click('#post-subject-chips .chip[data-id="math"]');
+    await pg.click('#post-next'); await pg.waitForTimeout(300);
+    // 進み具合の画面に出た文言を記録しておく（小さい動画だと一瞬で終わるため）
+    await pg.evaluate(() => {
+      window.__uploadTitles = [];
+      new MutationObserver(() => window.__uploadTitles.push(document.getElementById('upload-title').textContent))
+        .observe(document.getElementById('upload-overlay'), { subtree: true, childList: true, characterData: true, attributes: true });
+    });
+    await pg.click('#preview-post'); await pg.click('#confirm-ok');
+  };
+  const uploadTitles = pg => pg.evaluate(() => window.__uploadTitles.join(' / '));
+  await postVideo(page, '二次関数の頂点を一瞬で');
+  check('送っている間は進み具合を出す（アップロード→仕上げ）', await waitFor(async () => /アップロードしています.*仕上げています/.test(await uploadTitles(page))), await uploadTitles(page));
+  check('投稿がサーバーに保存される（ファイル1つ＋内容）', await waitFor(() => fake.posts.length === 1, 8000), JSON.stringify(fake.posts));
+  const vpost = fake.posts[0];
+  check('投稿の内容（タイトル・教科・学年・名前・自分のアカウント）', vpost && vpost.title === '二次関数の頂点を一瞬で' && vpost.subject === 'math' && vpost.grade === 'high1' && vpost.creator === 'みなと' && vpost.user_id === uid && vpost.media_type === 'video');
+  check('ファイルは自分のフォルダに置く', vpost && vpost.media_paths.length === 1 && vpost.media_paths[0].startsWith(`${uid}/${vpost.id}/0.`) && fake.files.has(vpost.media_paths[0]) && fake.files.get(vpost.media_paths[0]).type.startsWith('video/'));
+  check('投稿したらホームの先頭に出る', await waitFor(async () => (await active(page)) === 'home-screen' && await page.$eval('#feed .short-slide:first-child', el => el.dataset.id) === (vpost && vpost.id)));
+  check('「みんなのフィードに流れます」と伝える', (await toast(page)).includes('みんなのフィード'));
+  check('進み具合の画面は消える', !(await page.isVisible('#upload-overlay')));
+
+  // 見本の動画は小さいので、普段の設定ではそのまま送られる。ここでは必ず「軽くする」設定で開く
+  state.section = '動画を軽くする';
+  const small = await openApp({ zonenow_profile: { name: 'みなと2', grade: 'high1', createdAt: 1 } }, { keepAsIsBytesPerSec: 0 });
+  await waitFor(() => fake.users.size === 2);
+  const uid2 = [...fake.users.keys()].find(id => id !== uid);
+  await postVideo(small.page, '軽くした動画');
+  check('軽くしている間は「動画を軽くしています」', await waitFor(async () => /動画を軽くしています.*アップロードしています/.test(await uploadTitles(small.page)), 15000));
+  check('軽くした動画が送られる', await waitFor(() => fake.posts.some(r => r.title === '軽くした動画'), 15000));
+  const spost = fake.posts.find(r => r.title === '軽くした動画');
+  const sfile = spost && fake.files.get(spost.media_paths[0]);
+  check('軽くした動画はブラウザで再生できる形式', !!sfile && /^video\/(webm|mp4)$/.test(sfile.type) && sfile.body.length > 0, sfile && sfile.type);
+  check('軽くした動画は、自分のフォルダ', !!spost && spost.user_id === uid2 && spost.media_paths[0].startsWith(uid2 + '/'));
+  check('エラーなし', !small.errors.length, small.errors.join(' / '));
+  await small.context.close();
+
+  state.section = '投稿（写真）';
+  await nav(page, 'create');
+  await page.setInputFiles('#post-file-input', [require('path').join(ASSETS, 'p1.png'), require('path').join(ASSETS, 'p2.png')]);
+  await page.waitForTimeout(300);
+  await page.fill('#post-title', '英単語まとめ');
+  await page.click('#post-grade-chips .chip[data-id="everyone"]');
+  await page.click('#post-next'); await page.waitForTimeout(300);
+  await page.click('#preview-post'); await page.click('#confirm-ok');
+  check('写真2枚の投稿も保存される', await waitFor(() => fake.posts.some(r => r.title === '英単語まとめ'), 6000));
+  const ppost = fake.posts.find(r => r.title === '英単語まとめ');
+  check('写真は縮小してJPEGで送る', !!ppost && ppost.media_type === 'image' && ppost.media_paths.length === 2 && ppost.media_paths.every(x => x.endsWith('.jpg') && fake.files.get(x).type === 'image/jpeg'));
+
+  state.section = '送れなかったとき';
+  fake.failUpload = true;
+  const postsBefore = fake.posts.length;
+  await nav(page, 'create');
+  await page.setInputFiles('#post-file-input', require('path').join(ASSETS, 'p3.png'));
+  await page.waitForTimeout(300);
+  await page.fill('#post-title', '送れない投稿');
+  await page.click('#post-grade-chips .chip[data-id="everyone"]');
+  await page.click('#post-next'); await page.waitForTimeout(300);
+  await page.click('#preview-post'); await page.click('#confirm-ok');
+  check('送れなかったら伝えて、プレビューに残る', await waitFor(async () => /できませんでした/.test(await toast(page)) && (await active(page)) === 'preview-screen'));
+  check('中途半端な投稿は残らない', fake.posts.length === postsBefore);
+  check('進み具合の画面は消える', !(await page.isVisible('#upload-overlay')));
+  fake.failUpload = false;
+  await page.click('#preview-post'); await page.click('#confirm-ok');
+  check('電波が戻れば、もう一度押して投稿できる', await waitFor(() => fake.posts.some(r => r.title === '送れない投稿'), 6000));
+
+  state.section = 'ほかの人のフィード';
+  const other = await openApp({}, {}, `?v=${vpost.id}`);
+  await other.page.fill('#onboarding-name', 'ゆい');
+  await other.page.click('#onboarding-grade-chips .chip[data-id="high1"]');
+  await other.page.click('#onboarding-submit');
+  const op = other.page;
+  check('ほかの人にもみんなの投稿が届く', await waitFor(() => op.evaluate(() => VIDEOS.filter(v => v.cloud).length === 4)));
+  check('共有リンクの投稿が先頭に出る', await waitFor(() => op.$eval('#feed .short-slide:first-child', el => el.dataset.id).then(id => id === vpost.id)));
+  const src = await op.$eval('#feed .short-slide:first-child video', el => el.dataset.src);
+  check('動画はサーバーの公開URLから読む', src.startsWith(fake.url + '/storage/v1/object/public/posts/'));
+  check('サーバーの動画を再生できる', await op.evaluate(async u => (await fetch(u)).ok, src));
+  check('ほかの人の投稿にはフォローボタン', await op.isVisible('#feed .short-slide:first-child [data-role="follow"]'));
+  check('本物の投稿は見本の動画より出やすい', await op.evaluate(() => feedWeight(VIDEOS.find(v => v.cloud), 'high1') > feedWeight(VIDEOS.find(v => !v.cloud && v.grade === 'high1'), 'high1')));
+
+  state.section = '通報';
+  await op.click('#feed .short-slide:first-child [data-role="share"]');
+  check('ほかの人の投稿には「通報する」', await op.isVisible('#share-report'));
+  await op.click('#share-report');
+  check('理由を選ぶ画面が出る', await op.isVisible('#report-sheet .sheet-card'));
+  await op.click('#report-reasons [data-reason="spam"]');
+  const otherUid = [...fake.users.keys()].find(id => id !== uid && id !== uid2);
+  check('通報がサーバーに届く（どの投稿か・理由・誰から）', await waitFor(() => fake.reports.length === 1 && fake.reports[0].post_id === vpost.id && fake.reports[0].reason === 'spam' && fake.reports[0].user_id === otherUid), JSON.stringify(fake.reports));
+  check('通報した投稿はもう出ない', (await toast(op)).includes('通報しました') && !(await op.$$eval('#feed .short-slide', (els, id) => els.some(el => el.dataset.id === id), vpost.id)));
+  await op.click('#feed .short-slide:first-child [data-role="share"]');
+  const firstCloud = await op.$eval('#feed .short-slide:first-child', el => VIDEOS.find(v => v.id === el.dataset.id).cloud);
+  check('見本の動画には「通報する」を出さない', firstCloud || !(await op.isVisible('#share-report')));
+  await op.click('#share-sheet-close');
+  check('エラーなし', !other.errors.length, other.errors.join(' / '));
+  await other.context.close();
+
+  state.section = '自分の投稿を消す';
+  await nav(page, 'profile');
+  check('プロフィールに自分の投稿（3件）', (await page.textContent('#profile-posts-count')) === '3');
+  await page.click(`[data-delete-post="${vpost.id}"]`); await page.click('#confirm-ok');
+  check('消すとサーバーの投稿もファイルも消える', await waitFor(() => !fake.posts.some(r => r.id === vpost.id) && !fake.files.has(vpost.media_paths[0])));
+  check('ほかの人の投稿・ファイルは残る', !!fake.posts.find(r => r.id === spost.id) && fake.files.has(spost.media_paths[0]));
+
   // ========== すべて削除（退会） ==========
   state.section = '退会';
   await nav(page, 'profile'); await page.click('#profile-gear'); await page.waitForTimeout(200);
@@ -183,6 +350,7 @@ function startFakeSupabase() {
   await Promise.all([page.waitForNavigation(), page.click('#confirm-ok')]);
   await page.waitForTimeout(400);
   check('サーバーのアカウントとデータも消える', fake.rpcCalls === 1 && !fake.users.has(uid) && !fake.profiles.has(uid) && logsOf().every(r => r.user_id !== uid));
+  check('投稿とそのファイルも消える', !fake.posts.some(r => r.user_id === uid) && ![...fake.files.keys()].some(k => k.startsWith(uid + '/')));
   check('最初の登録画面に戻る', (await active(page)) === 'onboarding-screen' && await page.evaluate(() => !Object.keys(localStorage).some(k => k.startsWith('zonenow_'))));
   check('エラーなし', !errors.length, errors.join(' / '));
   await context.close();
@@ -190,14 +358,14 @@ function startFakeSupabase() {
   // ========== 前から使っていた人 ==========
   state.section = '前から使っていた人';
   const today = new Date(); const key = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const usersBefore = new Set(fake.users.keys());
   const old = await openApp({
     zonenow_profile: { name: 'さくら', grade: 'junior3', createdAt: 1 },
     zonenow_study_log: [{ id: 'old1', subject: 'japanese', subjectOther: '', seconds: 1500, date: key, source: 'timer', createdAt: 1 }],
   });
   check('登録画面は出さずに使える', (await active(old.page)) === 'home-screen');
-  const oldUid = [...fake.users.keys()].find(id => id !== uid);
-  check('自動でアカウントを作り、端末の記録を送る', await waitFor(() => !!oldUid || fake.users.size === 1) && await waitFor(() => {
-    const id = [...fake.users.keys()][0];
+  check('自動でアカウントを作り、端末の記録を送る', await waitFor(() => {
+    const id = [...fake.users.keys()].find(k => !usersBefore.has(k));
     return id && fake.profiles.get(id) && fake.profiles.get(id).name === 'さくら' && logsOf().some(r => r.id === 'old1' && r.user_id === id);
   }));
   check('エラーなし', !old.errors.length, old.errors.join(' / '));

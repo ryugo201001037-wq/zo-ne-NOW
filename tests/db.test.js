@@ -45,6 +45,16 @@ psql(`
   grant usage on schema public, auth to anon, authenticated;
   grant execute on function auth.uid() to anon, authenticated;
   alter default privileges in schema public grant all on tables to anon, authenticated;
+  -- Storage（ファイル置き場）：バケットとファイルの表、フォルダ名を取り出す関数だけ同じ形で用意する
+  create schema storage;
+  create table storage.buckets (id text primary key, name text not null, public boolean default false, file_size_limit bigint, allowed_mime_types text[]);
+  create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text references storage.buckets(id), name text not null, owner uuid default auth.uid(), unique (bucket_id, name));
+  alter table storage.objects enable row level security;
+  create function storage.foldername(name text) returns text[] language plpgsql as $f$
+    declare _parts text[]; begin select string_to_array(name, '/') into _parts; return _parts[1:array_length(_parts, 1) - 1]; end $f$;
+  grant usage on schema storage to anon, authenticated;
+  grant all on storage.objects to anon, authenticated;
+  grant select on storage.buckets to anon, authenticated;
   insert into auth.users values ('${A}'), ('${B}');
 `);
 
@@ -90,6 +100,40 @@ check('他人の名前では送れない', !as(A, `insert into feedback (user_id
 check('空のご意見は送れない', !as(A, `insert into feedback (message) values ('')`).ok);
 check('ログインしていないと送れない', !as(null, `insert into feedback (message) values ('匿名')`).ok);
 
+state.section = '投稿';
+// userId を渡すと、その人として投稿しようとする（なりすましの確認用）
+const postSql = (paths, userId) => `insert into posts (${userId ? 'user_id, ' : ''}creator, title, grade, media_type, media_paths, duration)
+  values (${userId ? `'${userId}', ` : ''}'あおい', '二次関数', 'high1', 'video', array[${paths.map(x => `'${x}'`).join(',')}], 60) returning id`;
+const postA = as(A, postSql([`${A}/p1/0.mp4`]));
+check('投稿できる（user_id は自動で自分）', postA.ok && psql(`select user_id from posts`) === A, postA.err);
+const postId = postA.out.split('\n')[0];
+check('他の人の投稿も読める（フィードに流すため）', as(B, 'select title from posts').out === '二次関数');
+check('他人の名前では投稿できない', !as(A, postSql([`${B}/x/0.mp4`], B)).ok);
+check('他人の投稿は消せない', as(B, `delete from posts where id = '${postId}' returning id`).out === '');
+check('他人の投稿は書き換えられない', as(B, `update posts set title = 'のっとり' where id = '${postId}' returning id`).out === '');
+check('自分の投稿も書き換えはできない（消して投稿し直す）', as(A, `update posts set title = 'x' where id = '${postId}' returning id`).out === '');
+check('タイトルは60文字まで', !as(A, `insert into posts (creator, title, grade, media_type, media_paths, duration) values ('あおい', '${'あ'.repeat(61)}', 'high1', 'video', array['${A}/p/0.mp4'], 60)`).ok);
+check('ファイルは10個まで', !as(A, postSql(Array.from({ length: 11 }, (_, i) => `${A}/p/${i}.jpg`))).ok);
+check('動画か写真だけ', !as(A, `insert into posts (creator, title, grade, media_type, media_paths, duration) values ('あおい', 't', 'high1', 'gif', array['${A}/p/0.gif'], 5)`).ok);
+check('ログインしていないと投稿は見えない', as(null, 'select count(*) from posts').out === '0');
+
+state.section = '通報';
+check('他の人の投稿を通報できる', as(B, `insert into reports (post_id, reason) values ('${postId}', 'spam')`).ok);
+check('同じ投稿は1人1回だけ', !as(B, `insert into reports (post_id, reason) values ('${postId}', 'spam')`).ok);
+check('通報はアプリからは読めない（通報した人にも、された人にも）', as(B, 'select count(*) from reports').out === '0' && as(A, 'select count(*) from reports').out === '0');
+check('他人の名前では通報できない', !as(B, `insert into reports (post_id, user_id, reason) values ('${postId}', '${A}', 'x')`).ok);
+
+state.section = '投稿のファイル置き場';
+check('posts バケットができる（公開・50MBまで）', psql(`select public, file_size_limit from storage.buckets where id = 'posts'`) === 't|52428800');
+check('自分のフォルダにファイルを置ける', as(A, `insert into storage.objects (bucket_id, name) values ('posts', '${A}/p1/0.mp4')`).ok);
+check('他人のフォルダには置けない', !as(A, `insert into storage.objects (bucket_id, name) values ('posts', '${B}/evil/0.mp4')`).ok);
+check('フォルダの外（いちばん上）には置けない', !as(A, `insert into storage.objects (bucket_id, name) values ('posts', 'top.mp4')`).ok);
+check('ほかのバケットには置けない', psql(`insert into storage.buckets (id, name) values ('other', 'other') on conflict do nothing; select 1`) === '1' && !as(A, `insert into storage.objects (bucket_id, name) values ('other', '${A}/x.mp4')`).ok);
+check('他人のファイルは消せない', as(B, `delete from storage.objects where name = '${A}/p1/0.mp4' returning name`).out === '');
+check('他人のファイルは上書きできない', as(B, `update storage.objects set name = '${B}/x.mp4' where name = '${A}/p1/0.mp4' returning name`).out === '');
+check('自分のファイルは消せる', as(A, `delete from storage.objects where name = '${A}/p1/0.mp4' returning name`).out === `${A}/p1/0.mp4`);
+check('ログインしていないと置けない', !as(null, `insert into storage.objects (bucket_id, name) values ('posts', '${A}/anon.mp4')`).ok);
+
 state.section = '未ログイン';
 check('ログインしていないと何も見えない', as(null, 'select count(*) from profiles').out === '0' && as(null, 'select count(*) from study_logs').out === '0');
 check('ログインしていないと書き込めない', !as(null, `insert into study_logs (user_id, id, subject, seconds, date) values ('${A}', 'anon1', 'math', 60, '2026-10-19')`).ok);
@@ -98,7 +142,8 @@ state.section = '退会';
 check('ログインしていないと退会の関数は使えない', !as(null, 'select public.delete_my_account()').ok);
 check('退会できる', as(A, 'select public.delete_my_account()').ok);
 check('退会すると自分のアカウントとデータが消える', psql(`select count(*) from auth.users where id = '${A}'`) === '0'
-  && psql(`select count(*) from feedback where user_id = '${A}'`) === '0'
+  && psql(`select count(*) from feedback where user_id = '${A}'`) === '0' && psql(`select count(*) from posts where user_id = '${A}'`) === '0'
+  && psql(`select count(*) from reports`) === '0'
   && psql(`select count(*) from profiles where id = '${A}'`) === '0' && psql(`select count(*) from study_logs where user_id = '${A}'`) === '0');
 check('他の人のアカウントとデータは残る', psql(`select count(*) from auth.users where id = '${B}'`) === '1' && psql(`select count(*) from study_logs where user_id = '${B}'`) === '1');
 

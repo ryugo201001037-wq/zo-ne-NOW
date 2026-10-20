@@ -1,9 +1,10 @@
 // 本物のSupabaseでの確認（npm test には含めない。手で実行する：npm run check:live）
-// 確認用のアカウントを2つ作り、「自分のデータは読み書きできる・他人のデータは読めない書けない・退会で消える」を確かめ、
+// 確認用のアカウントを2つ作り、「自分のデータは読み書きできる・他人のデータは読めない書けない・投稿はみんなが読める・退会で消える」を確かめ、
 // 最後に確認用アカウントを消す。接続先は index.html に書いてある本番の設定
 // ※ プロキシ経由の環境では NODE_USE_ENV_PROXY=1 を付けて実行する
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { createChecker } = require('./helpers');
 const { check, state, report } = createChecker();
@@ -64,6 +65,42 @@ const today = new Date().toISOString().slice(0, 10);
     const fbRead = await a.from('feedback').select('id');
     check('ご意見はアプリからは読めない', !fbRead.error && fbRead.data.length === 0, JSON.stringify(fbRead.data || fbRead.error));
 
+    state.section = '投稿';
+    const pid = crypto.randomUUID();
+    const path_ = `${A}/${pid}/0.jpg`;
+    const jpg = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAAA//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AN//Z', 'base64');
+    const up = await a.storage.from('posts').upload(path_, jpg, { contentType: 'image/jpeg' });
+    check('自分のフォルダにファイルを置ける（supabase/schema.sql の Storage 部分を実行済みか）', !up.error, up.error && up.error.message);
+    created.files = [path_];
+    const pub = await fetch(`${URL_}/storage/v1/object/public/posts/${path_}`);
+    check('置いたファイルは公開URLで見られる', pub.ok, String(pub.status));
+    const evilUp = await b.storage.from('posts').upload(`${A}/${pid}/1.jpg`, jpg, { contentType: 'image/jpeg' });
+    check('他人のフォルダには置けない', !!evilUp.error);
+    const overwrite = await b.storage.from('posts').upload(path_, jpg, { contentType: 'image/jpeg', upsert: true });
+    check('他人のファイルは上書きできない', !!overwrite.error);
+    await b.storage.from('posts').remove([path_]);
+    const stillThere = await fetch(`${URL_}/storage/v1/object/public/posts/${path_}`);
+    check('他人のファイルは消せない', stillThere.ok);
+    const badType = await a.storage.from('posts').upload(`${A}/${pid}/x.html`, Buffer.from('<script>alert(1)</script>'), { contentType: 'text/html' });
+    check('動画・写真以外のファイルは置けない', !!badType.error);
+    if (!badType.error) created.files.push(`${A}/${pid}/x.html`);
+    const post = await a.from('posts').insert({ id: pid, creator: '確認用A', title: '確認用の投稿', grade: 'high1', media_type: 'image', media_paths: [path_], duration: 8 });
+    check('投稿できる', !post.error, post.error && post.error.message);
+    const seen = await b.from('posts').select('id, title').eq('id', pid);
+    check('他の人の投稿も読める', !seen.error && seen.data.length === 1, JSON.stringify(seen.data || seen.error));
+    const evilPostDel = await b.from('posts').delete().eq('id', pid).select();
+    check('他人の投稿は消せない', !evilPostDel.error && evilPostDel.data.length === 0);
+    const rep = await b.from('reports').insert({ post_id: pid, reason: 'spam' });
+    check('通報できる', !rep.error, rep.error && rep.error.message);
+    const repRead = await b.from('reports').select('id');
+    check('通報はアプリからは読めない', !repRead.error && repRead.data.length === 0);
+    const gpost = await guest.from('posts').select('id');
+    check('ログインしていないと投稿は見えない', (gpost.data || []).length === 0);
+    const myDel = await a.from('posts').delete().eq('id', pid).select();
+    const fileDel = await a.storage.from('posts').remove(created.files);
+    check('自分の投稿とファイルは消せる', !myDel.error && myDel.data.length === 1 && !fileDel.error && fileDel.data.length === created.files.length, JSON.stringify(fileDel.error || fileDel.data));
+    if (!fileDel.error) created.files = [];
+
     state.section = 'ログインしていない人';
     const gp = await guest.from('profiles').select('id');
     const gl = await guest.from('study_logs').select('id');
@@ -84,7 +121,8 @@ const today = new Date().toISOString().slice(0, 10);
   } catch (e) {
     check('途中でエラー', false, e.message);
   } finally {
-    // 確認用アカウントを消す（残っていたら）
+    // 確認用のファイルとアカウントを消す（残っていたら）
+    if (created.files && created.files.length) { try { await a.storage.from('posts').remove(created.files); } catch (e) {} }
     for (const c of created) { try { await c.rpc('delete_my_account'); } catch (e) {} }
   }
   report();

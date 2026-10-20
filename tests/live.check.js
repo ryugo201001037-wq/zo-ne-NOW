@@ -79,7 +79,8 @@ const today = new Date().toISOString().slice(0, 10);
     const overwrite = await b.storage.from('posts').upload(path_, jpg, { contentType: 'image/jpeg', upsert: true });
     check('他人のファイルは上書きできない', !!overwrite.error);
     await b.storage.from('posts').remove([path_]);
-    const stillThere = await fetch(`${URL_}/storage/v1/object/public/posts/${path_}`);
+    // 配信の一時保存（CDN）を通さずに確かめる（毎回ちがうURLにする）
+    const stillThere = await fetch(`${URL_}/storage/v1/object/public/posts/${path_}?check=${Date.now()}`);
     check('他人のファイルは消せない', stillThere.ok);
     const badType = await a.storage.from('posts').upload(`${A}/${pid}/x.html`, Buffer.from('<script>alert(1)</script>'), { contentType: 'text/html' });
     check('動画・写真以外のファイルは置けない', !!badType.error);
@@ -100,6 +101,8 @@ const today = new Date().toISOString().slice(0, 10);
     const fileDel = await a.storage.from('posts').remove(created.files);
     check('自分の投稿とファイルは消せる', !myDel.error && myDel.data.length === 1 && !fileDel.error && fileDel.data.length === created.files.length, JSON.stringify(fileDel.error || fileDel.data));
     if (!fileDel.error) created.files = [];
+    const afterDel = await fetch(`${URL_}/storage/v1/object/public/posts/${path_}?check=${Date.now()}`);
+    check('消したファイルはもう見られない', !afterDel.ok, String(afterDel.status));
 
     state.section = 'ログインしていない人';
     const gp = await guest.from('profiles').select('id');

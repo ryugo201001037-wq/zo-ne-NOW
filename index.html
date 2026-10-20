@@ -3938,7 +3938,8 @@ async function uploadPostFile(path, blob, onProgress){
     xhr.setRequestHeader('Authorization', 'Bearer ' + data.session.access_token);
     xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
     xhr.setRequestHeader('Content-Type', blob.type || 'application/octet-stream');
-    xhr.setRequestHeader('Cache-Control', 'max-age=31536000'); // 同じ名前のファイルは変わらないので、長く使い回してよい
+    // 配信の一時保存（CDN）は1時間まで。長くすると、消した・通報で削除した動画が、URLを知っていればしばらく見られてしまう
+    xhr.setRequestHeader('Cache-Control', 'max-age=3600');
     xhr.setRequestHeader('x-upsert', 'false');
     xhr.upload.onprogress = e=>{ if(e.lengthComputable) onProgress(e.loaded / e.total); };
     xhr.onload = ()=> xhr.status >= 200 && xhr.status < 300 ? resolve()

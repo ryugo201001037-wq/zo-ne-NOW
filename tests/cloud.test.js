@@ -257,6 +257,8 @@ function startFakeSupabase() {
   const vpost = fake.posts[0];
   check('投稿の内容（タイトル・教科・学年・名前・自分のアカウント）', vpost && vpost.title === '二次関数の頂点を一瞬で' && vpost.subject === 'math' && vpost.grade === 'high1' && vpost.creator === 'みなと' && vpost.user_id === uid && vpost.media_type === 'video');
   check('ファイルは自分のフォルダに置く', vpost && vpost.media_paths.length === 1 && vpost.media_paths[0].startsWith(`${uid}/${vpost.id}/0.`) && fake.files.has(vpost.media_paths[0]) && fake.files.get(vpost.media_paths[0]).type.startsWith('video/'));
+  const sampleBytes = require('fs').readFileSync(require('path').join(ASSETS, 'sample.webm'));
+  check('小さい動画は、元のファイルをそのまま送る（中身が同じ）', !!vpost && fake.files.get(vpost.media_paths[0]).body.equals(sampleBytes), vpost && String(fake.files.get(vpost.media_paths[0]).body.length));
   check('投稿したらホームの先頭に出る', await waitFor(async () => (await active(page)) === 'home-screen' && await page.$eval('#feed .short-slide:first-child', el => el.dataset.id) === (vpost && vpost.id)));
   check('「みんなのフィードに流れます」と伝える', (await toast(page)).includes('みんなのフィード'));
   check('進み具合の画面は消える', !(await page.isVisible('#upload-overlay')));

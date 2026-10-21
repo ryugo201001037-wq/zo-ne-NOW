@@ -12,7 +12,7 @@
 // ------------------------------------------------------
 
 // 保存の仕組みを変えたら番号を上げる（古い保存データは自動で削除される）
-const CACHE_NAME = "zonenow-cache-v2";
+const CACHE_NAME = "zonenow-cache-v3";
 const CORE_FILES = [
   "./index.html",
   "./manifest.json",
@@ -47,8 +47,12 @@ self.addEventListener("fetch", (event) => {
   if (new URL(req.url).origin !== self.location.origin) return;
   if (req.destination === "video") return;
 
+  // アプリ本体（index.html）は、ブラウザ自身の一時保存（GitHub Pages は10分使い回してよいと指示している）も通さず、
+  // 毎回ネットから取り直す。これがないと、更新してから最大10分ほど古い版が出ることがあった
+  const url = new URL(req.url);
+  const isAppShell = req.mode === "navigate" || url.pathname.endsWith("/index.html");
   event.respondWith(
-    fetch(req)
+    (isAppShell ? fetch(url.href, { cache: "no-store", credentials: "same-origin" }) : fetch(req))
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();

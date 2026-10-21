@@ -373,6 +373,35 @@ function startFakeSupabase() {
   check('エラーなし', !old.errors.length, old.errors.join(' / '));
   await old.context.close();
 
+  // ========== 見本の動画は、みんなの投稿が20本を超えたら出さない ==========
+  state.section = '見本の動画';
+  const seedPosts = n => {
+    fake.posts = [];
+    const owner = [...fake.users.keys()][0];
+    fake.files.set(`${owner}/seed/0.jpg`, { type: 'image/jpeg', body: require('fs').readFileSync(require('path').join(ASSETS, 'p1.png')), owner });
+    for (let i = 0; i < n; i++) {
+      fake.posts.push({ id: crypto.randomUUID(), user_id: owner, creator: 'クリエイター', title: `本物の投稿${i + 1}`, kind: 'lesson', kind_other: '', subject: 'math', subject_other: '',
+        grade: 'everyone', grade_other: '', unit: '', hashtags: [], music_id: '', media_type: 'image', media_paths: [`${owner}/seed/0.jpg`], duration: 8,
+        created_at: new Date(Date.now() - i * 1000).toISOString() });
+    }
+  };
+  const feedKinds = pg => pg.$$eval('#feed .short-slide', els => els.map(el => VIDEOS.find(v => v.id === el.dataset.id)).map(v => (v.cloud ? 'real' : 'sample')));
+  const searchHasSample = pg => pg.evaluate(() => filteredVideos().some(v => !v.cloud && !v.own));
+  seedPosts(21);
+  const many = await openApp({ zonenow_profile: { name: 'たくさん', grade: 'high1', createdAt: 1 } });
+  await waitFor(() => many.page.evaluate(() => VIDEOS.filter(v => v.cloud).length === 21));
+  check('みんなの投稿が21本なら、フィードは本物の投稿だけ（開いた直後の1本目も）', await waitFor(async () => (await feedKinds(many.page)).every(k => k === 'real')), (await feedKinds(many.page)).join(','));
+  check('検索にも見本は出ない', !(await searchHasSample(many.page)));
+  check('エラーなし', !many.errors.length, many.errors.join(' / '));
+  await many.context.close();
+  seedPosts(20);
+  const few = await openApp({ zonenow_profile: { name: 'すこし', grade: 'high1', createdAt: 1 } });
+  await waitFor(() => few.page.evaluate(() => VIDEOS.filter(v => v.cloud).length === 20));
+  await few.page.waitForTimeout(300);
+  check('20本までなら、見本の動画も流れる', (await feedKinds(few.page)).includes('sample'));
+  check('検索にも見本が出る', await searchHasSample(few.page));
+  await few.context.close();
+
   // ========== サーバー未設定なら今まで通り ==========
   state.section = 'サーバー未設定';
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });

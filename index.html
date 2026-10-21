@@ -2526,6 +2526,24 @@ function syncFeedMedia(current){
       delete video.dataset.loaded;
     }
   });
+  // 次に出る動画は、配信の一時保存に入れておく（スワイプしたときにすぐ始まるように）
+  slides.slice(i + 1, i + 1 + FEED_LOAD_AHEAD).forEach(slide=>{
+    const video = slide.querySelector('video');
+    if(video) warmVideo(video.dataset.src);
+  });
+}
+// みんなの投稿の動画は、配信の一時保存（CDN）に入っていないと、最初のデータが届くまで約2秒かかる（入っていれば約0.2秒）。
+// 先頭を少し読むだけで動画まるごとが一時保存に入るので、次に出る動画を先に少しだけ読んでおく
+const WARMED_VIDEOS = new Map(); // URL → 先読みした時刻
+const WARM_TTL_MS = 50 * 60 * 1000; // 一時保存は1時間なので、それより少し早めに読み直す
+function warmVideo(url){
+  if(!url || !SUPABASE_URL || !url.startsWith(SUPABASE_URL + '/storage/')) return;
+  const at = WARMED_VIDEOS.get(url);
+  if(at && Date.now() - at < WARM_TTL_MS) return;
+  WARMED_VIDEOS.set(url, Date.now());
+  fetch(url, { headers:{ Range:'bytes=0-65535' } })
+    .then(res=>{ if(res.body) res.body.cancel().catch(()=>{}); })
+    .catch(()=> WARMED_VIDEOS.delete(url)); // 失敗したら次の機会にまた試す
 }
 function isNearFeedEnd(slide){
   return Array.prototype.indexOf.call(feedEl.children, slide) >= feedEl.children.length - 3;

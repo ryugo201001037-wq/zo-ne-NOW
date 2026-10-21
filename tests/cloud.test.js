@@ -8,7 +8,7 @@ const { check, state, report } = createChecker();
 // ---- にせSupabase（ログイン：GoTrue、データ：PostgREST の必要なところだけ） ----
 function startFakeSupabase() {
   const fake = { users: new Map(), profiles: new Map(), logs: new Map(), feedback: [], signups: 0, offline: false, rejectNextLog: false, rpcCalls: 0,
-    posts: [], files: new Map(), reports: [], failUpload: false, likes: [], saves: [], comments: [] };
+    posts: [], files: new Map(), reports: [], failUpload: false, likes: [], saves: [], comments: [], warmed: [] };
   const userOf = req => {
     const m = /^Bearer tok-(.+)$/.exec(req.headers.authorization || '');
     return m && fake.users.has(m[1]) ? m[1] : null;
@@ -36,6 +36,7 @@ function startFakeSupabase() {
     if (p.startsWith(PUBLIC) && req.method === 'GET') {
       const file = fake.files.get(decodeURIComponent(p.slice(PUBLIC.length)));
       if (!file) return send(404, { message: 'not found' });
+      if (req.headers.range === 'bytes=0-65535') fake.warmed.push(decodeURIComponent(p.slice(PUBLIC.length))); // 先読み
       res.writeHead(200, { ...cors, 'Content-Type': file.type, 'Content-Length': file.body.length });
       res.end(file.body);
       return;
@@ -376,6 +377,19 @@ function startFakeSupabase() {
   check('動画はサーバーの公開URLから読む', src.startsWith(fake.url + '/storage/v1/object/public/posts/'));
   check('サーバーの動画を再生できる', await op.evaluate(async u => (await fetch(u)).ok, src));
   check('ほかの人の投稿にはフォローボタン', await op.isVisible('#feed .short-slide:first-child [data-role="follow"]'));
+  // 先読み：次に出るみんなの投稿の動画は、先頭だけ読んで配信の一時保存に入れておく
+  const spostUrl = await op.evaluate(id => VIDEOS.find(v => v.id === id).short, spost.id);
+  fake.warmed = [];
+  await op.evaluate(url => { warmVideo(url); warmVideo(url); }, spostUrl);
+  check('次の動画を先読みする（先頭64KBだけ・同じ動画は1回だけ）', await waitFor(() => fake.warmed.length === 1 && fake.warmed[0] === spost.media_paths[0]), JSON.stringify(fake.warmed));
+  fake.warmed = [];
+  const ahead = await op.evaluate(() => {
+    WARMED_VIDEOS.clear();
+    const slides = [...feedEl.children];
+    syncFeedMedia(slides[0]);
+    return slides.slice(1, 3).map(sl => sl.querySelector('video')).filter(v => v && v.dataset.src.startsWith(SUPABASE_URL)).length;
+  });
+  check('フィードでは、次の2本までのみんなの動画を先読みする', await waitFor(() => fake.warmed.length === ahead), `${fake.warmed.length}本（${ahead}本のはず）`);
   check('本物の投稿は見本の動画より出やすい', await op.evaluate(() => feedWeight(VIDEOS.find(v => v.cloud), 'high1') > feedWeight(VIDEOS.find(v => !v.cloud && v.grade === 'high1'), 'high1')));
 
   state.section = 'いいね・保存・コメント';

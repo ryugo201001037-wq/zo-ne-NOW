@@ -127,6 +127,12 @@ function startFakeSupabase() {
       }
       return send(204);
     }
+    if (p === '/rest/v1/rpc/search_users' && req.method === 'POST') {
+      const q = String((body && body.q) || '').trim();
+      const rows = q ? [...fake.profiles.values()].filter(r => r.name.includes(q)).map(r => ({ id: r.id, name: r.name })) : [];
+      rows.sort((x, y) => (y.name === q) - (x.name === q) || x.name.length - y.name.length);
+      return send(200, rows.slice(0, 20));
+    }
     if (p === '/rest/v1/rpc/delete_my_account' && req.method === 'POST') {
       fake.rpcCalls++;
       fake.users.delete(uid); fake.profiles.delete(uid);
@@ -334,6 +340,45 @@ function startFakeSupabase() {
   const firstCloud = await op.$eval('#feed .short-slide:first-child', el => VIDEOS.find(v => v.id === el.dataset.id).cloud);
   check('見本の動画には「通報する」を出さない', firstCloud || !(await op.isVisible('#share-report')));
   await op.click('#share-sheet-close');
+
+  state.section = 'ユーザー検索';
+  await op.click('#search-open-btn'); await op.waitForTimeout(200);
+  await op.fill('#search-input', 'みな');
+  check('名前の一部で、登録した人が見つかる', await waitFor(async () => (await op.$$eval('#user-results-list .user-row-name', els => els.map(e => e.textContent))).join(',') === 'みなと,みなと2'), await op.textContent('#user-results-list'));
+  await op.screenshot({ path: OUT + 'cloud-user-search.png' });
+  await op.click('#user-results-list .user-row:first-child [data-follow-key]');
+  check('検索結果からフォローできる（アカウントで覚える）', (await op.textContent('#user-results-list .user-row:first-child [data-follow-key]')) === 'フォロー中'
+    && await op.evaluate(id => JSON.parse(localStorage.getItem('zonenow_following')).some(e => e.id === id && e.name === 'みなと'), uid));
+  await op.click('#user-results-list .user-row:first-child');
+  const visiblePosts = fake.posts.filter(r => r.user_id === uid && r.id !== vpost.id).length; // 通報した投稿は出さない
+  check('押すと、その人の投稿一覧', await waitFor(async () => (await op.$eval('.screen.active', el => el.id)) === 'user-screen' && (await op.textContent('#user-title')) === 'みなと'
+    && (await op.$$('#user-grid .result-card')).length === visiblePosts), `${visiblePosts}件のはず`);
+  check('その画面でもフォロー中と分かる', (await op.textContent('#user-follow')) === 'フォロー中');
+  await op.waitForTimeout(300);
+  await op.screenshot({ path: OUT + 'cloud-user-profile.png' });
+  const firstCard = await op.$eval('#user-grid .result-card', el => el.dataset.id);
+  await op.click('#user-grid .result-card');
+  check('投稿を押すと、その投稿から再生', await waitFor(async () => (await op.$eval('.screen.active', el => el.id)) === 'home-screen' && await op.$eval('#feed .short-slide:first-child', el => el.dataset.id) === firstCard));
+  check('フィードでもフォロー中になっている', await op.$eval('#feed .short-slide:first-child [data-role="follow"]', el => el.classList.contains('active')));
+  await op.click('#feed .short-slide:first-child .avatar');
+  check('フィードのアイコンを押しても、その人の投稿一覧', await waitFor(async () => (await op.$eval('.screen.active', el => el.id)) === 'user-screen' && (await op.textContent('#user-title')) === 'みなと'));
+  await op.click('#user-follow');
+  check('ユーザー画面でフォローを外せる', (await op.textContent('#user-follow')) === 'フォローする' && await op.evaluate(() => JSON.parse(localStorage.getItem('zonenow_following')).length === 0));
+  await op.click('#user-follow');
+  await op.click('#user-back'); await op.waitForTimeout(200);
+  await op.click('.screen.active [data-nav="profile"]'); await op.waitForTimeout(200);
+  await op.click('[data-people-tab="following"]'); await op.waitForTimeout(200);
+  check('フォロー中の一覧に出る', (await op.textContent('#people-list')).includes('みなと'));
+  await op.click('#people-list .people-row.is-user .people-name');
+  check('フォロー中の一覧から、その人の投稿一覧へ', await waitFor(async () => (await op.$eval('.screen.active', el => el.id)) === 'user-screen'));
+  await op.click('#user-back'); await op.waitForTimeout(200);
+  check('戻ると元の画面（フォロー中の一覧）', (await op.$eval('.screen.active', el => el.id)) === 'people-screen');
+  await op.evaluate(() => showScreen('search'));
+  await op.fill('#search-input', 'だれもいない名前');
+  check('見つからないときはそう伝える', await waitFor(async () => (await op.textContent('#user-results-list')).includes('見つかりませんでした')));
+  await op.fill('#search-input', '#数学');
+  await op.waitForTimeout(500);
+  check('「#」で始まるとき（ハッシュタグ探し）は、ユーザーは探さない', await op.$eval('#user-results', el => el.hidden));
   check('エラーなし', !other.errors.length, other.errors.join(' / '));
   await other.context.close();
 

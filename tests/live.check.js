@@ -104,6 +104,13 @@ const today = new Date().toISOString().slice(0, 10);
     const afterDel = await fetch(`${URL_}/storage/v1/object/public/posts/${path_}?check=${Date.now()}`);
     check('消したファイルはもう見られない', !afterDel.ok, String(afterDel.status));
 
+    state.section = 'ユーザー検索';
+    const su = await b.rpc('search_users', { q: '確認用A' });
+    check('名前で、ほかの人を探せる（supabase/schema.sql の search_users を実行済みか）', !su.error && su.data.some(r => r.id === A && r.name === '確認用A'), su.error && su.error.message);
+    check('検索で見えるのは、アカウントIDと名前だけ', !su.error && su.data.every(r => Object.keys(r).sort().join(',') === 'id,name'));
+    const sg = await guest.rpc('search_users', { q: '確認用' });
+    check('ログインしていないと検索できない', !!sg.error || (sg.data || []).length === 0);
+
     state.section = 'ログインしていない人';
     const gp = await guest.from('profiles').select('id');
     const gl = await guest.from('study_logs').select('id');

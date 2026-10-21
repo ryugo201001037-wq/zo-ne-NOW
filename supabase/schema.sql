@@ -6,6 +6,7 @@
 -- アプリ側にバグがあっても、他人のデータは読めないし書き換えられない。
 -- 友達機能を作るときに「友達の勉強時間は読める」ルールを足す。
 -- 例外は投稿（posts）：みんなのフィードに流すため、ログインしている人は全員の投稿を読める。作る・消すは自分の分だけ。
+-- また、ユーザー検索（search_users）では、ログインしている人が全員の「名前」で探せる（学年などは見えない）。
 
 -- ---- プロフィール（ログインしたユーザー1人につき1行） ----
 create table if not exists public.profiles (
@@ -158,6 +159,22 @@ begin
 end $$;
 create or replace trigger profiles_touch before update on public.profiles
   for each row execute function public.touch_updated_at();
+
+-- ---- ユーザー検索：名前の一部で探す（ログインしている人だけ） ----
+-- プロフィールの表は本人しか読めないままにして、この関数だけが「アカウントIDと名前」を返す（学年などは返さない）
+-- 名前に含まれる % や _ は、そのままの文字として探す。一度に返すのは20人まで
+create or replace function public.search_users(q text) returns table (id uuid, name text)
+language sql stable security definer set search_path = '' as $$
+  select p.id, p.name
+  from public.profiles p
+  where auth.uid() is not null
+    and char_length(btrim(q)) between 1 and 20
+    and p.name ilike '%' || replace(replace(replace(btrim(q), '\', '\\'), '%', '\%'), '_', '\_') || '%'
+  order by (p.name = btrim(q)) desc, char_length(p.name), p.name
+  limit 20;
+$$;
+revoke all on function public.search_users(text) from public, anon;
+grant execute on function public.search_users(text) to authenticated;
 
 -- ---- 退会：自分のアカウントを消す（プロフィール・記録・投稿も一緒に消える） ----
 -- アプリの「すべてのデータを削除」から呼ぶ。消せるのは呼んだ本人のアカウントだけ

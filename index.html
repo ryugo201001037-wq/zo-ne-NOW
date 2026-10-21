@@ -777,6 +777,25 @@
   }
   .search-input::placeholder{ color:rgba(0,0,0,.35); }
   .caption-tag{ position:relative; color:inherit; font:inherit; padding:0; margin-right:6px; }
+
+  /* ユーザー検索（検索画面のキーワードの下）とユーザー画面 */
+  .user-results{ padding:18px 20px 0; }
+  .user-results .filter-label{ margin-bottom:4px; }
+  .user-row{ display:flex; align-items:center; gap:12px; width:100%; padding:10px 0; border-bottom:1px solid var(--paper-line); text-align:left; }
+  .user-row .avatar{ width:40px; height:40px; font-size:16px; flex-shrink:0; background:var(--indigo); color:#fff; }
+  .user-row-name{ flex:1; min-width:0; font-family:var(--font-ui); font-size:14px; font-weight:700; color:var(--ink-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .user-row-self{ font-family:var(--font-ui); font-size:12px; color:var(--muted); }
+  .user-follow-btn{
+    min-height:36px; padding:0 14px; border-radius:99px; flex-shrink:0;
+    background:var(--ink); color:#fff; font-family:var(--font-ui); font-size:12px; font-weight:700;
+  }
+  .user-follow-btn.active{ background:transparent; color:var(--ink-text); border:1px solid rgba(0,0,0,.2); }
+  .user-results-note{ font-family:var(--font-ui); font-size:13px; color:var(--muted); padding:10px 0 2px; margin:0; }
+  .people-row.is-user{ cursor:pointer; }
+  .user-head{ display:flex; align-items:center; gap:16px; margin:4px 0 22px; }
+  .user-head .avatar{ width:64px; height:64px; font-size:24px; }
+  .user-head .people-action.active{ background:transparent; }
+  .user-head .people-action:not(.active){ background:var(--cta-from); border-color:var(--cta-from); }
   .caption-tag::after{ content:''; position:absolute; inset:-12px -3px; }
 
   /* ============================================================
@@ -960,7 +979,11 @@
       <p>キーワードや学年・教科・単元から、いま必要な一本を見つける</p>
     </div>
     <div class="search-box">
-      <input type="search" class="search-input" id="search-input" placeholder="キーワード・#ハッシュタグで探す" enterkeyhint="search" aria-label="キーワードで探す" />
+      <input type="search" class="search-input" id="search-input" placeholder="キーワード・#ハッシュタグ・ユーザー名で探す" enterkeyhint="search" aria-label="キーワードで探す" />
+    </div>
+    <div class="user-results" id="user-results" hidden>
+      <div class="filter-label">ユーザー</div>
+      <div id="user-results-list"></div>
     </div>
 
     <div class="filter-group">
@@ -995,6 +1018,7 @@
       <div class="post-field">
         <label class="post-label" for="onboarding-name">アカウント名</label>
         <input type="text" class="post-input" id="onboarding-name" placeholder="例：ゾーン太郎" maxlength="20" autocomplete="nickname" />
+        <p class="policy-note" style="text-align:left; margin-top:8px;">名前は、ほかの利用者のユーザー検索に表示されます。本名は使わないでね。</p>
       </div>
 
       <div class="post-field">
@@ -1203,6 +1227,24 @@
   </section>
 
   <!-- ============ フォロー中・フォロワー・友達の一覧（プロフィールから開く） ============ -->
+  <!-- ============ ほかの人の投稿一覧（ユーザー検索・フォロー中・フィードのアイコンから） ============ -->
+  <section id="user-screen" class="screen dark-screen">
+    <div class="record-wrap">
+      <div class="post-form-header">
+        <button class="back-btn" id="user-back">←</button>
+        <h1 class="post-form-title" id="user-title"></h1>
+      </div>
+      <div class="user-head">
+        <div class="avatar" id="user-avatar"></div>
+        <button class="people-action" id="user-follow"></button>
+      </div>
+      <div class="profile-tabs"><span class="profile-tab active">投稿 <span id="user-posts-count"></span></span></div>
+      <div class="result-grid saved-grid" id="user-grid"></div>
+      <p class="record-empty" id="user-grid-empty" style="padding:18px 0 6px;"></p>
+    </div>
+    <div class="bottom-nav solid-dark" data-active-nav="home"></div>
+  </section>
+
   <section id="people-screen" class="screen dark-screen">
     <div class="record-wrap">
       <div class="post-form-header">
@@ -1924,13 +1966,18 @@ function isHiddenVideo(v){
   return isRetiredSample(v) || loadJSON(HIDDEN_VIDEOS_KEY, []).includes(v.id) || loadJSON(BLOCKED_CREATORS_KEY, []).includes(v.creator);
 }
 
-// フォロー中のクリエイター（今は投稿者名で管理。アカウントIDができたら置き換える）
+// フォロー中の人（この端末の中だけ）。本物の利用者は { id: アカウントID, name }、見本の動画のクリエイターは名前（文字列）で持つ
+// （同じ名前の人がいても、アカウントIDで見分ける）
 const FOLLOW_KEY = 'zonenow_following';
+const ACCOUNT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function loadFollowing(){ return loadJSON(FOLLOW_KEY, []); }
-function isFollowing(name){ return loadFollowing().includes(name); }
-function setFollowing(name, follow){
-  const list = loadFollowing().filter(n=> n !== name);
-  if(follow) list.push(name);
+function followKeyOfEntry(e){ return typeof e === 'string' ? e : e.id; }
+function followNameOfEntry(e){ return typeof e === 'string' ? e : e.name; }
+function followKeyOf(v){ return v.userId || v.creator; }
+function isFollowing(key){ return loadFollowing().some(e=> followKeyOfEntry(e) === key); }
+function setFollowing(key, follow, name){
+  const list = loadFollowing().filter(e=> followKeyOfEntry(e) !== key);
+  if(follow) list.push(ACCOUNT_ID_RE.test(key) ? { id:key, name } : key);
   saveJSON(FOLLOW_KEY, list);
 }
 
@@ -2121,9 +2168,10 @@ const screens = {
   people: document.getElementById('people-screen'),
   preview: document.getElementById('preview-screen'),
   settings: document.getElementById('settings-screen'),
+  user: document.getElementById('user-screen'),
 };
 // ボトムナビに無い画面は、どのタブの中の画面かを決めておく（そのタブを点灯させる）
-const NAV_PARENT = { search:'home', notifications:'profile', history:'record', people:'profile', preview:'create', settings:'profile' };
+const NAV_PARENT = { search:'home', notifications:'profile', history:'record', people:'profile', preview:'create', settings:'profile', user:'home' };
 function showScreen(name){
   Object.values(screens).forEach(s=>s.classList.remove('active'));
   screens[name].classList.add('active');
@@ -2197,7 +2245,7 @@ function createSlide(v){
   const isImage = v.mediaType === 'image';
   const profile = loadProfile();
   const isOwn = isMyVideo(v); // 自分の投稿はフォローボタンを出さない
-  const following = !isOwn && isFollowing(v.creator);
+  const following = !isOwn && isFollowing(followKeyOf(v));
 
   const track = musicById(v.musicId);
   const musicLine = track ? `♪ ${track.title} - ${track.artist}` : (isImage ? '' : `♪ オリジナル音源 - ${v.creator}`);
@@ -2223,7 +2271,7 @@ function createSlide(v){
     <div class="action-rail">
       <div class="avatar-wrap">
         <div class="avatar">${isOwn && profile && isSafeAvatar(profile.avatar) ? `<img src="${escapeHtml(profile.avatar)}" alt="" />` : escapeHtml(v.creator.charAt(0))}</div>
-        ${isOwn ? '' : `<button class="follow-badge ${following ? 'active' : ''}" data-role="follow" data-creator="${escapeHtml(v.creator)}">${icon(following ? 'check' : 'plus')}</button>`}
+        ${isOwn ? '' : `<button class="follow-badge ${following ? 'active' : ''}" data-role="follow" data-follow-key="${escapeHtml(followKeyOf(v))}">${icon(following ? 'check' : 'plus')}</button>`}
       </div>
       <button class="action-item ${counts.likes ? 'active' : ''}" data-role="like" aria-label="いいね">
         ${icon('heart')}
@@ -2330,16 +2378,12 @@ function attachSlideEvents(slide, v){
     showToast(saved ? '保存しました（プロフィールから見られます）' : '保存を取り消しました');
   });
 
-  // フォロー（端末内に保存。同じクリエイターの他のスライドの表示もそろえる）
+  // フォロー（端末内に保存。同じ人の他のスライドの表示もそろえる）
   const followBtn = slide.querySelector('[data-role="follow"]');
-  if(followBtn){
-    followBtn.addEventListener('click', ()=>{
-      const follow = !isFollowing(v.creator);
-      if(follow) tapFeedback();
-      setFollowing(v.creator, follow);
-      syncFollowButtons(v.creator, follow);
-      showToast(follow ? `${v.creator}をフォローしました` : `${v.creator}のフォローを外しました`);
-    });
+  if(followBtn) followBtn.addEventListener('click', ()=> toggleFollow(followKeyOf(v), v.creator));
+  // みんなの投稿は、アイコンを押すとその人の投稿一覧
+  if(v.cloud){
+    slide.querySelector('.avatar').addEventListener('click', ()=> openUserProfile({ id:v.userId, name:v.creator }));
   }
 
   slide.querySelector('[data-role="comment"]').addEventListener('click', ()=> openComments(v));
@@ -2381,12 +2425,22 @@ const feedObserver = new IntersectionObserver((entries)=>{
   });
 }, { threshold:[0,0.6,1] });
 
-// フィード上の同じクリエイターのフォローボタンの表示をそろえる
-function syncFollowButtons(creator, follow){
-  feedEl.querySelectorAll('[data-role="follow"]').forEach(btn=>{
-    if(btn.dataset.creator !== creator) return;
+// フォローする／外す（フィード・検索・ユーザー画面で共通）
+function toggleFollow(key, name){
+  const follow = !isFollowing(key);
+  if(follow) tapFeedback();
+  setFollowing(key, follow, name);
+  syncFollowButtons(key, follow);
+  showToast(follow ? `${name}をフォローしました` : `${name}のフォローを外しました`);
+  return follow;
+}
+// 画面にある同じ人のフォローボタンの表示をそろえる（フィードは＋/✓、ほかは文字）
+function syncFollowButtons(key, follow){
+  document.querySelectorAll('[data-follow-key]').forEach(btn=>{
+    if(btn.dataset.followKey !== key) return;
     btn.classList.toggle('active', follow);
-    btn.innerHTML = icon(follow ? 'check' : 'plus');
+    if(btn.classList.contains('follow-badge')) btn.innerHTML = icon(follow ? 'check' : 'plus');
+    else btn.textContent = follow ? 'フォロー中' : 'フォローする';
   });
 }
 
@@ -3015,8 +3069,104 @@ function jumpToShort(id){
 }
 
 document.getElementById('search-back').addEventListener('click', ()=> showScreen('home'));
-searchInput.addEventListener('input', renderResults);
+searchInput.addEventListener('input', ()=>{ renderResults(); scheduleUserSearch(); });
 searchInput.addEventListener('keydown', e=>{ if(e.key === 'Enter' && !e.isComposing) searchInput.blur(); }); // キーボードを閉じて結果を見せる
+
+// ---- ユーザー検索（登録した全員を名前で探す。サーバーにつながるときだけ） ----
+// サーバーの search_users はアカウントIDと名前だけを返す（学年などは見えない）
+const userResultsEl = document.getElementById('user-results');
+const userResultsList = document.getElementById('user-results-list');
+let userSearchTimer = null, userSearchSeq = 0;
+function scheduleUserSearch(){
+  clearTimeout(userSearchTimer);
+  const q = searchInput.value.trim();
+  // 「#」で始まるのはハッシュタグ探しなので、ユーザーは探さない
+  if(!cloudEnabled() || !q || /^[#＃]/.test(q)){ userSearchSeq++; userResultsEl.hidden = true; return; }
+  userSearchTimer = setTimeout(()=> runUserSearch(q.slice(0, 20)), 300);
+}
+async function runUserSearch(q){
+  const seq = ++userSearchSeq;
+  let rows = null, myId = null;
+  try{
+    const client = await getCloud();
+    myId = await cloudUserId();
+    if(myId){
+      const { data, error } = await client.rpc('search_users', { q });
+      if(!error) rows = data || [];
+    }
+  }catch(e){}
+  if(seq !== userSearchSeq) return; // もっと新しい検索がある
+  if(!rows){ userResultsEl.hidden = true; return; }
+  userResultsEl.hidden = false;
+  userResultsList.innerHTML = rows.length ? rows.map(u=>`
+    <div class="user-row" role="button" tabindex="0" data-open-user="${escapeHtml(u.id)}" data-name="${escapeHtml(u.name)}">
+      <div class="avatar">${escapeHtml(u.name.charAt(0))}</div>
+      <div class="user-row-name">${escapeHtml(u.name)}</div>
+      ${u.id === myId ? '<span class="user-row-self">あなた</span>'
+        : `<button class="user-follow-btn ${isFollowing(u.id) ? 'active' : ''}" data-follow-key="${escapeHtml(u.id)}" data-name="${escapeHtml(u.name)}">${isFollowing(u.id) ? 'フォロー中' : 'フォローする'}</button>`}
+    </div>`).join('')
+    : `<p class="user-results-note">「${escapeHtml(q)}」という名前の人は見つかりませんでした</p>`;
+}
+userResultsList.addEventListener('click', e=>{
+  const follow = e.target.closest('[data-follow-key]');
+  if(follow){ toggleFollow(follow.dataset.followKey, follow.dataset.name); return; }
+  const row = e.target.closest('[data-open-user]');
+  if(row) openUserProfile({ id: row.dataset.openUser, name: row.dataset.name });
+});
+
+// ---- ほかの人の投稿一覧 ----
+let userScreenTarget = null, userScreenBack = 'search', userScreenSeq = 0;
+function activeScreenName(){ return Object.keys(screens).find(k=> screens[k].classList.contains('active')) || 'home'; }
+async function openUserProfile(user){
+  const myId = await cloudUserId().catch(()=> null);
+  if(myId && user.id === myId){ showScreen('profile'); return; } // 自分なら、自分のプロフィール
+  const from = activeScreenName();
+  if(from !== 'user') userScreenBack = from;
+  userScreenTarget = user;
+  document.getElementById('user-title').textContent = user.name;
+  document.getElementById('user-avatar').textContent = user.name.charAt(0);
+  const followBtn = document.getElementById('user-follow');
+  followBtn.dataset.followKey = user.id;
+  followBtn.classList.toggle('active', isFollowing(user.id));
+  followBtn.textContent = isFollowing(user.id) ? 'フォロー中' : 'フォローする';
+  renderUserPosts(null);
+  showScreen('user');
+
+  const seq = ++userScreenSeq;
+  let posts = [];
+  try{
+    const client = await getCloud();
+    const { data, error } = await client.from('posts').select('*').eq('user_id', user.id).order('created_at', { ascending:false }).limit(60);
+    if(error) throw error;
+    // フィードで再生できるように、まだ読み込んでいない投稿は VIDEOS に足す
+    posts = (data || []).map(row=>{
+      let v = VIDEOS.find(x=> x.id === row.id);
+      if(!v){ v = cloudPostToVideo(row, myId); VIDEOS.push(v); }
+      return v;
+    });
+  }catch(e){
+    if(seq === userScreenSeq) renderUserPosts([], '投稿を読み込めませんでした。電波の状態を確かめてね');
+    return;
+  }
+  if(seq === userScreenSeq) renderUserPosts(posts.filter(v=> !isHiddenVideo(v)));
+}
+function renderUserPosts(posts, message){
+  const grid = document.getElementById('user-grid');
+  const empty = document.getElementById('user-grid-empty');
+  document.getElementById('user-posts-count').textContent = posts ? posts.length : '';
+  grid.innerHTML = (posts || []).map(resultCardHtml).join('');
+  grid.style.display = posts && posts.length ? 'grid' : 'none';
+  empty.style.display = posts && posts.length ? 'none' : 'block';
+  empty.textContent = !posts ? '読み込み中…' : message || 'まだ投稿はありません。';
+}
+document.getElementById('user-grid').addEventListener('click', e=>{
+  const card = e.target.closest('.result-card');
+  if(card) jumpToShort(card.dataset.id);
+});
+document.getElementById('user-follow').addEventListener('click', ()=>{
+  if(userScreenTarget) toggleFollow(userScreenTarget.id, userScreenTarget.name);
+});
+document.getElementById('user-back').addEventListener('click', ()=> showScreen(userScreenBack));
 
 // フィードのハッシュタグから：そのタグだけで探す（他の絞り込みは外す）
 function openSearchWithKeyword(keyword){
@@ -4765,13 +4915,15 @@ function renderPeopleScreen(){
   });
 
   const people = peopleTab === 'following' ? loadFollowing() : [];
-  document.getElementById('people-list').innerHTML = people.map(name=>`
-    <div class="people-row">
+  document.getElementById('people-list').innerHTML = people.map(e=>{
+    const key = followKeyOfEntry(e), name = followNameOfEntry(e);
+    return `
+    <div class="people-row ${typeof e === 'string' ? '' : 'is-user'}" ${typeof e === 'string' ? '' : `data-open-user="${escapeHtml(key)}"`} data-name="${escapeHtml(name)}">
       <div class="avatar">${escapeHtml(name.charAt(0))}</div>
       <div class="people-name">${escapeHtml(name)}</div>
-      <button class="people-action" data-unfollow="${escapeHtml(name)}">フォロー解除</button>
-    </div>
-  `).join('');
+      <button class="people-action" data-unfollow="${escapeHtml(key)}" data-name="${escapeHtml(name)}">フォロー解除</button>
+    </div>`;
+  }).join('');
 
   document.getElementById('people-empty').style.display = people.length ? 'none' : 'block';
   document.getElementById('people-empty-icon').innerHTML = icon(tab.emptyIcon);
@@ -4788,11 +4940,15 @@ document.querySelectorAll('.people-tab').forEach(btn=>{
 document.getElementById('people-back').addEventListener('click', ()=> showScreen('profile'));
 document.getElementById('people-list').addEventListener('click', async (e)=>{
   const btn = e.target.closest('[data-unfollow]');
-  if(!btn) return;
-  const name = btn.dataset.unfollow;
+  if(!btn){
+    const row = e.target.closest('[data-open-user]');
+    if(row) openUserProfile({ id: row.dataset.openUser, name: row.dataset.name });
+    return;
+  }
+  const key = btn.dataset.unfollow, name = btn.dataset.name;
   if(!await confirmDialog(`${name}のフォローを解除しますか？`, '解除する')) return;
-  setFollowing(name, false);
-  syncFollowButtons(name, false);
+  setFollowing(key, false);
+  syncFollowButtons(key, false);
   renderPeopleScreen();
   showToast(`${name}のフォローを外しました`);
 });

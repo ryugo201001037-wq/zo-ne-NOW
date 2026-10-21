@@ -52,14 +52,13 @@ npm run ios:assets   # アイコン（1024px・透明なし）と起動画面を
 
 - アプリID（Bundle ID）は `jp.zonenow.app`、名前は「ゾーンNOW」、iPhone専用・縦向きのみ
 - 写真・カメラ・マイクを使う理由の文（Info.plist）を入れてある（審査で必要）
-- アプリの中では、Service Worker・「ホーム画面に追加」の案内を使わない。共有リンクは `index.html` の `APP_WEB_URL`（公開ページのURL）で作る
+- アプリの中では、Service Worker・「ホーム画面に追加」の案内を使わない。共有リンクは `index.html` の `APP_WEB_URL`（公開ページ https://ryugo201001037-wq.github.io/zo-ne-NOW/ ）で作る
 - AIサーバーは `capacitor://localhost` からの呼び出しを許可する（`server/wrangler.toml` の `ALLOWED_ORIGINS`）
 - Macがなくても、GitHub Actions のMacでビルドを確かめている（`.github/workflows/ios-build.yml`。署名なし・シミュレーター向け）
 
-TestFlightに出すには、さらに次が必要：
-1. Apple Developer Program への登録（年99米ドル。18歳未満は保護者の名義）
-2. App Store Connect でアプリを作る（Bundle ID `jp.zonenow.app`）
-3. 署名用の証明書・プロファイル（またはApp Store Connect APIキー）を GitHub の Secrets に入れ、署名してアップロードする仕組みを足す
+TestFlightに出す手順は [docs/TESTFLIGHT.md](docs/TESTFLIGHT.md)。
+- `.github/workflows/testflight.yml`：GitHub の Actions から手で実行すると、App Store Connect の APIキーで自動署名して TestFlight にアップロードする（Secrets が4つ必要）
+- App Store Connect は Xcode 26 以上で作ったアプリしか受け付けない（2026年4月28日から）ので、iOS のワークフローは macOS 26 で動かす
 
 ## ログインとデータベース（Supabase）
 

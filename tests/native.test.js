@@ -39,8 +39,8 @@ async function open(browser, native) {
   await p.click('#settings-back'); await p.waitForTimeout(150);
   await p.click('.screen.active [data-nav="home"]'); await p.waitForTimeout(200);
   await p.click('#feed .short-slide:first-child [data-role="share"]');
-  check('公開ページがまだ無いときは、タイトルだけ送ると伝える', (await p.textContent('#share-note')).includes('公開ページができたら'));
-  check('共有のURLに capacitor:// を使わない', await p.evaluate(() => shareUrlOf(VIDEOS[0]) === ''));
+  check('リンクを開くとその動画から再生されると伝える', (await p.textContent('#share-note')).includes('リンクを開くと'));
+  check('共有のURLは capacitor:// ではなく公開ページ', await p.evaluate(() => shareUrlOf(VIDEOS[0]) === `https://ryugo201001037-wq.github.io/zo-ne-NOW/?v=${VIDEOS[0].id}`));
   await p.click('#share-sheet-close'); await p.waitForTimeout(150);
   await p.click('#feed .short-slide:first-child [data-role="like"]');
   check('いいねで軽く振動', await p.evaluate(() => window.__haptics.includes('LIGHT')));

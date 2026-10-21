@@ -1749,9 +1749,9 @@ const APP_VERSION = '1.0.0';
 // ---- どこで動いているか（ウェブ／iPhoneアプリ） ----
 // iPhoneアプリ（Capacitor）の中では window.Capacitor がある。ウェブ用の仕組み（Service Worker・ホーム画面に追加）は使わない
 const IS_NATIVE_APP = !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
-// アプリを公開するウェブページのURL（共有リンクに使う。例：'https://zonenow.example.com/'）
+// アプリを公開しているウェブページのURL（GitHub Pages。共有リンクに使う）
 // iPhoneアプリの中では自分のURLが capacitor://localhost になって共有に使えないので、こちらを使う
-const APP_WEB_URL = '';
+const APP_WEB_URL = 'https://ryugo201001037-wq.github.io/zo-ne-NOW/';
 function appWebBaseUrl(){ return IS_NATIVE_APP ? APP_WEB_URL : location.href.split(/[?#]/)[0]; }
 
 // 軽い振動で「押せた」ことを伝える（iPhoneアプリの中だけ。ウェブでは何もしない）

@@ -1,6 +1,7 @@
 # iPhoneアプリ（Capacitor）がビルドできるかを、GitHubのクラウド上のMacで確かめる
 # 署名なしでシミュレーター向けにビルドするだけ（Apple Developer の登録がなくても動く）
-# TestFlight へのアップロードは、登録ができたら署名の設定を足して別に作る
+# TestFlight へのアップロードは testflight.yml（署名して送る。手で実行したときだけ動く）
+# App Store には Xcode 26 以上で作ったアプリしか上げられない（2026年4月28日から）ので、Xcode 26 が入った macOS 26 で確かめる
 name: iOSアプリのビルド確認
 
 on:
@@ -18,7 +19,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4

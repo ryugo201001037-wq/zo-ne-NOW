@@ -1,0 +1,114 @@
+# iPhoneアプリを署名して、TestFlight（App Store Connect）にアップロードする
+# GitHub の「Actions」→ この名前 →「Run workflow」を押したときだけ動く（勝手にはアップロードしない）
+#
+# 署名は Xcode の「自動署名」に任せる。App Store Connect の APIキーを渡すと、
+# 証明書とプロファイルを Apple 側で自動で用意してくれるので、Mac がなくてもよい
+#
+# 必要な Secrets（リポジトリの Settings → Secrets and variables → Actions）。手順は docs/TESTFLIGHT.md
+#   APPLE_TEAM_ID … チーム ID（10文字。Apple Developer の「メンバーシップの詳細」）
+#   ASC_KEY_ID    … APIキーの「キー ID」
+#   ASC_ISSUER_ID … APIキーの「Issuer ID」
+#   ASC_KEY_P8    … APIキーのファイル（AuthKey_XXXX.p8）の中身をそのまま
+name: TestFlightにアップロード
+
+on:
+  workflow_dispatch:
+
+jobs:
+  upload:
+    runs-on: macos-26 # Xcode 26 以上で作らないと App Store Connect が受け付けない（2026年4月28日から）
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Secrets がそろっているか確かめる
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          missing=""
+          for name in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Secrets が足りません:$missing（docs/TESTFLIGHT.md の手順で入れてください）"
+            exit 1
+          fi
+
+      - name: パッケージを入れる
+        run: npm ci
+      - name: アプリのファイルをiOSプロジェクトに入れる
+        run: npm run ios:sync
+
+      - name: APIキーをファイルに書き出す（このジョブの中だけで使う）
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/keys/AuthKey.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/keys/AuthKey.p8" >> "$GITHUB_ENV"
+
+      # バージョンは index.html の APP_VERSION（設定画面に出る番号）、ビルド番号はこのワークフローの実行回数
+      # （同じバージョンでも、アップロードのたびにビルド番号が増えるので重ならない）
+      - name: バージョンを決める
+        run: |
+          version=$(sed -n "s/^const APP_VERSION = '\([0-9.]*\)';.*/\1/p" index.html)
+          [ -n "$version" ] || { echo "::error::index.html に APP_VERSION が見つかりません"; exit 1; }
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+          echo "BUILD_NUMBER=${{ github.run_number }}" >> "$GITHUB_ENV"
+          echo "バージョン $version（ビルド ${{ github.run_number }}）"
+
+      - name: 署名してアーカイブを作る
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -o pipefail
+          xcodebuild -version
+          major=$(xcodebuild -version | sed -n 's/^Xcode \([0-9]*\).*/\1/p')
+          [ "$major" -ge 26 ] || { echo "::error::Xcode 26 以上が必要です（今は Xcode $major）"; exit 1; }
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            MARKETING_VERSION="$APP_VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            archive | tail -n 80
+
+      - name: App Store Connect にアップロードする
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -o pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            | tail -n 80
+          echo "アップロードしました。App Store Connect の TestFlight に出るまで、Apple 側の処理で10〜30分ほどかかります"
+
+      - name: APIキーのファイルを消す
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/keys"

@@ -75,7 +75,15 @@ const entry = (id, subject, minutes, daysAgo) => ({ id, subject, subjectOther: '
   check('開くと既読になり印が消える', !(await page.$eval('#profile-bell', el => el.classList.contains('has-unread'))));
   await page.click('#notifications-back');
   await page.waitForTimeout(150);
-  check('友達は準備中と表示', (await page.textContent('#profile-screen .friends-title')).includes('準備中') && (await page.textContent('#profile-friends-count')) === '0');
+  check('勉強時間は投稿より上（スクロールしなくても見える）', await page.evaluate(() => {
+    const study = document.querySelector('.profile-study-row').getBoundingClientRect(), tabs = document.querySelector('#profile-screen .profile-tabs').getBoundingClientRect();
+    const boxes = [...document.querySelectorAll('.profile-study-row > div')].map(el => el.getBoundingClientRect());
+    return study.bottom <= tabs.top && study.bottom <= window.innerHeight && boxes.every(b => b.left >= 0 && b.right <= document.documentElement.clientWidth);
+  }));
+  check('友達は数が0', (await page.textContent('#profile-friends-count')) === '0');
+  await page.click('[data-people-tab="friends"]'); await page.waitForTimeout(150);
+  check('友達を押すと準備中と表示', (await page.textContent('#people-empty-title')).includes('準備中'));
+  await page.click('#people-back'); await page.waitForTimeout(150);
   await page.screenshot({ path: OUT + 'features-profile.png' });
 
   state.section = '興味なし';

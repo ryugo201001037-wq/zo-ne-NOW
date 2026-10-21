@@ -61,6 +61,14 @@
   /* ============================================================
      ホーム画面：ショート動画フィード
   ============================================================ */
+  /* フィードに出す動画がないとき（読み込み中・まだ投稿がない・読み込めない） */
+  #feed-empty{
+    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+    padding:0 32px calc(90px + var(--safe-bottom)); text-align:center; color:rgba(255,255,255,.75); pointer-events:none;
+  }
+  #feed-empty[hidden]{ display:none; }
+  #feed-empty button{ pointer-events:auto; padding:0 20px; }
+  .feed-empty-text{ font-family:var(--font-ui); font-size:14px; line-height:1.8; margin:0; }
   #feed{
     height:100%; width:100%; overflow-y:scroll; scroll-snap-type:y mandatory;
   }
@@ -609,10 +617,16 @@
   .profile-stat + .profile-stat{ border-left:1px solid rgba(255,255,255,.08); }
   .profile-stat-value{ font-family:var(--font-ui); font-size:19px; font-weight:700; }
   .profile-stat-label{ font-family:var(--font-ui); font-size:11px; color:rgba(255,255,255,.55); margin-top:3px; }
-  .profile-study{ display:flex; text-align:center; }
-  .profile-study > div{ flex:1; }
-  .profile-study-value{ font-family:var(--font-ui); font-size:22px; font-weight:700; }
-  .profile-study-label{ font-family:var(--font-ui); font-size:11px; color:rgba(255,255,255,.55); margin-top:3px; }
+  /* 勉強時間：フォロー数の下に1行で（投稿より上に出して、スクロールしなくても見えるように） */
+  .profile-study-row{
+    display:flex; gap:10px; margin:0 0 18px;
+  }
+  .profile-study-row > div{
+    flex:1; min-width:0; text-align:center;
+    background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:8px 6px;
+  }
+  .profile-study-value{ display:block; font-family:var(--font-ui); font-size:17px; font-weight:700; white-space:nowrap; margin-top:2px; }
+  .profile-study-label{ display:block; font-family:var(--font-ui); font-size:11px; color:rgba(255,255,255,.55); }
   .profile-hint{ font-family:var(--font-ui); font-size:11.5px; color:rgba(255,255,255,.45); line-height:1.6; margin:14px 0 0; text-align:center; }
   .friends-empty{ text-align:center; }
   .friends-icon{
@@ -939,6 +953,10 @@
   <!-- ============ ホーム画面（ショート動画フィード） ============ -->
   <section id="home-screen" class="screen active">
     <div id="feed"></div>
+    <div id="feed-empty" hidden>
+      <p class="feed-empty-text" id="feed-empty-text"></p>
+      <button class="study-btn primary" id="feed-empty-retry" hidden>もう一度読み込む</button>
+    </div>
 
     <div id="feed-topbar">
       <button class="icon-btn" id="search-open-btn" aria-label="検索">
@@ -1189,6 +1207,11 @@
         </button>
       </div>
 
+      <div class="profile-study-row">
+        <div><span class="profile-study-label">今日の勉強</span><span class="profile-study-value" id="profile-study-today">0分</span></div>
+        <div><span class="profile-study-label">直近7日間</span><span class="profile-study-value" id="profile-study-week">0分</span></div>
+      </div>
+
       <div class="record-block" style="margin-top:0; margin-bottom:22px;">
         <div class="profile-tabs" role="tablist">
           <button class="profile-tab active" role="tab" data-profile-tab="posts">投稿 <span id="profile-posts-count"></span></button>
@@ -1198,30 +1221,6 @@
         <p class="record-empty" id="profile-grid-empty" style="padding:18px 0 6px;"></p>
       </div>
 
-      <div class="study-card">
-        <div class="record-section-title">あなたの勉強時間</div>
-        <div class="profile-study">
-          <div>
-            <div class="profile-study-value" id="profile-study-today">0分</div>
-            <div class="profile-study-label">今日</div>
-          </div>
-          <div>
-            <div class="profile-study-value" id="profile-study-week">0分</div>
-            <div class="profile-study-label">直近7日間</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="study-card">
-        <div class="record-section-title">友達</div>
-        <div class="friends-empty">
-          <div class="friends-icon" id="friends-icon"></div>
-          <p class="friends-title">友達と勉強時間を見せ合おう（準備中）</p>
-          <p class="friends-sub">アプリの中で友達とつながって、お互いの今日・今週の勉強時間を見せ合える機能を準備しています。<br>サーバーができたら使えるようになります。</p>
-        </div>
-      </div>
-
-      <p class="record-note" style="margin-top:28px;">※ プロフィールと記録はこの端末のブラウザ内にのみ保存されます。フォロワー・友達はサーバー機能ができてから使えるようになります。</p>
     </div>
     <div class="bottom-nav solid-dark" data-active-nav="profile"></div>
   </section>
@@ -1612,11 +1611,11 @@ const VIDEOS = [
   { id:'tr6', kind:'trivia', subject:'science', grade:'everyone', unit:'', title:'虹は本当は"まんまる"の形をしている', creator:'りかのハル', duration:20, short:DEMO_SHORT[0] },
 ];
 
-// 見本の動画（上の一覧）は、みんなの投稿がこの本数を超えたらフィードと検索に出さない（投稿が減ればまた出す）
-const SAMPLE_RETIRE_AFTER = 20;
+// 見本の動画（上の一覧）は、サーバーにつながるとき（本番）はフィードにも検索にも出さない（本物の投稿だけ）。
+// サーバーにつながらないとき（claude.ai のプレビューなど）だけ、画面を確かめるために出す
 function isRetiredSample(v){
   if(v.cloud || v.own) return false;
-  return VIDEOS.filter(x=> x.cloud).length > SAMPLE_RETIRE_AFTER;
+  return cloudEnabled();
 }
 
 /* ============================================================
@@ -2230,6 +2229,8 @@ document.querySelectorAll('[data-nav]').forEach(btn=>{
 // ---- ショート動画フィード ----
 // 並びは毎回ランダム（学年に合う動画が出やすい）。終わりが近づいたら次の分を後ろに足していく（無限スクロール）
 const feedEl = document.getElementById('feed');
+// みんなの投稿の読み込み状態：'loading'（読み込み中）／'ready'（読み込めた）／'error'（読み込めなかった）。フィードが空のときの案内に使う
+let cloudFeedState = 'loading';
 let currentSlide = null;        // 今画面に出ているショート
 let currentAudibleState = true; // ミュート状態をスライド間で引き継ぐ
 const meterTimers = new WeakMap();  // スライドごとのZoneメーター満了タイマー
@@ -2502,6 +2503,7 @@ function appendFeedBatch(){
     feedEl.appendChild(slide);
     feedObserver.observe(slide);
   });
+  updateFeedEmpty();
 }
 // ---- 動画の読み込み範囲 ----
 // 見ている動画の前1本・次の2本だけを先読みし、離れた動画は読み込んだデータを手放す。
@@ -2558,6 +2560,7 @@ function renderFeed(pinnedFirst){
   appendFeedBatch();
   syncFeedMedia(feedEl.firstElementChild);
   feedEl.scrollTo({ top:0 });
+  updateFeedEmpty();
 }
 
 // スライドが画面に入ったとき：視聴本数を数え、一定本数ごとに勉強を促す。促さないときは再生
@@ -3020,12 +3023,13 @@ function hideFromFeed(v, what, message){
     if(screens.home.classList.contains('active')) enterSlide(target);
   }
   renderResults();
+  updateFeedEmpty();
   showToast(message || (what === 'creator' ? `${v.creator}の動画を表示しないようにしました（設定で戻せます）` : 'この動画を表示しないようにしました（設定で戻せます）'));
 }
 
 // 共有リンク（?v=動画ID）から開いたときは、その動画をフィードの先頭にする
 const SHARED_VIDEO_ID = new URLSearchParams(location.search).get('v');
-const SHARED_VIDEO = SHARED_VIDEO_ID ? VIDEOS.find(v=> v.id === SHARED_VIDEO_ID) || null : null;
+const SHARED_VIDEO = (SHARED_VIDEO_ID && VIDEOS.find(v=> v.id === SHARED_VIDEO_ID && !isRetiredSample(v))) || null;
 let sharedCloudShown = false; // 共有リンクがサーバーの投稿だったとき、先頭に出したか
 
 renderFeed(SHARED_VIDEO || undefined);
@@ -4020,6 +4024,7 @@ async function deleteOwnPost(id){
     slide.remove();
   });
   (post.images || [post.short]).forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} });
+  updateFeedEmpty();
   saveComments(id, []);
   renderChips();
   renderResults();
@@ -4041,6 +4046,24 @@ const KEEP_AS_IS_BYTES_PER_SEC = 'keepAsIsBytesPerSec' in zonenowConfig ? zoneno
 const COMPRESS_MAX_SIDE = 1280, COMPRESS_VIDEO_BPS = 1500000, COMPRESS_AUDIO_BPS = 128000;
 const UPLOAD_PHOTO_MAX_SIDE = 1440;
 let cloudPostsLoadedAt = 0;
+
+// フィードに出す動画がないときの案内（真っ黒な画面にしない）
+function updateFeedEmpty(){
+  const empty = document.getElementById('feed-empty');
+  const noSlides = !feedEl.querySelector('.short-slide');
+  empty.hidden = !noSlides;
+  if(!noSlides) return;
+  const failed = cloudFeedState === 'error';
+  document.getElementById('feed-empty-text').innerHTML = cloudFeedState === 'loading' ? '動画を読み込んでいます…'
+    : failed ? '動画を読み込めませんでした。<br>電波の状態を確かめてね。'
+    : 'まだ見られる動画がありません。<br>下の「＋」から、最初の動画を投稿してみよう。';
+  document.getElementById('feed-empty-retry').hidden = !failed;
+}
+document.getElementById('feed-empty-retry').addEventListener('click', ()=>{
+  cloudFeedState = 'loading';
+  updateFeedEmpty();
+  startCloud();
+});
 
 function newUuid(){
   if(crypto.randomUUID) return crypto.randomUUID();
@@ -4079,13 +4102,19 @@ async function loadCloudPosts(){
     const myId = await cloudUserId();
     if(!myId) return;
     const { data, error } = await client.from('posts').select('*').order('created_at', { ascending:false }).limit(CLOUD_FEED_LIMIT);
-    if(error || !data) return;
+    if(error || !data) throw error || new Error('no data');
     cloudPostsLoadedAt = Date.now();
+    cloudFeedState = 'ready';
     // 自分がさっき投稿したもの（端末のファイルで表示中）は、そのまま使う
     const before = new Map(VIDEOS.filter(v=> v.cloud).map(v=> [v.id, v]));
     for(let i = VIDEOS.length - 1; i >= 0; i--) if(VIDEOS[i].cloud) VIDEOS.splice(i, 1);
     VIDEOS.unshift(...data.map(row=> before.get(row.id) || cloudPostToVideo(row, myId)));
-  }catch(e){ return; } // 電波がないなど：次に開いたときに読む
+  }catch(e){
+    // 電波がないなど：まだ何も読めていなければ「読み込めませんでした」を出す（読めていたら今の並びのまま）
+    if(cloudFeedState !== 'ready') cloudFeedState = 'error';
+    updateFeedEmpty();
+    return;
+  }
 
   loadCloudStats(VIDEOS.filter(v=> v.cloud).map(v=> v.id));
   const shared = !SHARED_VIDEO && SHARED_VIDEO_ID && !sharedCloudShown ? VIDEOS.find(v=> v.cloud && v.id === SHARED_VIDEO_ID) : null;
@@ -4951,7 +4980,6 @@ document.getElementById('onboarding-submit').addEventListener('click', async ()=
 });
 
 // ---- プロフィール画面 ----
-document.getElementById('friends-icon').innerHTML = icon('users');
 document.getElementById('profile-edit').addEventListener('click', openProfileEditor);
 document.getElementById('profile-gear').innerHTML = icon('gear');
 document.getElementById('profile-gear').addEventListener('click', ()=> showScreen('settings'));
@@ -5281,16 +5309,25 @@ if(!loadProfile()) showScreen('onboarding');
 restoreOwnPosts();
 updateNotifyBadges();
 
-// サーバーができる前から使っていた人：アカウントを自動で作り、端末の記録を送る。それ以外は残っている変更を送る
-if(cloudEnabled() && loadProfile()){
-  cloudUserId().then(async id=>{
-    if(id){ flushSync(); loadCloudPosts(); return; }
-    await ensureAccount();
-    queueSync({ type:'profile' });
-    queueSync({ type:'log_upsert' });
-    loadCloudPosts();
-  }).catch(()=>{ /* 電波がないなど。次に開いたときにまた試す */ });
+// 起動時（と「もう一度読み込む」）：サーバーにつないで、みんなの投稿を読み込む
+// サーバーができる前から使っていた人は、アカウントを自動で作り、端末の記録を送る。それ以外は残っている変更を送る
+async function startCloud(){
+  try{
+    if(await cloudUserId()) flushSync();
+    else {
+      await ensureAccount();
+      queueSync({ type:'profile' });
+      queueSync({ type:'log_upsert' });
+    }
+  }catch(e){
+    // 電波がないなど：フィードに「読み込めませんでした」を出す（もう一度読み込むボタンでやり直せる）
+    cloudFeedState = 'error';
+    updateFeedEmpty();
+    return;
+  }
+  loadCloudPosts();
 }
+if(cloudEnabled() && loadProfile()) startCloud();
 
 
 // ---- PWA: ホーム画面追加バナー ----

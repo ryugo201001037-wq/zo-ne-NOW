@@ -7,6 +7,7 @@
 -- 友達機能を作るときに「友達の勉強時間は読める」ルールを足す。
 -- 例外は投稿（posts）：みんなのフィードに流すため、ログインしている人は全員の投稿を読める。作る・消すは自分の分だけ。
 -- また、ユーザー検索（search_users）では、ログインしている人が全員の「名前」で探せる（学年などは見えない）。
+-- いいね・保存は、だれが押したかは本人だけが見え、数だけを post_stats で全員が見られる。コメントは全員が読める。
 
 -- ---- プロフィール（ログインしたユーザー1人につき1行） ----
 create table if not exists public.profiles (
@@ -78,12 +79,41 @@ create table if not exists public.reports (
   unique (post_id, user_id)
 );
 
+-- ---- いいね・保存（みんなの投稿だけ。だれが押したかは本人にしか見えない。数は post_stats で全員が見られる） ----
+create table if not exists public.likes (
+  post_id    uuid not null references public.posts(id) on delete cascade,
+  user_id    uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (post_id, user_id)
+);
+create table if not exists public.saves (
+  post_id    uuid not null references public.posts(id) on delete cascade,
+  user_id    uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (post_id, user_id)
+);
+
+-- ---- コメント（みんなの投稿だけ。ログインしている人は全員読める。消せるのは書いた本人と、投稿した人） ----
+-- author は書いた時点の名前（あとで名前を変えても、コメントの名前はそのまま）
+create table if not exists public.comments (
+  id         uuid primary key default gen_random_uuid(),
+  post_id    uuid not null references public.posts(id) on delete cascade,
+  user_id    uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  author     text not null check (char_length(author) between 1 and 20),
+  body       text not null check (char_length(btrim(body)) between 1 and 200),
+  created_at timestamptz not null default now()
+);
+create index if not exists comments_post on public.comments (post_id, created_at);
+
 -- ---- 行ごとの権限：自分の行だけ ----
 alter table public.profiles   enable row level security;
 alter table public.study_logs enable row level security;
 alter table public.feedback   enable row level security;
 alter table public.posts      enable row level security;
 alter table public.reports    enable row level security;
+alter table public.likes      enable row level security;
+alter table public.saves      enable row level security;
+alter table public.comments   enable row level security;
 
 -- （すでにあるルールはそのまま。何度実行しても同じ結果になる）
 do $$ begin
@@ -126,6 +156,22 @@ do $$ begin
   if not exists (select from pg_policies where schemaname = 'public' and tablename = 'reports' and policyname = 'reports: 自分の名前で送るだけ') then
     create policy "reports: 自分の名前で送るだけ" on public.reports for insert to authenticated with check (user_id = auth.uid());
   end if;
+  if not exists (select from pg_policies where schemaname = 'public' and tablename = 'likes' and policyname = 'likes: 自分の分だけ') then
+    create policy "likes: 自分の分だけ" on public.likes for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+  end if;
+  if not exists (select from pg_policies where schemaname = 'public' and tablename = 'saves' and policyname = 'saves: 自分の分だけ') then
+    create policy "saves: 自分の分だけ" on public.saves for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+  end if;
+  if not exists (select from pg_policies where schemaname = 'public' and tablename = 'comments' and policyname = 'comments: ログインしていれば読める') then
+    create policy "comments: ログインしていれば読める" on public.comments for select to authenticated using (true);
+  end if;
+  if not exists (select from pg_policies where schemaname = 'public' and tablename = 'comments' and policyname = 'comments: 自分の名前で書く') then
+    create policy "comments: 自分の名前で書く" on public.comments for insert to authenticated with check (user_id = auth.uid());
+  end if;
+  if not exists (select from pg_policies where schemaname = 'public' and tablename = 'comments' and policyname = 'comments: 書いた人と投稿した人が消せる') then
+    create policy "comments: 書いた人と投稿した人が消せる" on public.comments for delete to authenticated
+      using (user_id = auth.uid() or exists (select 1 from public.posts p where p.id = post_id and p.user_id = auth.uid()));
+  end if;
 end $$;
 
 -- ---- 投稿のファイル置き場（Storage の posts バケット） ----
@@ -159,6 +205,21 @@ begin
 end $$;
 create or replace trigger profiles_touch before update on public.profiles
   for each row execute function public.touch_updated_at();
+
+-- ---- 投稿ごとの数（いいね・保存・コメント）と、自分が押したか（一度に100件まで） ----
+create or replace function public.post_stats(ids uuid[]) returns table (post_id uuid, likes bigint, saves bigint, comments bigint, liked boolean, saved boolean)
+language sql stable security definer set search_path = '' as $$
+  select p.id,
+    (select count(*) from public.likes l where l.post_id = p.id),
+    (select count(*) from public.saves s where s.post_id = p.id),
+    (select count(*) from public.comments c where c.post_id = p.id),
+    exists (select 1 from public.likes l where l.post_id = p.id and l.user_id = auth.uid()),
+    exists (select 1 from public.saves s where s.post_id = p.id and s.user_id = auth.uid())
+  from public.posts p
+  where auth.uid() is not null and p.id = any (ids[1:100]);
+$$;
+revoke all on function public.post_stats(uuid[]) from public, anon;
+grant execute on function public.post_stats(uuid[]) to authenticated;
 
 -- ---- ユーザー検索：名前の一部で探す（ログインしている人だけ） ----
 -- プロフィールの表は本人しか読めないままにして、この関数だけが「アカウントIDと名前」を返す（学年などは返さない）

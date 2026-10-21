@@ -87,6 +87,13 @@ const { check, state, report } = createChecker();
   await page.click('.comment-row:last-child [data-delete-comment]');
   await page.click('#confirm-ok');
   check('自分のコメントを削除できる', (await page.$$('.comment-row')).length === 1 && (await cnt('comment')) === '1');
+  // 名前を変えたあとでも、前に書いたコメントを消せる（前は名前で見分けていたので消せなかった）
+  const nameBefore = await page.evaluate(() => JSON.parse(localStorage.getItem('zonenow_profile')).name);
+  await page.evaluate(() => { const p = JSON.parse(localStorage.getItem('zonenow_profile')); p.name = '別の名前'; localStorage.setItem('zonenow_profile', JSON.stringify(p)); });
+  await page.click('#comment-sheet-close');
+  await page.click(`${s0} [data-role="comment"]`);
+  check('名前を変えたあとでも、自分のコメントを削除できる', (await page.$$('.comment-row [data-delete-comment]')).length === 1);
+  await page.evaluate(n => { const p = JSON.parse(localStorage.getItem('zonenow_profile')); p.name = n; localStorage.setItem('zonenow_profile', JSON.stringify(p)); }, nameBefore);
   await page.click('#comment-sheet-close');
   check('コメント欄を閉じられる', !(await shown('#comment-sheet')));
 

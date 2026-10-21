@@ -8,7 +8,7 @@ const { check, state, report } = createChecker();
 // ---- にせSupabase（ログイン：GoTrue、データ：PostgREST の必要なところだけ） ----
 function startFakeSupabase() {
   const fake = { users: new Map(), profiles: new Map(), logs: new Map(), feedback: [], signups: 0, offline: false, rejectNextLog: false, rpcCalls: 0,
-    posts: [], files: new Map(), reports: [], failUpload: false };
+    posts: [], files: new Map(), reports: [], failUpload: false, likes: [], saves: [], comments: [] };
   const userOf = req => {
     const m = /^Bearer tok-(.+)$/.exec(req.headers.authorization || '');
     return m && fake.users.has(m[1]) ? m[1] : null;
@@ -109,7 +109,10 @@ function startFakeSupabase() {
     }
     if (p === '/rest/v1/posts' && req.method === 'DELETE') {
       const id = (url.searchParams.get('id') || '').replace(/^eq\./, '');
-      fake.posts = fake.posts.filter(r => !(r.id === id && r.user_id === uid));
+      if (fake.posts.some(r => r.id === id && r.user_id === uid)) {
+        fake.posts = fake.posts.filter(r => r.id !== id);
+        for (const key of ['likes', 'saves', 'comments']) fake[key] = fake[key].filter(r => r.post_id !== id);
+      }
       return send(204);
     }
     if (p === '/rest/v1/reports' && req.method === 'POST') {
@@ -127,6 +130,49 @@ function startFakeSupabase() {
       }
       return send(204);
     }
+    // ---- いいね・保存・コメント ----
+    const eqOf = name => (url.searchParams.get(name) || '').replace(/^eq\./, '');
+    const wantsObject = (req.headers.accept || '').includes('vnd.pgrst.object');
+    if ((p === '/rest/v1/likes' || p === '/rest/v1/saves') && req.method === 'POST') {
+      const list = p.endsWith('likes') ? fake.likes : fake.saves;
+      for (const row of [].concat(body)) {
+        if (row.user_id && row.user_id !== uid) return send(403, { code: '42501', message: 'row-level security' });
+        if (list.some(r => r.post_id === row.post_id && r.user_id === uid)) return send(409, { code: '23505', message: 'duplicate' });
+        list.push({ post_id: row.post_id, user_id: uid });
+      }
+      return send(201);
+    }
+    if ((p === '/rest/v1/likes' || p === '/rest/v1/saves') && req.method === 'DELETE') {
+      const key = p.endsWith('likes') ? 'likes' : 'saves';
+      fake[key] = fake[key].filter(r => !(r.post_id === eqOf('post_id') && r.user_id === uid));
+      return send(204);
+    }
+    if (p === '/rest/v1/rpc/post_stats' && req.method === 'POST') {
+      return send(200, ((body && body.ids) || []).filter(id => fake.posts.some(r => r.id === id)).map(id => ({
+        post_id: id, likes: fake.likes.filter(r => r.post_id === id).length, saves: fake.saves.filter(r => r.post_id === id).length,
+        comments: fake.comments.filter(r => r.post_id === id).length,
+        liked: fake.likes.some(r => r.post_id === id && r.user_id === uid), saved: fake.saves.some(r => r.post_id === id && r.user_id === uid),
+      })));
+    }
+    if (p === '/rest/v1/comments' && req.method === 'GET') {
+      return send(200, fake.comments.filter(r => r.post_id === eqOf('post_id')).sort((a, b) => a.created_at.localeCompare(b.created_at)));
+    }
+    if (p === '/rest/v1/comments' && req.method === 'POST') {
+      const row = [].concat(body)[0];
+      if (row.user_id && row.user_id !== uid) return send(403, { code: '42501', message: 'row-level security' });
+      if (!row.body || !row.body.trim() || row.body.length > 200) return send(400, { code: '23514', message: 'check violation' });
+      const saved = { id: crypto.randomUUID(), post_id: row.post_id, user_id: uid, author: row.author, body: row.body, created_at: new Date().toISOString() };
+      fake.comments.push(saved);
+      return send(201, wantsObject ? saved : [saved]);
+    }
+    if (p === '/rest/v1/comments' && req.method === 'DELETE') {
+      const id = eqOf('id');
+      const target = fake.comments.find(r => r.id === id);
+      const allowed = target && (target.user_id === uid || fake.posts.some(x => x.id === target.post_id && x.user_id === uid));
+      if (!allowed) return send(200, []);
+      fake.comments = fake.comments.filter(r => r.id !== id);
+      return send(200, [{ id }]);
+    }
     if (p === '/rest/v1/rpc/search_users' && req.method === 'POST') {
       const q = String((body && body.q) || '').trim();
       const rows = q ? [...fake.profiles.values()].filter(r => r.name.includes(q)).map(r => ({ id: r.id, name: r.name })) : [];
@@ -136,7 +182,9 @@ function startFakeSupabase() {
     if (p === '/rest/v1/rpc/delete_my_account' && req.method === 'POST') {
       fake.rpcCalls++;
       fake.users.delete(uid); fake.profiles.delete(uid);
+      const gone = fake.posts.filter(r => r.user_id === uid).map(r => r.id);
       fake.posts = fake.posts.filter(r => r.user_id !== uid);
+      for (const key of ['likes', 'saves', 'comments']) fake[key] = fake[key].filter(r => r.user_id !== uid && !gone.includes(r.post_id));
       for (const [k, row] of fake.logs) if (row.user_id === uid) fake.logs.delete(k);
       return send(204);
     }
@@ -314,6 +362,8 @@ function startFakeSupabase() {
   check('電波が戻れば、もう一度押して投稿できる', await waitFor(() => fake.posts.some(r => r.title === '送れない投稿'), 6000));
 
   state.section = 'ほかの人のフィード';
+  const usersBeforeOther = new Set(fake.users.keys());
+  const otherUid = () => [...fake.users.keys()].find(id => !usersBeforeOther.has(id));
   const other = await openApp({}, {}, `?v=${vpost.id}`);
   await other.page.fill('#onboarding-name', 'ゆい');
   await other.page.click('#onboarding-grade-chips .chip[data-id="high1"]');
@@ -327,14 +377,50 @@ function startFakeSupabase() {
   check('ほかの人の投稿にはフォローボタン', await op.isVisible('#feed .short-slide:first-child [data-role="follow"]'));
   check('本物の投稿は見本の動画より出やすい', await op.evaluate(() => feedWeight(VIDEOS.find(v => v.cloud), 'high1') > feedWeight(VIDEOS.find(v => !v.cloud && v.grade === 'high1'), 'high1')));
 
+  state.section = 'いいね・保存・コメント';
+  const first = '#feed .short-slide:first-child';
+  const countOf = (pg, sel, role) => pg.$eval(`${sel} [data-role="${role}"] .action-count`, el => el.textContent);
+  await op.click(`${first} [data-role="like"]`);
+  check('いいねがサーバーに届く', await waitFor(() => fake.likes.some(r => r.post_id === vpost.id && r.user_id === otherUid())));
+  check('いいねの数が1になり、押した状態になる', (await countOf(op, first, 'like')) === '1' && await op.$eval(`${first} [data-role="like"]`, el => el.classList.contains('active')));
+  await op.click(`${first} [data-role="bookmark"]`);
+  check('保存もサーバーに届き、数が出る', await waitFor(() => fake.saves.some(r => r.post_id === vpost.id)) && (await countOf(op, first, 'bookmark')) === '1');
+  check('保存した投稿は、プロフィールの「保存」にも並ぶ', await op.evaluate(id => JSON.parse(localStorage.getItem('zonenow_saves')).includes(id), vpost.id));
+  await op.click(`${first} [data-role="comment"]`);
+  check('コメント欄を開ける（まだ0件）', await waitFor(async () => (await op.textContent('#comment-sheet-title')) === 'コメント 0件'));
+  await op.fill('#comment-input', 'わかりやすい！');
+  await op.click('#comment-send');
+  check('コメントがサーバーに届く（書いた人の名前つき）', await waitFor(() => fake.comments.some(r => r.post_id === vpost.id && r.body === 'わかりやすい！' && r.author === 'ゆい')));
+  check('コメントの数が出て、自分のコメントは削除できる', await waitFor(async () => (await op.textContent('#comment-sheet-title')) === 'コメント 1件') && (await op.$$('#comment-list [data-delete-comment]')).length === 1);
+  // 名前を変えても、自分のコメントは消せる（前は名前で見分けていたので消せなかった）
+  await op.click('#comment-sheet-close');
+  await op.evaluate(() => { const p = JSON.parse(localStorage.getItem('zonenow_profile')); p.name = 'ゆい改'; localStorage.setItem('zonenow_profile', JSON.stringify(p)); });
+  await op.click(`${first} [data-role="comment"]`);
+  check('名前を変えたあとでも、自分のコメントは削除できる', await waitFor(async () => (await op.$$('#comment-list [data-delete-comment]')).length === 1));
+  await op.click('#comment-sheet-close');
+  check('コメントの数もフィードに出る', (await countOf(op, first, 'comment')) === '1');
+
+  // 投稿した本人（みなと）の画面：ほかの人のいいね・コメントの数が見える。自分の投稿についたコメントは消せる
+  await page.evaluate(() => loadCloudPosts());
+  await page.evaluate(id => jumpToShort(id), vpost.id);
+  check('投稿した人にも、ほかの人のいいね・保存・コメントの数が見える', await waitFor(async () => (await countOf(page, first, 'like')) === '1' && (await countOf(page, first, 'bookmark')) === '1' && (await countOf(page, first, 'comment')) === '1'));
+  check('自分は押していないので、いいねは押した状態にならない', !(await page.$eval(`${first} [data-role="like"]`, el => el.classList.contains('active'))));
+  await page.click(`${first} [data-role="comment"]`);
+  check('ほかの人のコメントが読める', await waitFor(async () => (await page.textContent('#comment-list')).includes('わかりやすい！')));
+  check('自分の投稿についたコメントは消せる', (await page.$$('#comment-list [data-delete-comment]')).length === 1);
+  await page.click('#comment-list [data-delete-comment]'); await page.click('#confirm-ok');
+  check('消すとサーバーからも消える', await waitFor(() => !fake.comments.some(r => r.post_id === vpost.id)));
+  await page.click('#comment-sheet-close');
+  await op.click(`${first} [data-role="like"]`);
+  check('いいねを取り消すと、サーバーからも消える', await waitFor(() => !fake.likes.some(r => r.post_id === vpost.id)) && (await countOf(op, first, 'like')) === '0');
+
   state.section = '通報';
   await op.click('#feed .short-slide:first-child [data-role="share"]');
   check('ほかの人の投稿には「通報する」', await op.isVisible('#share-report'));
   await op.click('#share-report');
   check('理由を選ぶ画面が出る', await op.isVisible('#report-sheet .sheet-card'));
   await op.click('#report-reasons [data-reason="spam"]');
-  const otherUid = [...fake.users.keys()].find(id => id !== uid && id !== uid2);
-  check('通報がサーバーに届く（どの投稿か・理由・誰から）', await waitFor(() => fake.reports.length === 1 && fake.reports[0].post_id === vpost.id && fake.reports[0].reason === 'spam' && fake.reports[0].user_id === otherUid), JSON.stringify(fake.reports));
+  check('通報がサーバーに届く（どの投稿か・理由・誰から）', await waitFor(() => fake.reports.length === 1 && fake.reports[0].post_id === vpost.id && fake.reports[0].reason === 'spam' && fake.reports[0].user_id === otherUid()), JSON.stringify(fake.reports));
   check('通報した投稿はもう出ない', (await toast(op)).includes('通報しました') && !(await op.$$eval('#feed .short-slide', (els, id) => els.some(el => el.dataset.id === id), vpost.id)));
   await op.click('#feed .short-slide:first-child [data-role="share"]');
   const firstCloud = await op.$eval('#feed .short-slide:first-child', el => VIDEOS.find(v => v.id === el.dataset.id).cloud);

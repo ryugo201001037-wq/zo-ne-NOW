@@ -2005,7 +2005,9 @@ async function postDb(mode, action){
   });
 }
 
-// いいね・保存・コメント（今はこの端末のあなたの分だけ。サーバーができたら全員分の数に置き換える）
+// いいね・保存・コメント
+// ・みんなの投稿（サーバーの投稿）：サーバーに保存し、数は全員分（cloudStats。下の「みんなの投稿のいいね・保存・コメント」）
+// ・見本の動画：この端末のあなたの分だけ
 const LIKES_KEY = 'zonenow_likes';
 const SAVES_KEY = 'zonenow_saves';
 const COMMENTS_KEY = 'zonenow_comments';
@@ -2025,9 +2027,16 @@ function saveComments(id, list){
   if(list.length) all[id] = list; else delete all[id];
   return saveJSON(COMMENTS_KEY, all);
 }
-// 表示する数：いいね・保存は「あなたが押したか」の0/1、コメントは実際の件数
+// 表示する数と、あなたが押したか（みんなの投稿はサーバーの数。読み込むまでは端末の記録で出しておく）
+const cloudStats = new Map(); // 投稿ID → { likes, saves, comments, liked, saved, at }
 function engagementOf(id){
-  return { likes: isLiked(id) ? 1 : 0, saves: isSaved(id) ? 1 : 0, comments: loadComments(id).length };
+  const st = cloudStats.get(id);
+  if(st) return { likes: st.likes, saves: st.saves, comments: st.comments, liked: st.liked, saved: st.saved };
+  return { likes: isLiked(id) ? 1 : 0, saves: isSaved(id) ? 1 : 0, comments: loadComments(id).length, liked: isLiked(id), saved: isSaved(id) };
+}
+function setIdInList(key, id, on){
+  const list = loadIdList(key).filter(x=> x !== id);
+  saveJSON(key, on ? [...list, id] : list);
 }
 
 /* ============================================================
@@ -2273,7 +2282,7 @@ function createSlide(v){
         <div class="avatar">${isOwn && profile && isSafeAvatar(profile.avatar) ? `<img src="${escapeHtml(profile.avatar)}" alt="" />` : escapeHtml(v.creator.charAt(0))}</div>
         ${isOwn ? '' : `<button class="follow-badge ${following ? 'active' : ''}" data-role="follow" data-follow-key="${escapeHtml(followKeyOf(v))}">${icon(following ? 'check' : 'plus')}</button>`}
       </div>
-      <button class="action-item ${counts.likes ? 'active' : ''}" data-role="like" aria-label="いいね">
+      <button class="action-item ${counts.liked ? 'active' : ''}" data-role="like" aria-label="いいね">
         ${icon('heart')}
         <span class="action-count">${formatCount(counts.likes)}</span>
       </button>
@@ -2281,7 +2290,7 @@ function createSlide(v){
         ${icon('comment')}
         <span class="action-count">${formatCount(counts.comments)}</span>
       </button>
-      <button class="action-item ${counts.saves ? 'active' : ''}" data-role="bookmark" aria-label="保存">
+      <button class="action-item ${counts.saved ? 'active' : ''}" data-role="bookmark" aria-label="保存">
         ${icon('bookmark')}
         <span class="action-count">${formatCount(counts.saves)}</span>
       </button>
@@ -2366,15 +2375,23 @@ function attachSlideEvents(slide, v){
     togglePause(slide);
   });
 
-  // いいね・保存（端末内に保存。同じ動画の他のスライドの表示もそろえる）
-  slide.querySelector('[data-role="like"]').addEventListener('click', ()=>{
+  // いいね・保存（みんなの投稿はサーバーにも。同じ動画の他のスライドの表示もそろえる）
+  slide.querySelector('[data-role="like"]').addEventListener('click', async ()=>{
+    if(v.cloud){ if(await toggleCloudReaction(v, 'likes')) tapFeedback(); return; }
     if(toggleIdInList(LIKES_KEY, v.id)) tapFeedback();
     syncEngagement(v.id);
   });
-  slide.querySelector('[data-role="bookmark"]').addEventListener('click', ()=>{
-    const saved = toggleIdInList(SAVES_KEY, v.id);
+  slide.querySelector('[data-role="bookmark"]').addEventListener('click', async ()=>{
+    let saved;
+    if(v.cloud){
+      saved = await toggleCloudReaction(v, 'saves');
+      if(saved === null) return;
+      setIdInList(SAVES_KEY, v.id, saved); // プロフィールの「保存」に並べるため、端末にも覚えておく
+    } else {
+      saved = toggleIdInList(SAVES_KEY, v.id);
+      syncEngagement(v.id);
+    }
     if(saved) tapFeedback();
-    syncEngagement(v.id);
     showToast(saved ? '保存しました（プロフィールから見られます）' : '保存を取り消しました');
   });
 
@@ -2402,9 +2419,9 @@ function syncEngagement(id){
     if(slide.dataset.id !== id) return;
     const like = slide.querySelector('[data-role="like"]');
     const save = slide.querySelector('[data-role="bookmark"]');
-    like.classList.toggle('active', !!counts.likes);
+    like.classList.toggle('active', !!counts.liked);
     like.querySelector('.action-count').textContent = formatCount(counts.likes);
-    save.classList.toggle('active', !!counts.saves);
+    save.classList.toggle('active', !!counts.saved);
     save.querySelector('.action-count').textContent = formatCount(counts.saves);
     slide.querySelector('[data-role="comment"] .action-count').textContent = formatCount(counts.comments);
   });
@@ -2556,6 +2573,7 @@ function enterSlide(slide){
     viewedCount++;
   }
   activateSlide(slide);
+  refreshCloudStatsOf(VIDEOS.find(v=> v.id === slide.dataset.id)); // みんなの投稿は、いいねなどの数を新しくする
 }
 function resumeFeed(){ enterSlide(currentSlide); }
 
@@ -2751,37 +2769,99 @@ function timeAgo(ts){
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-function openComments(v){
+// みんなの投稿のコメントはサーバーから読む（cloudComments）。見本の動画は端末の中のコメント（すべて自分が書いたもの）
+let cloudComments = null;   // null＝読み込み中
+let commentMyId = null;
+let commentSending = false;
+const COMMENT_EMPTY_TEXT = document.getElementById('comment-empty').innerHTML;
+async function openComments(v){
   commentVideo = v;
+  cloudComments = null;
   renderComments();
   commentSheet.classList.add('show');
+  if(!v.cloud) return;
+  commentMyId = await cloudUserId().catch(()=> null);
+  try{
+    const client = await getCloud();
+    const { data, error } = await client.from('comments').select('id, user_id, author, body, created_at')
+      .eq('post_id', v.id).order('created_at', { ascending:true }).limit(300);
+    if(error) throw error;
+    if(commentVideo !== v) return;
+    cloudComments = data.map(r=>({ id:r.id, userId:r.user_id, author:r.author, text:r.body, createdAt: Date.parse(r.created_at) }));
+    updateCloudCommentCount(v.id);
+  }catch(e){
+    if(commentVideo !== v) return;
+    cloudComments = [];
+    showToast('コメントを読み込めませんでした。電波の状態を確かめてね');
+  }
+  renderComments();
 }
 function closeComments(){
   commentSheet.classList.remove('show');
   commentVideo = null;
 }
+function updateCloudCommentCount(id){
+  const st = cloudStats.get(id);
+  if(st && cloudComments){ st.comments = cloudComments.length; syncEngagement(id); }
+}
+function commentsOfCurrent(){ return commentVideo.cloud ? (cloudComments || []) : loadComments(commentVideo.id); }
+// 消せるのは：自分のコメント（名前を変えたあとでも）と、自分の投稿についたコメント
+function canDeleteComment(c){
+  if(!commentVideo.cloud) return true; // 端末の中のコメントは、すべてこの端末で自分が書いたもの
+  return !!commentMyId && (c.userId === commentMyId || !!commentVideo.own);
+}
 function renderComments(){
-  const list = loadComments(commentVideo.id);
+  const list = commentsOfCurrent();
   const me = loadProfile();
-  document.getElementById('comment-sheet-title').textContent = `コメント ${list.length}件`;
-  document.getElementById('comment-list').innerHTML = list.map(c=>`
+  const loading = commentVideo.cloud && cloudComments === null;
+  document.getElementById('comment-sheet-title').textContent = loading ? 'コメント' : `コメント ${list.length}件`;
+  document.getElementById('comment-list').innerHTML = list.map(c=>{
+    const mine = commentVideo.cloud ? c.userId === commentMyId : true;
+    return `
     <div class="comment-row">
-      <div class="avatar">${me && c.author === me.name && isSafeAvatar(me.avatar) ? `<img src="${escapeHtml(me.avatar)}" alt="" />` : escapeHtml(c.author.charAt(0))}</div>
+      <div class="avatar">${mine && me && isSafeAvatar(me.avatar) ? `<img src="${escapeHtml(me.avatar)}" alt="" />` : escapeHtml(c.author.charAt(0))}</div>
       <div class="comment-body">
         <div class="comment-meta">
           <b>${escapeHtml(c.author)}</b><span>${timeAgo(c.createdAt)}</span>
-          ${me && c.author === me.name ? `<button class="comment-delete" data-delete-comment="${escapeHtml(c.id)}">削除</button>` : ''}
+          ${canDeleteComment(c) ? `<button class="comment-delete" data-delete-comment="${escapeHtml(c.id)}">削除</button>` : ''}
         </div>
         <div class="comment-text">${escapeHtml(c.text)}</div>
       </div>
-    </div>
-  `).join('');
-  document.getElementById('comment-empty').style.display = list.length ? 'none' : 'block';
+    </div>`;
+  }).join('');
+  const empty = document.getElementById('comment-empty');
+  empty.innerHTML = loading ? '読み込み中…' : COMMENT_EMPTY_TEXT;
+  empty.style.display = list.length ? 'none' : 'block';
 }
-function sendComment(){
+async function sendComment(){
   const text = commentInput.value.trim();
   if(!text){ showToast('コメントを入力してください'); return; }
   if(text.length > COMMENT_MAX_LENGTH){ showToast(`コメントは${COMMENT_MAX_LENGTH}文字までです`); return; }
+  if(commentVideo.cloud){
+    if(commentSending || cloudComments === null) return;
+    commentSending = true;
+    const v = commentVideo;
+    try{
+      const client = await getCloud();
+      const { data, error } = await client.from('comments')
+        .insert({ post_id: v.id, author: ((loadProfile() || {}).name || 'あなた').slice(0, 20), body: text })
+        .select('id, user_id, author, body, created_at').single();
+      if(error) throw error;
+      if(commentVideo === v){
+        cloudComments.push({ id:data.id, userId:data.user_id, author:data.author, text:data.body, createdAt: Date.parse(data.created_at) });
+        commentInput.value = '';
+        updateCloudCommentCount(v.id);
+        renderComments();
+        const listEl = document.getElementById('comment-list');
+        listEl.scrollTop = listEl.scrollHeight;
+      }
+    }catch(e){
+      showToast('コメントを送れませんでした。電波の状態を確かめて、もう一度送ってね');
+    }finally{
+      commentSending = false;
+    }
+    return;
+  }
   const list = loadComments(commentVideo.id);
   list.push({
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
@@ -2805,10 +2885,23 @@ commentSheet.addEventListener('click', async (e)=>{
   if(e.target === commentSheet){ closeComments(); return; }
   const del = e.target.closest('[data-delete-comment]');
   if(!del) return;
+  const v = commentVideo, id = del.dataset.deleteComment;
   if(!await confirmDialog('このコメントを削除しますか？', '削除する')) return;
-  saveComments(commentVideo.id, loadComments(commentVideo.id).filter(c=> c.id !== del.dataset.deleteComment));
+  if(v.cloud){
+    try{
+      const client = await getCloud();
+      const { data, error } = await client.from('comments').delete().eq('id', id).select('id');
+      if(error || !data.length) throw error || new Error('not deleted');
+    }catch(err){ showToast('削除できませんでした。電波の状態を確かめて、もう一度試してね'); return; }
+    if(commentVideo !== v) return;
+    cloudComments = cloudComments.filter(c=> c.id !== id);
+    updateCloudCommentCount(v.id);
+    renderComments();
+    return;
+  }
+  saveComments(v.id, loadComments(v.id).filter(c=> c.id !== id));
   renderComments();
-  syncEngagement(commentVideo.id);
+  syncEngagement(v.id);
 });
 
 // ---- シェア ----
@@ -3149,6 +3242,7 @@ async function openUserProfile(user){
     return;
   }
   if(seq === userScreenSeq) renderUserPosts(posts.filter(v=> !isHiddenVideo(v)));
+  loadCloudStats(posts.filter(v=> !cloudStats.has(v.id)).map(v=> v.id));
 }
 function renderUserPosts(posts, message){
   const grid = document.getElementById('user-grid');
@@ -3993,6 +4087,7 @@ async function loadCloudPosts(){
     VIDEOS.unshift(...data.map(row=> before.get(row.id) || cloudPostToVideo(row, myId)));
   }catch(e){ return; } // 電波がないなど：次に開いたときに読む
 
+  loadCloudStats(VIDEOS.filter(v=> v.cloud).map(v=> v.id));
   const shared = !SHARED_VIDEO && SHARED_VIDEO_ID && !sharedCloudShown ? VIDEOS.find(v=> v.cloud && v.id === SHARED_VIDEO_ID) : null;
   const current = currentSlide && VIDEOS.find(v=> v.id === currentSlide.dataset.id);
   if(shared){ sharedCloudShown = true; renderFeed(shared); }
@@ -4005,6 +4100,55 @@ async function loadCloudPosts(){
 document.addEventListener('visibilitychange', ()=>{
   if(!document.hidden && cloudPostsLoadedAt && Date.now() - cloudPostsLoadedAt > CLOUD_FEED_REFRESH_MS) loadCloudPosts();
 });
+
+// ---- みんなの投稿のいいね・保存・コメントの数 ----
+// 数（全員分）と自分が押したかを post_stats でまとめて読む。開いている動画は1分ごとに読み直す
+const CLOUD_STATS_REFRESH_MS = 60 * 1000;
+async function loadCloudStats(ids){
+  ids = [...new Set(ids)];
+  if(!cloudEnabled() || !ids.length) return;
+  try{
+    const client = await getCloud();
+    for(let i = 0; i < ids.length; i += 100){
+      const { data, error } = await client.rpc('post_stats', { ids: ids.slice(i, i + 100) });
+      if(error) return;
+      data.forEach(r=>{
+        const old = cloudStats.get(r.post_id);
+        if(old && old.busy) return; // 押している途中の表示は変えない
+        cloudStats.set(r.post_id, { likes:Number(r.likes), saves:Number(r.saves), comments:Number(r.comments), liked:r.liked, saved:r.saved, at:Date.now() });
+        syncEngagement(r.post_id);
+      });
+    }
+  }catch(e){ /* 電波がないなど：前の数のまま */ }
+}
+function refreshCloudStatsOf(v){
+  if(!v || !v.cloud) return;
+  const st = cloudStats.get(v.id);
+  if(!st || Date.now() - st.at > CLOUD_STATS_REFRESH_MS) loadCloudStats([v.id]);
+}
+// いいね／保存を押す（すぐ表示を変えてからサーバーに送る。送れなかったら元に戻す）。押した後の状態を返す（失敗は null）
+async function toggleCloudReaction(v, table){
+  const st = cloudStats.get(v.id) || { ...engagementOf(v.id), at:0 };
+  if(st.busy) return null;
+  const flag = table === 'likes' ? 'liked' : 'saved';
+  const on = !st[flag];
+  const before = { ...st };
+  Object.assign(st, { [flag]: on, [table]: Math.max(0, st[table] + (on ? 1 : -1)), busy:true });
+  cloudStats.set(v.id, st);
+  syncEngagement(v.id);
+  try{
+    const client = await getCloud();
+    const res = on ? await client.from(table).insert({ post_id: v.id }) : await client.from(table).delete().eq('post_id', v.id);
+    if(res.error && res.status !== 409) throw res.error; // 409＝もう押してあった
+  }catch(e){
+    cloudStats.set(v.id, { ...before, busy:false });
+    syncEngagement(v.id);
+    showToast('送れませんでした。電波の状態を確かめて、もう一度押してね');
+    return null;
+  }
+  st.busy = false;
+  return on;
+}
 
 // ---- 動画を軽くする ----
 // 端末の中で動画を再生しながら、小さいサイズ・低いビットレートで録り直す（動画の長さと同じだけ時間がかかる）

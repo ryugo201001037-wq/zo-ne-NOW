@@ -52,11 +52,21 @@ npm run ios:assets   # アイコン（1024px・透明なし）と起動画面を
 
 - アプリID（Bundle ID）は `jp.zonenow.app`、名前は「ゾーンNOW」、iPhone専用・縦向きのみ
 - 写真・カメラ・マイクを使う理由の文（Info.plist）を入れてある（審査で必要）
-- アプリの中では、Service Worker・「ホーム画面に追加」の案内を使わない。共有リンクは `index.html` の `APP_WEB_URL`（公開ページ https://ryugo201001037-wq.github.io/zo-ne-NOW/ ）で作る
+- アプリの中では、Service Worker・「ホーム画面に追加」の案内を使わない。共有リンクは `index.html` の `APP_WEB_URL`（公開ページ https://ryugo201001037-wq.github.io/zo-ne-NOW/app/ ）で作る
 - AIサーバーは `capacitor://localhost` からの呼び出しを許可する（`server/wrangler.toml` の `ALLOWED_ORIGINS`）
 - Macがなくても、GitHub Actions のMacでビルドを確かめている（`.github/workflows/ios-build.yml`。署名なし・シミュレーター向け）
 
+### ウェブ版の公開（GitHub Pages）
+
+同じサイトに2つの版を並べて公開している（`.github/workflows/pages.yml`。Settings → Pages の Source は「GitHub Actions」）。
+- https://ryugo201001037-wq.github.io/zo-ne-NOW/ … 前のプロトタイプ（`claude/zonenow-mvp-short-video-gcjp2s` の `docs/` をそのまま。このワークフローは読むだけ）
+- https://ryugo201001037-wq.github.io/zo-ne-NOW/app/ … この版（main）。URLを知っている人だけが開く
+- 更新：main が変わったとき／1時間ごと（前のプロトタイプの変更を拾う）／Actions の「Run workflow」
+- 2つの版はブラウザの保存場所を共有するので、この版は前のプロトタイプのデータ（`zonenow_mvp_…`）やキャッシュを消さないようにしている
+- 注意：`claude/change-possibility-ms2mm1` ブランチの `deploy-pages.yml` は、そのブランチに変更を送るとサイト全体を上書きする
+
 TestFlightに出す手順は [docs/TESTFLIGHT.md](docs/TESTFLIGHT.md)。
+プライバシーポリシーは `privacy.html`（公開ページ https://ryugo201001037-wq.github.io/zo-ne-NOW/app/privacy.html ）。登録画面と設定画面からリンクしている。【要記入】の2か所（運営者・連絡先）を埋めてから外部テストに使う。
 - `.github/workflows/testflight.yml`：GitHub の Actions から手で実行すると、App Store Connect の APIキーで自動署名して TestFlight にアップロードする（Secrets が4つ必要）
 - App Store Connect は Xcode 26 以上で作ったアプリしか受け付けない（2026年4月28日から）ので、iOS のワークフローは macOS 26 で動かす
 

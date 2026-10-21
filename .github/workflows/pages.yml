@@ -1,0 +1,64 @@
+# ウェブ版（GitHub Pages）に、2つの版を並べて公開する
+#   https://ryugo201001037-wq.github.io/zo-ne-NOW/      … 前のプロトタイプ（claude/zonenow-mvp-short-video-gcjp2s の docs/ をそのまま）
+#   https://ryugo201001037-wq.github.io/zo-ne-NOW/app/  … 今の版（main）
+# 前のプロトタイプのブランチには何も書き込まない（読むだけ）
+#
+# 使うには、リポジトリの Settings → Pages の「Source」を「GitHub Actions」にする
+# 更新のタイミング：main が変わったとき／1時間ごと（前のプロトタイプの変更を拾う）／Actions の「Run workflow」
+name: ウェブ版を公開（前のプロトタイプ＋/app/）
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  PROTOTYPE_BRANCH: claude/zonenow-mvp-short-video-gcjp2s
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 今の版（main）を取ってくる
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: current
+      - name: 前のプロトタイプを取ってくる
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PROTOTYPE_BRANCH }}
+          path: prototype
+
+      - name: 2つを1つのサイトに組み立てる
+        run: |
+          mkdir -p site/app
+          cp -R prototype/docs/. site/
+          for f in index.html manifest.json sw.js privacy.html icons vendor; do
+            cp -R "current/$f" site/app/
+          done
+          touch site/.nojekyll
+          echo "前のプロトタイプ：$(git -C prototype log -1 --format='%h %s')"
+          echo "今の版（/app/）：$(git -C current log -1 --format='%h %s')"
+          ls site site/app
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

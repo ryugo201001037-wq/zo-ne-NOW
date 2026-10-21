@@ -808,6 +808,9 @@
   .settings-row{ display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,.07); font-family:var(--font-ui); font-size:14px; }
   .settings-row > span{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .settings-text{ font-family:var(--font-ui); font-size:12.5px; color:rgba(255,255,255,.6); line-height:1.75; margin:0; }
+  .policy-note{ font-family:var(--font-ui); font-size:12px; color:rgba(255,255,255,.6); line-height:1.7; margin:12px 0 0; text-align:center; }
+  .policy-note a, .settings-link{ color:#8FB4FF; }
+  .settings-link{ font-family:var(--font-ui); font-size:14px; }
   .settings-text b{ color:#fff; }
   .settings-actions{ display:flex; gap:8px; margin-top:12px; }
   .settings-actions .study-btn{ flex:1; margin-top:0; }
@@ -1001,6 +1004,7 @@
       </div>
 
       <button class="post-submit" id="onboarding-submit">はじめる</button>
+      <p class="policy-note" id="onboarding-policy">「はじめる」を押すと、<a class="privacy-link" target="_blank" rel="noopener">プライバシーポリシー</a>に同意したことになります。未成年の方は、保護者の方と一緒に読んでください。</p>
     </div>
   </section>
 
@@ -1279,6 +1283,12 @@
       <div class="settings-section" id="settings-install-section">
         <div class="record-section-title">ホーム画面に追加する方法</div>
         <p class="settings-text"><b>iPhone（Safari）</b>：画面下の共有ボタン（□に↑）→「ホーム画面に追加」<br><b>Android（Chrome）</b>：右上の︙ →「ホーム画面に追加」または「アプリをインストール」<br>追加すると、アプリのようにワンタップで開けます。</p>
+      </div>
+
+      <div class="settings-section">
+        <div class="record-section-title">プライバシー</div>
+        <p class="settings-text">集める情報・投稿の見え方・データの削除について書いています。</p>
+        <p style="margin:8px 0 0"><a class="settings-link privacy-link" target="_blank" rel="noopener">プライバシーポリシーを読む</a></p>
       </div>
 
       <div class="settings-section">
@@ -1749,9 +1759,11 @@ const APP_VERSION = '1.0.0';
 // ---- どこで動いているか（ウェブ／iPhoneアプリ） ----
 // iPhoneアプリ（Capacitor）の中では window.Capacitor がある。ウェブ用の仕組み（Service Worker・ホーム画面に追加）は使わない
 const IS_NATIVE_APP = !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
-// アプリを公開しているウェブページのURL（GitHub Pages。共有リンクに使う）
+// アプリを公開しているウェブページのURL（GitHub Pages の /app/。共有リンクに使う）
+// サイトのいちばん上（/zo-ne-NOW/）は前のプロトタイプなので、この版は /app/ に置く（.github/workflows/pages.yml）
 // iPhoneアプリの中では自分のURLが capacitor://localhost になって共有に使えないので、こちらを使う
-const APP_WEB_URL = 'https://ryugo201001037-wq.github.io/zo-ne-NOW/';
+const APP_WEB_URL = 'https://ryugo201001037-wq.github.io/zo-ne-NOW/app/';
+const PRIVACY_URL = APP_WEB_URL + 'privacy.html';
 function appWebBaseUrl(){ return IS_NATIVE_APP ? APP_WEB_URL : location.href.split(/[?#]/)[0]; }
 
 // 軽い振動で「押せた」ことを伝える（iPhoneアプリの中だけ。ウェブでは何もしない）
@@ -4825,6 +4837,8 @@ document.getElementById('profile-avatar-input').addEventListener('change', async
 
 // ---- 設定画面 ----
 document.getElementById('settings-version').textContent = `ゾーンNOW バージョン ${APP_VERSION}（${IS_NATIVE_APP ? 'iPhoneアプリ' : 'ウェブ'}）`;
+// プライバシーポリシーは公開ページに置く（iPhoneアプリでは Safari で開く）
+document.querySelectorAll('.privacy-link').forEach(a=>{ a.href = PRIVACY_URL; });
 
 // ご意見・不具合：サーバーに送る（電波がないときは、つながったときに送る）
 document.getElementById('feedback-send').addEventListener('click', ()=>{
@@ -4951,7 +4965,8 @@ document.getElementById('settings-delete-all').addEventListener('click', async (
     try{ await deleteMyPostFiles(); await deleteCloudAccount(); }
     catch(err){ showToast('サーバーのデータを削除できませんでした。電波の状態を確かめて、もう一度試してね'); return; }
   }
-  try{ Object.keys(localStorage).filter(k=> k.startsWith('zonenow_')).forEach(k=> localStorage.removeItem(k)); }catch(err){}
+  // 同じサイトの前のプロトタイプ（zonenow_mvp_…）のデータは消さない
+  try{ Object.keys(localStorage).filter(k=> k.startsWith('zonenow_') && !k.startsWith('zonenow_mvp_')).forEach(k=> localStorage.removeItem(k)); }catch(err){}
   await new Promise(resolve=>{
     try{
       const req = indexedDB.deleteDatabase(POST_DB_NAME);

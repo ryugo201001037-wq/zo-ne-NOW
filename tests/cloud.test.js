@@ -380,7 +380,7 @@ function startFakeSupabase() {
   // 先読み：次に出るみんなの投稿の動画は、先頭だけ読んで配信の一時保存に入れておく
   const spostUrl = await op.evaluate(id => VIDEOS.find(v => v.id === id).short, spost.id);
   fake.warmed = [];
-  await op.evaluate(url => { warmVideo(url); warmVideo(url); }, spostUrl);
+  await op.evaluate(url => { WARMED_VIDEOS.clear(); warmVideo(url); warmVideo(url); }, spostUrl); // フィードがもう先読みしていることがあるので、記録を空にしてから
   check('次の動画を先読みする（先頭64KBだけ・同じ動画は1回だけ）', await waitFor(() => fake.warmed.length === 1 && fake.warmed[0] === spost.media_paths[0]), JSON.stringify(fake.warmed));
   fake.warmed = [];
   const ahead = await op.evaluate(() => {

@@ -1560,6 +1560,13 @@ const VIDEOS = [
   { id:'tr6', kind:'trivia', subject:'science', grade:'everyone', unit:'', title:'虹は本当は"まんまる"の形をしている', creator:'りかのハル', duration:20, short:DEMO_SHORT[0] },
 ];
 
+// 見本の動画（上の一覧）は、みんなの投稿がこの本数を超えたらフィードと検索に出さない（投稿が減ればまた出す）
+const SAMPLE_RETIRE_AFTER = 20;
+function isRetiredSample(v){
+  if(v.cloud || v.own) return false;
+  return VIDEOS.filter(x=> x.cloud).length > SAMPLE_RETIRE_AFTER;
+}
+
 /* ============================================================
    ◆ 楽曲ライブラリ ◆
    ------------------------------------------------------------
@@ -1902,7 +1909,7 @@ async function deleteCloudAccount(){
 const HIDDEN_VIDEOS_KEY = 'zonenow_hidden_videos';
 const BLOCKED_CREATORS_KEY = 'zonenow_blocked_creators';
 function isHiddenVideo(v){
-  return loadJSON(HIDDEN_VIDEOS_KEY, []).includes(v.id) || loadJSON(BLOCKED_CREATORS_KEY, []).includes(v.creator);
+  return isRetiredSample(v) || loadJSON(HIDDEN_VIDEOS_KEY, []).includes(v.id) || loadJSON(BLOCKED_CREATORS_KEY, []).includes(v.creator);
 }
 
 // フォロー中のクリエイター（今は投稿者名で管理。アカウントIDができたら置き換える）
@@ -2883,9 +2890,10 @@ function renderChips(){
   gradeWrap.innerHTML = chipHtml([{id:'all',label:'すべて'}, ...GRADES], activeGrade);
   subjectWrap.innerHTML = chipHtml([{id:'all',label:'すべて'}, ...SUBJECTS], activeSubject);
 
+  const listed = VIDEOS.filter(v=> !isRetiredSample(v));
   const unitsForSubject = activeSubject === 'all'
-    ? [...new Set(VIDEOS.map(v=>v.unit).filter(Boolean))]
-    : [...new Set(VIDEOS.filter(v=>v.subject===activeSubject).map(v=>v.unit).filter(Boolean))];
+    ? [...new Set(listed.map(v=>v.unit).filter(Boolean))]
+    : [...new Set(listed.filter(v=>v.subject===activeSubject).map(v=>v.unit).filter(Boolean))];
   const unitOptions = [{id:'all', label:'すべて'}, ...unitsForSubject.map(u=>({id:u, label:u}))];
   unitWrap.innerHTML = chipHtml(unitOptions, activeUnit);
 
@@ -3824,7 +3832,9 @@ async function loadCloudPosts(){
   }catch(e){ return; } // 電波がないなど：次に開いたときに読む
 
   const shared = !SHARED_VIDEO && SHARED_VIDEO_ID && !sharedCloudShown ? VIDEOS.find(v=> v.cloud && v.id === SHARED_VIDEO_ID) : null;
+  const current = currentSlide && VIDEOS.find(v=> v.id === currentSlide.dataset.id);
   if(shared){ sharedCloudShown = true; renderFeed(shared); }
+  else if(current && isHiddenVideo(current)) renderFeed(); // 今出ている見本も外す（開いた直後など）
   else refreshUpcomingFeed();
   renderChips();
   renderResults();

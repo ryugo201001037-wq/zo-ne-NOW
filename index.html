@@ -4058,10 +4058,12 @@ const CLOUD_FEED_LIMIT = 100;
 const CLOUD_FEED_WEIGHT = 4;         // 本物の投稿は見本の動画の4倍出やすい
 const CLOUD_FEED_REFRESH_MS = 3 * 60 * 1000; // アプリに戻ってきたとき、これより前に読んでいたら読み直す
 const MAX_UPLOAD_MB = 50;            // 1ファイルの上限（Supabase 無料プランの上限に合わせる）
-// 1秒あたりこれ以下（約2Mbps）の動画は、軽くせずにそのまま送る（テストでは0にして必ず軽くする）
-const KEEP_AS_IS_BYTES_PER_SEC = 'keepAsIsBytesPerSec' in zonenowConfig ? zonenowConfig.keepAsIsBytesPerSec : 256 * 1024;
-// 軽くした動画：長い辺1280px（720p）・映像1.5Mbps・音128kbps → 3分で約37MB
-const COMPRESS_MAX_SIDE = 1280, COMPRESS_VIDEO_BPS = 1500000, COMPRESS_AUDIO_BPS = 128000;
+// 1秒あたりこれ以下（約1.2Mbps）の動画は、軽くせずにそのまま送る（もう十分軽いので、録り直して画質を落とさない）
+// （テストでは0にして必ず軽くする）
+const KEEP_AS_IS_BYTES_PER_SEC = 'keepAsIsBytesPerSec' in zonenowConfig ? zonenowConfig.keepAsIsBytesPerSec : 150 * 1024;
+// 軽くした動画：長い辺1280px（720p）・映像0.85Mbps・音96kbps → 1分で約7MB（3分で約21MB）
+// （前は映像1.5Mbps・音128kbpsで1分約12.5MB。容量を半分ほどにするため下げた。勉強の動画は話し声が中心なので音も少し下げた）
+const COMPRESS_MAX_SIDE = 1280, COMPRESS_VIDEO_BPS = 850000, COMPRESS_AUDIO_BPS = 96000;
 const UPLOAD_PHOTO_MAX_SIDE = 1440;
 let cloudPostsLoadedAt = 0;
 

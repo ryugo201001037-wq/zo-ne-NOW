@@ -116,7 +116,7 @@ const { check, state, report } = createChecker();
   await page.mouse.click(160, 420);
   check('もう一度タップで再生', !(await page.$eval(s0, el => el.classList.contains('is-paused'))));
 
-  const creator = await page.$eval(`${s0} [data-role="follow"]`, b => b.dataset.creator).catch(() => null);
+  const creator = await page.$eval(`${s0} [data-role="follow"]`, b => b.dataset.followKey).catch(() => null);
   if (creator) {
     await page.click(`${s0} [data-role="follow"]`);
     check('フォローでトースト', (await toast()).includes('フォローしました'));
@@ -397,7 +397,7 @@ const { check, state, report } = createChecker();
   await page.click('[data-people-tab="following"]');
   check('フォロー中の一覧が開く', (await active()) === 'people-screen' && (await page.$$('.people-row')).length === (creator ? 1 : 0));
   if (creator) {
-    await page.click('.people-action'); await page.click('#confirm-ok');
+    await page.click('#people-list .people-action'); await page.click('#confirm-ok');
     check('一覧からフォロー解除', (await page.$$('.people-row')).length === 0);
   }
   await page.click('.people-tab[data-tab="followers"]');

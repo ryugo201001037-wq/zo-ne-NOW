@@ -134,6 +134,20 @@ check('他人のファイルは上書きできない', as(B, `update storage.obj
 check('自分のファイルは消せる', as(A, `delete from storage.objects where name = '${A}/p1/0.mp4' returning name`).out === `${A}/p1/0.mp4`);
 check('ログインしていないと置けない', !as(null, `insert into storage.objects (bucket_id, name) values ('posts', '${A}/anon.mp4')`).ok);
 
+state.section = 'ユーザー検索';
+// このとき：A＝あおい2、B＝ひかる。わざと % や _ を含む名前も入れて、そのままの文字として探せるか確かめる
+const C = '33333333-3333-3333-3333-333333333333', D = '44444444-4444-4444-4444-444444444444';
+psql(`insert into auth.users values ('${C}'), ('${D}'); insert into profiles (id, name, grade) values ('${C}', '100%_勉強', 'high3'), ('${D}', 'ひかるん', 'junior1');`);
+const found = as(A, `select name from public.search_users('ひかる')`);
+check('名前の一部で、ほかの人を探せる', found.ok && found.out.split('\n').join(',') === 'ひかる,ひかるん', found.out || found.err);
+check('名前がぴったり同じ人がいちばん上', found.out.split('\n')[0] === 'ひかる');
+check('返すのはアカウントIDと名前だけ（学年などは返さない）', as(A, `select * from public.search_users('ひかる') limit 1`).out === `${B}|ひかる`);
+check('「%」は何にでも当たる記号ではなく、文字として探す', as(A, `select count(*) from public.search_users('%')`).out === '1' && as(A, `select name from public.search_users('0%_')`).out === '100%_勉強');
+check('空の検索では誰も出ない', as(A, `select count(*) from public.search_users('  ')`).out === '0');
+check('ログインしていないと検索できない', !as(null, `select * from public.search_users('ひかる')`).ok);
+check('プロフィールの表は、今まで通り本人しか読めない', as(A, 'select count(*) from profiles').out === '1');
+psql(`delete from auth.users where id in ('${C}', '${D}'); delete from profiles where id in ('${C}', '${D}');`);
+
 state.section = '未ログイン';
 check('ログインしていないと何も見えない', as(null, 'select count(*) from profiles').out === '0' && as(null, 'select count(*) from study_logs').out === '0');
 check('ログインしていないと書き込めない', !as(null, `insert into study_logs (user_id, id, subject, seconds, date) values ('${A}', 'anon1', 'math', 60, '2026-10-19')`).ok);

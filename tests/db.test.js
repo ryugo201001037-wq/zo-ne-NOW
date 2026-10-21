@@ -117,6 +117,32 @@ check('ファイルは10個まで', !as(A, postSql(Array.from({ length: 11 }, (_
 check('動画か写真だけ', !as(A, `insert into posts (creator, title, grade, media_type, media_paths, duration) values ('あおい', 't', 'high1', 'gif', array['${A}/p/0.gif'], 5)`).ok);
 check('ログインしていないと投稿は見えない', as(null, 'select count(*) from posts').out === '0');
 
+state.section = 'いいね・保存・コメント';
+check('いいねできる', as(B, `insert into likes (post_id) values ('${postId}')`).ok);
+check('同じ投稿に2回はいいねできない', !as(B, `insert into likes (post_id) values ('${postId}')`).ok);
+check('他人の名前ではいいねできない', !as(B, `insert into likes (post_id, user_id) values ('${postId}', '${A}')`).ok);
+check('だれがいいねしたかは、本人にしか見えない', as(A, 'select count(*) from likes').out === '0' && as(B, 'select count(*) from likes').out === '1');
+check('他人のいいねは取り消せない', as(A, `delete from likes where post_id = '${postId}' returning user_id`).out === '');
+check('保存できる（だれが保存したかは本人だけ）', as(B, `insert into saves (post_id) values ('${postId}')`).ok && as(A, 'select count(*) from saves').out === '0');
+const cm = as(B, `insert into comments (post_id, author, body) values ('${postId}', 'ひかる', 'わかりやすい！') returning id`);
+check('コメントを書ける', cm.ok, cm.err);
+const commentId = (cm.out || '').split('\n')[0];
+check('コメントは、ほかの人（投稿した人）も読める', as(A, 'select body from comments').out === 'わかりやすい！');
+check('他人の名前ではコメントできない', !as(A, `insert into comments (post_id, user_id, author, body) values ('${postId}', '${B}', 'ひかる', 'なりすまし')`).ok);
+check('空のコメント・201文字以上のコメントは入らない', !as(B, `insert into comments (post_id, author, body) values ('${postId}', 'ひかる', '   ')`).ok
+  && !as(B, `insert into comments (post_id, author, body) values ('${postId}', 'ひかる', '${'あ'.repeat(201)}')`).ok);
+const stats = as(B, `select likes, saves, comments, liked, saved from public.post_stats(array['${postId}'::uuid])`);
+check('数（いいね1・保存1・コメント1）と、自分が押したかが分かる', stats.out === '1|1|1|t|t', stats.out || stats.err);
+check('ほかの人から見ても同じ数（自分は押していない）', as(A, `select likes, saves, comments, liked, saved from public.post_stats(array['${postId}'::uuid])`).out === '1|1|1|f|f');
+check('ログインしていないと数は見えない', !as(null, `select * from public.post_stats(array['${postId}'::uuid])`).ok);
+as(B, `insert into comments (post_id, author, body) values ('${postId}', 'ひかる', '2つめ')`);
+check('投稿した人は、自分の投稿についたコメントを消せる', as(A, `delete from comments where body = '2つめ' returning body`).out === '2つめ');
+psql(`insert into auth.users values ('55555555-5555-5555-5555-555555555555')`);
+check('関係ない人は、他人のコメントを消せない', as('55555555-5555-5555-5555-555555555555', `delete from comments where id = '${commentId}' returning id`).out === '');
+psql(`delete from auth.users where id = '55555555-5555-5555-5555-555555555555'`);
+check('書いた人は、自分のコメントを消せる（名前を変えたあとでも）', psql(`update comments set author = '昔の名前' where id = '${commentId}'; select 1`) === '1'
+  && as(B, `delete from comments where id = '${commentId}' returning id`).out === commentId);
+
 state.section = '通報';
 check('他の人の投稿を通報できる', as(B, `insert into reports (post_id, reason) values ('${postId}', 'spam')`).ok);
 check('同じ投稿は1人1回だけ', !as(B, `insert into reports (post_id, reason) values ('${postId}', 'spam')`).ok);
@@ -157,7 +183,7 @@ check('ログインしていないと退会の関数は使えない', !as(null, 
 check('退会できる', as(A, 'select public.delete_my_account()').ok);
 check('退会すると自分のアカウントとデータが消える', psql(`select count(*) from auth.users where id = '${A}'`) === '0'
   && psql(`select count(*) from feedback where user_id = '${A}'`) === '0' && psql(`select count(*) from posts where user_id = '${A}'`) === '0'
-  && psql(`select count(*) from reports`) === '0'
+  && psql(`select count(*) from reports`) === '0' && psql(`select count(*) from likes`) === '0' && psql(`select count(*) from saves`) === '0'
   && psql(`select count(*) from profiles where id = '${A}'`) === '0' && psql(`select count(*) from study_logs where user_id = '${A}'`) === '0');
 check('他の人のアカウントとデータは残る', psql(`select count(*) from auth.users where id = '${B}'`) === '1' && psql(`select count(*) from study_logs where user_id = '${B}'`) === '1');
 

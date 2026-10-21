@@ -159,6 +159,15 @@ const entry = (id, subject, minutes, daysAgo) => ({ id, subject, subjectOther: '
     check('電波が戻ると帯が消える', !(await f.page.isVisible('#offline-banner')));
     await f.page.click('.screen.active [data-nav="profile"]'); await f.page.click('#profile-gear'); await f.page.waitForTimeout(200);
     check('設定にバージョン', (await f.page.textContent('#settings-version')).includes('バージョン 1.0.0（ウェブ）'));
+    check('設定からプライバシーポリシーを開ける（公開ページ・別のタブ）', await f.page.$eval('#settings-screen .privacy-link', a => a.href === 'https://ryugo201001037-wq.github.io/zo-ne-NOW/privacy.html' && a.target === '_blank'));
+    check('登録画面にもプライバシーポリシーへの同意の案内', await f.page.$eval('#onboarding-policy', el => el.textContent.includes('同意') && el.querySelector('a').href.endsWith('/privacy.html')));
+    const policy = await f.context.newPage();
+    const policyErrors = [];
+    policy.on('pageerror', e => policyErrors.push(e.message));
+    await policy.goto(APP_URL.replace(/[^/]*$/, '') + 'privacy.html');
+    check('プライバシーポリシーのページが開ける', (await policy.textContent('h1')) === 'プライバシーポリシー' && !policyErrors.length);
+    check('ポリシーに、投稿がみんなに見えること・削除のしかたが書いてある', /すべての人が見られます/.test(await policy.textContent('main')) && /すべてのデータを削除する/.test(await policy.textContent('main')));
+    await policy.close();
     await f.page.click('#feedback-send');
     check('ご意見：空では送らない', (await f.page.textContent('#toast')).includes('入力'));
     await f.page.fill('#feedback-input', 'テストの意見');

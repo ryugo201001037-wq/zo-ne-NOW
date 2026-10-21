@@ -57,6 +57,7 @@ npm run ios:assets   # アイコン（1024px・透明なし）と起動画面を
 - Macがなくても、GitHub Actions のMacでビルドを確かめている（`.github/workflows/ios-build.yml`。署名なし・シミュレーター向け）
 
 TestFlightに出す手順は [docs/TESTFLIGHT.md](docs/TESTFLIGHT.md)。
+プライバシーポリシーは `privacy.html`（公開ページ https://ryugo201001037-wq.github.io/zo-ne-NOW/privacy.html ）。登録画面と設定画面からリンクしている。【要記入】の2か所（運営者・連絡先）を埋めてから外部テストに使う。
 - `.github/workflows/testflight.yml`：GitHub の Actions から手で実行すると、App Store Connect の APIキーで自動署名して TestFlight にアップロードする（Secrets が4つ必要）
 - App Store Connect は Xcode 26 以上で作ったアプリしか受け付けない（2026年4月28日から）ので、iOS のワークフローは macOS 26 で動かす
 

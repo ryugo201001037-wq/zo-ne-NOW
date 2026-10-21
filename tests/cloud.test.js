@@ -282,7 +282,8 @@ function startFakeSupabase() {
   await page.click('#manual-subject-chips .chip[data-id="science"]');
   await page.fill('#manual-minutes', '10'); await page.click('#manual-add');
   await page.fill('#manual-minutes', '20'); await page.click('#manual-add');
-  check('サーバーに断られた変更で、後ろの変更が止まらない', await waitFor(() => logsOf().some(r => r.seconds === 1200)) && await page.evaluate(() => JSON.parse(localStorage.getItem('zonenow_sync_queue')).length === 0));
+  // サーバーに届いた直後は、アプリがまだ送信待ちの列から消していないことがあるので、両方そろうまで待つ
+  check('サーバーに断られた変更で、後ろの変更が止まらない', await waitFor(async () => logsOf().some(r => r.seconds === 1200) && await page.evaluate(() => JSON.parse(localStorage.getItem('zonenow_sync_queue')).length === 0)));
   await page.screenshot({ path: OUT + 'cloud-record.png' });
 
   // ========== 投稿をみんなに見せる ==========
@@ -504,7 +505,7 @@ function startFakeSupabase() {
   check('エラーなし', !old.errors.length, old.errors.join(' / '));
   await old.context.close();
 
-  // ========== 見本の動画は、みんなの投稿が20本を超えたら出さない ==========
+  // ========== 見本の動画は、サーバーにつながるときは出さない ==========
   state.section = '見本の動画';
   const seedPosts = n => {
     fake.posts = [];
@@ -518,20 +519,29 @@ function startFakeSupabase() {
   };
   const feedKinds = pg => pg.$$eval('#feed .short-slide', els => els.map(el => VIDEOS.find(v => v.id === el.dataset.id)).map(v => (v.cloud ? 'real' : 'sample')));
   const searchHasSample = pg => pg.evaluate(() => filteredVideos().some(v => !v.cloud && !v.own));
-  seedPosts(21);
-  const many = await openApp({ zonenow_profile: { name: 'たくさん', grade: 'high1', createdAt: 1 } });
-  await waitFor(() => many.page.evaluate(() => VIDEOS.filter(v => v.cloud).length === 21));
-  check('みんなの投稿が21本なら、フィードは本物の投稿だけ（開いた直後の1本目も）', await waitFor(async () => (await feedKinds(many.page)).every(k => k === 'real')), (await feedKinds(many.page)).join(','));
-  check('検索にも見本は出ない', !(await searchHasSample(many.page)));
-  check('エラーなし', !many.errors.length, many.errors.join(' / '));
-  await many.context.close();
-  seedPosts(20);
-  const few = await openApp({ zonenow_profile: { name: 'すこし', grade: 'high1', createdAt: 1 } });
-  await waitFor(() => few.page.evaluate(() => VIDEOS.filter(v => v.cloud).length === 20));
-  await few.page.waitForTimeout(300);
-  check('20本までなら、見本の動画も流れる', (await feedKinds(few.page)).includes('sample'));
-  check('検索にも見本が出る', await searchHasSample(few.page));
+  const profileOf = name => ({ zonenow_profile: { name, grade: 'high1', createdAt: 1 } });
+  seedPosts(3);
+  const few = await openApp(profileOf('すこし'));
+  check('投稿が少なくても、フィードは本物の投稿だけ（開いた直後の1本目も）', await waitFor(async () => { const k = await feedKinds(few.page); return k.length > 0 && k.every(x => x === 'real'); }), (await feedKinds(few.page)).join(','));
+  check('検索にも見本は出ない', !(await searchHasSample(few.page)));
+  check('動画があるときは案内を出さない', await few.page.$eval('#feed-empty', el => el.hidden));
+  check('エラーなし', !few.errors.length, few.errors.join(' / '));
   await few.context.close();
+
+  seedPosts(0);
+  const none = await openApp(profileOf('ゼロ'));
+  check('投稿が0件なら「まだ見られる動画がありません」（真っ黒にしない）', await waitFor(async () => !(await none.page.$eval('#feed-empty', el => el.hidden)) && (await none.page.textContent('#feed-empty-text')).includes('まだ見られる動画がありません')));
+  check('0件でも見本は出ない', (await feedKinds(none.page)).length === 0);
+  await none.context.close();
+
+  seedPosts(2);
+  fake.offline = true;
+  const off = await openApp(profileOf('でんぱなし'));
+  check('読み込めないときは「読み込めませんでした」と、もう一度読み込むボタン', await waitFor(async () => (await off.page.textContent('#feed-empty-text')).includes('読み込めませんでした') && await off.page.isVisible('#feed-empty-retry'), 8000));
+  fake.offline = false;
+  await off.page.click('#feed-empty-retry');
+  check('電波が戻って押すと、本物の投稿が出る', await waitFor(async () => { const k = await feedKinds(off.page); return k.length > 0 && k.every(x => x === 'real'); }) && await off.page.$eval('#feed-empty', el => el.hidden));
+  await off.context.close();
 
   // ========== サーバー未設定なら今まで通り ==========
   state.section = 'サーバー未設定';

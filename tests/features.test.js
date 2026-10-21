@@ -127,10 +127,13 @@ const entry = (id, subject, minutes, daysAgo) => ({ id, subject, subjectOther: '
   await page.setInputFiles('#backup-import', OUT + 'not-backup.json');
   await page.waitForTimeout(150);
   check('関係ないファイルは読み込まない', (await toast(page)).includes('バックアップファイルではない'));
+  // 同じサイトにある前のプロトタイプのデータ（zonenow_mvp_…）
+  await page.evaluate(() => localStorage.setItem('zonenow_mvp_study_log', '[{"min":30}]'));
   await page.click('#settings-delete-all');
   await Promise.all([page.waitForNavigation(), page.click('#confirm-ok')]);
   await page.waitForTimeout(400);
-  check('すべて削除すると最初の設定画面に戻る', (await active(page)) === 'onboarding-screen' && await page.evaluate(() => !Object.keys(localStorage).some(k => k.startsWith('zonenow_'))));
+  check('すべて削除すると最初の設定画面に戻る', (await active(page)) === 'onboarding-screen' && await page.evaluate(() => !Object.keys(localStorage).some(k => k.startsWith('zonenow_') && !k.startsWith('zonenow_mvp_'))));
+  check('前のプロトタイプのデータは消さない', await page.evaluate(() => localStorage.getItem('zonenow_mvp_study_log') === '[{"min":30}]'));
   check('エラーなし（検索・連続記録・設定）', !c.errors.length, c.errors.join(' / '));
   await c.context.close();
 
@@ -159,7 +162,7 @@ const entry = (id, subject, minutes, daysAgo) => ({ id, subject, subjectOther: '
     check('電波が戻ると帯が消える', !(await f.page.isVisible('#offline-banner')));
     await f.page.click('.screen.active [data-nav="profile"]'); await f.page.click('#profile-gear'); await f.page.waitForTimeout(200);
     check('設定にバージョン', (await f.page.textContent('#settings-version')).includes('バージョン 1.0.0（ウェブ）'));
-    check('設定からプライバシーポリシーを開ける（公開ページ・別のタブ）', await f.page.$eval('#settings-screen .privacy-link', a => a.href === 'https://ryugo201001037-wq.github.io/zo-ne-NOW/privacy.html' && a.target === '_blank'));
+    check('設定からプライバシーポリシーを開ける（公開ページ・別のタブ）', await f.page.$eval('#settings-screen .privacy-link', a => a.href === 'https://ryugo201001037-wq.github.io/zo-ne-NOW/app/privacy.html' && a.target === '_blank'));
     check('登録画面にもプライバシーポリシーへの同意の案内', await f.page.$eval('#onboarding-policy', el => el.textContent.includes('同意') && el.querySelector('a').href.endsWith('/privacy.html')));
     const policy = await f.context.newPage();
     const policyErrors = [];

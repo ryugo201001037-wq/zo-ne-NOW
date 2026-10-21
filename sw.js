@@ -28,12 +28,12 @@ self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
-// 古いキャッシュの掃除
+// 古いキャッシュの掃除（自分の古い版だけ。同じサイトの前のプロトタイプのキャッシュには触らない）
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+        keys.filter((key) => key.startsWith("zonenow-cache-") && key !== CACHE_NAME).map((key) => caches.delete(key))
       )
     )
   );

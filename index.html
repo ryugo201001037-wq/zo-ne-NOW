@@ -1759,9 +1759,10 @@ const APP_VERSION = '1.0.0';
 // ---- どこで動いているか（ウェブ／iPhoneアプリ） ----
 // iPhoneアプリ（Capacitor）の中では window.Capacitor がある。ウェブ用の仕組み（Service Worker・ホーム画面に追加）は使わない
 const IS_NATIVE_APP = !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
-// アプリを公開しているウェブページのURL（GitHub Pages。共有リンクに使う）
+// アプリを公開しているウェブページのURL（GitHub Pages の /app/。共有リンクに使う）
+// サイトのいちばん上（/zo-ne-NOW/）は前のプロトタイプなので、この版は /app/ に置く（.github/workflows/pages.yml）
 // iPhoneアプリの中では自分のURLが capacitor://localhost になって共有に使えないので、こちらを使う
-const APP_WEB_URL = 'https://ryugo201001037-wq.github.io/zo-ne-NOW/';
+const APP_WEB_URL = 'https://ryugo201001037-wq.github.io/zo-ne-NOW/app/';
 const PRIVACY_URL = APP_WEB_URL + 'privacy.html';
 function appWebBaseUrl(){ return IS_NATIVE_APP ? APP_WEB_URL : location.href.split(/[?#]/)[0]; }
 
@@ -4964,7 +4965,8 @@ document.getElementById('settings-delete-all').addEventListener('click', async (
     try{ await deleteMyPostFiles(); await deleteCloudAccount(); }
     catch(err){ showToast('サーバーのデータを削除できませんでした。電波の状態を確かめて、もう一度試してね'); return; }
   }
-  try{ Object.keys(localStorage).filter(k=> k.startsWith('zonenow_')).forEach(k=> localStorage.removeItem(k)); }catch(err){}
+  // 同じサイトの前のプロトタイプ（zonenow_mvp_…）のデータは消さない
+  try{ Object.keys(localStorage).filter(k=> k.startsWith('zonenow_') && !k.startsWith('zonenow_mvp_')).forEach(k=> localStorage.removeItem(k)); }catch(err){}
   await new Promise(resolve=>{
     try{
       const req = indexedDB.deleteDatabase(POST_DB_NAME);

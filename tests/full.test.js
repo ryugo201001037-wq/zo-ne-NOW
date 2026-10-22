@@ -9,7 +9,13 @@ const { check, state, report } = createChecker();
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: ORIGIN });
   // 見本動画（外部のサーバー）は環境によって読めないので、テスト用の短い動画を返す
   const sampleVideo = require('fs').readFileSync(A + 'sample.webm');
-  await context.route('**/*.mp4', route => route.fulfill({ status: 200, contentType: 'video/webm', body: sampleVideo }));
+  // 本物の配信サーバーと同じく、部分読み込み（Range）に答える（答えないと動画の途中へ移動できない）
+  await context.route('**/*.mp4', route => {
+    const m = /bytes=(\d+)-(\d*)/.exec(route.request().headers().range || '');
+    if (!m) return route.fulfill({ status: 200, contentType: 'video/webm', headers: { 'Accept-Ranges': 'bytes' }, body: sampleVideo });
+    const start = Number(m[1]), end = m[2] ? Math.min(Number(m[2]), sampleVideo.length - 1) : sampleVideo.length - 1;
+    return route.fulfill({ status: 206, contentType: 'video/webm', headers: { 'Accept-Ranges': 'bytes', 'Content-Range': `bytes ${start}-${end}/${sampleVideo.length}` }, body: sampleVideo.subarray(start, end + 1) });
+  });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
@@ -114,14 +120,67 @@ const { check, state, report } = createChecker();
   check('Xでポスト', opened.some(u => u.startsWith('https://twitter.com/intent/tweet') && decodeURIComponent(u).includes(`?v=${id0}`)), opened[1]);
   await page.screenshot({ path: OUT + 'ft-share.png' });
 
-  // 一時停止
+  // 一時停止（2回目のタップ＝ダブルタップを待つので、少しあとで止まる）
   await page.mouse.click(160, 420);
+  await page.waitForTimeout(350);
   check('画面タップで一時停止', await page.$eval(s0, el => el.classList.contains('is-paused')));
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(250); // 一時停止マークが出きるまで
   await page.screenshot({ path: OUT + 'ft-paused.png' });
   check('一時停止マークが出る', await page.$eval(`${s0} .pause-indicator`, el => getComputedStyle(el).opacity === '1'));
   await page.mouse.click(160, 420);
+  await page.waitForTimeout(350);
   check('もう一度タップで再生', !(await page.$eval(s0, el => el.classList.contains('is-paused'))));
+
+  // ダブルタップでいいね（一時停止にはならない。もう一度ダブルタップしても取り消さない）
+  await page.click(`${s0} [data-role="like"]`); // いったん取り消す
+  check('ダブルタップ前はいいねなし', (await cnt('like')) === '0');
+  await page.mouse.dblclick(160, 420);
+  check('ダブルタップでハートが出る', !!(await page.$(`${s0} .tap-heart`)));
+  await page.waitForTimeout(350);
+  check('ダブルタップでいいね', (await cnt('like')) === '1' && (await evalq(() => localStorage.getItem('zonenow_likes'))).includes(id0));
+  check('ダブルタップでは一時停止しない', !(await page.$eval(s0, el => el.classList.contains('is-paused'))));
+  await page.mouse.dblclick(160, 420);
+  await page.waitForTimeout(350);
+  check('もう一度ダブルタップしても取り消さない', (await cnt('like')) === '1');
+  await page.waitForTimeout(500);
+  check('ハートは消える', !(await page.$(`${s0} .tap-heart`)));
+
+  // シークバー：ドラッグで好きな位置へ。ドラッグ中は時間を大きく出し、離すと再生に戻る（一時停止にはならない）
+  check('動画にシークバーがある', !!(await page.$(`${s0} .seek-bar`)));
+  await page.waitForFunction(s => document.querySelector(`${s} video`).duration > 0, s0);
+  const bar = await page.$eval(`${s0} .seek-track`, el => { const r = el.getBoundingClientRect(); return { x: r.left, w: r.width, y: r.top + r.height / 2 }; });
+  await page.mouse.move(bar.x + bar.w * 0.2, bar.y);
+  await page.mouse.down();
+  await page.mouse.move(bar.x + bar.w * 0.8, bar.y, { steps: 4 });
+  const dragging = await page.$eval(s0, el => ({ seeking: el.classList.contains('is-seeking'), t: el.querySelector('video').currentTime, d: el.querySelector('video').duration, label: el.querySelector('.seek-time').textContent, time: getComputedStyle(el.querySelector('.seek-time')).opacity, rail: getComputedStyle(el.querySelector('.action-rail')).pointerEvents }));
+  check('ドラッグ中はシーク中の表示', dragging.seeking && dragging.rail === 'none', JSON.stringify(dragging));
+  check('ドラッグした位置に動く', Math.abs(dragging.t / dragging.d - 0.8) < 0.05, `${dragging.t} / ${dragging.d}`);
+  check('ドラッグ中は時間が出る', /\d:\d\d \/ \d:\d\d/.test(dragging.label), dragging.label);
+  await page.mouse.up();
+  const afterSeek = await page.$eval(s0, el => ({ seeking: el.classList.contains('is-seeking'), paused: el.classList.contains('is-paused') }));
+  check('離すと再生に戻る（一時停止にならない）', !afterSeek.seeking && !afterSeek.paused, JSON.stringify(afterSeek));
+
+  // 再生速度：押すたびに 1x → 1.25x → 1.5x → 2x → 1x。端末に覚える
+  const speedSel = `${s0} [data-role="speed"]`;
+  check('再生速度ボタンは1xから', (await page.textContent(speedSel)) === '1x');
+  await page.click(speedSel);
+  const sp = await page.$eval(s0, el => ({ label: el.querySelector('[data-role="speed"]').textContent, rate: el.querySelector('video').playbackRate, saved: localStorage.getItem('zonenow_playback_rate') }));
+  check('再生速度を変えられる', sp.label === '1.25x' && sp.rate === 1.25 && sp.saved === '1.25', JSON.stringify(sp));
+  check('速度を変えても一時停止にならない', !(await page.$eval(s0, el => el.classList.contains('is-paused'))));
+  for (let i = 0; i < 3; i++) await page.click(speedSel);
+  check('一周すると1xに戻る', (await page.textContent(speedSel)) === '1x' && (await page.$eval(`${s0} video`, v => v.playbackRate)) === 1);
+
+  // パソコンのキーボード：スペースで一時停止／再生、→で5秒進める
+  await page.keyboard.press(' ');
+  check('スペースで一時停止', await page.$eval(s0, el => el.classList.contains('is-paused')));
+  // テスト動画は約1.8秒でループするので、止めたまま確かめる
+  await page.$eval(`${s0} video`, v => { v.currentTime = 0; });
+  await page.keyboard.press('ArrowRight');
+  check('→で先に進む', (await page.$eval(`${s0} video`, v => v.currentTime)) > 1);
+  await page.keyboard.press('ArrowLeft');
+  check('←で戻る', (await page.$eval(`${s0} video`, v => v.currentTime)) === 0);
+  await page.keyboard.press(' ');
+  check('もう一度スペースで再生', !(await page.$eval(s0, el => el.classList.contains('is-paused'))));
 
   const creator = await page.$eval(`${s0} [data-role="follow"]`, b => b.dataset.followKey).catch(() => null);
   if (creator) {
@@ -299,12 +358,14 @@ const { check, state, report } = createChecker();
   check('自分の投稿でも楽曲が流れる', (await evalq(() => music.track && music.track.id)) === 'focus');
   await page.waitForTimeout(1500);
   await page.mouse.click(160, 420);
+  await page.waitForTimeout(350); // ダブルタップかどうかを待ってから止まる
   const w1 = await page.$eval(`${first} .zone-meter-fill`, e => parseFloat(e.style.width));
   await page.waitForTimeout(1200);
   const w2 = await page.$eval(`${first} .zone-meter-fill`, e => parseFloat(e.style.width));
   check('一時停止でZoneメーターが止まる', w1 > 0 && w1 === w2, `${w1} → ${w2}`);
   check('一時停止で楽曲が止まる', !(await evalq(() => music.track)));
   await page.mouse.click(160, 420);
+  await page.waitForTimeout(350);
   check('再生で楽曲が戻る', (await evalq(() => music.track && music.track.id)) === 'focus');
   await page.$eval(`${first} .photo-track`, t => t.scrollTo({ left: t.clientWidth * 2, behavior: 'instant' }));
   await page.waitForTimeout(150);

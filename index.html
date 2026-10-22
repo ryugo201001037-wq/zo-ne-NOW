@@ -455,6 +455,50 @@
   }
   .pause-indicator svg{ width:32px; height:32px; margin-left:5px; fill:currentColor; }
   .short-slide.is-paused .pause-indicator{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+  /* ダブルタップのいいね */
+  .tap-heart{
+    position:absolute; z-index:8; width:96px; height:96px; margin:-48px 0 0 -48px; color:var(--ember); pointer-events:none;
+    animation:tap-heart .75s ease-out forwards;
+  }
+  .tap-heart svg{ width:100%; height:100%; fill:currentColor; filter:drop-shadow(0 4px 12px rgba(0,0,0,.35)); }
+  @keyframes tap-heart{
+    0%{ opacity:0; transform:scale(.4) rotate(-10deg); }
+    15%{ opacity:1; transform:scale(1.12) rotate(-10deg); }
+    30%{ transform:scale(1) rotate(-10deg); }
+    100%{ opacity:0; transform:translateY(-70px) scale(1.15) rotate(-10deg); }
+  }
+
+  /* ---- シークバー（ドラッグで好きな場所へ）と再生速度 ---- */
+  .seek-bar{
+    position:absolute; left:0; right:0; bottom:calc(var(--safe-bottom) + 62px); z-index:7;
+    height:28px; padding:0 14px; display:flex; align-items:center; touch-action:none; cursor:pointer;
+  }
+  .seek-track{ position:relative; flex:1; height:3px; border-radius:99px; background:rgba(255,255,255,.25); transition:height .15s; }
+  .seek-fill{ position:absolute; left:0; top:0; bottom:0; width:0%; border-radius:inherit; background:rgba(255,255,255,.8); }
+  .seek-thumb{
+    position:absolute; top:50%; left:0%; width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%;
+    background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.4); opacity:0; transition:opacity .15s;
+  }
+  .short-slide.is-seeking .seek-track{ height:6px; }
+  .short-slide.is-seeking .seek-thumb, .short-slide.is-paused .seek-thumb{ opacity:1; }
+  .seek-time{
+    position:absolute; left:0; right:0; bottom:calc(var(--safe-bottom) + 108px); z-index:7; text-align:center; pointer-events:none;
+    font-family:var(--font-ui); font-size:24px; font-weight:700; color:#fff; text-shadow:0 1px 8px rgba(0,0,0,.6);
+    font-variant-numeric:tabular-nums; opacity:0; transition:opacity .15s;
+  }
+  .seek-time .seek-total{ color:rgba(255,255,255,.6); }
+  .short-slide.is-seeking .seek-time{ opacity:1; }
+  .caption-block, .action-rail, .short-top, .speed-chip{ transition:opacity .15s; }
+  .short-slide.is-seeking .caption-block, .short-slide.is-seeking .action-rail,
+  .short-slide.is-seeking .short-top, .short-slide.is-seeking .speed-chip{ opacity:0; pointer-events:none; }
+  /* 見た目は小さな丸、押せる範囲は指の大きさ */
+  .speed-chip{
+    position:absolute; top:calc(var(--safe-top) + 60px); right:6px; z-index:6; min-width:56px; height:40px;
+    display:flex; align-items:center; justify-content:center; color:#fff;
+    font-family:var(--font-ui); font-size:12px; font-weight:700; font-variant-numeric:tabular-nums;
+  }
+  .speed-chip span{ min-width:44px; height:28px; padding:0 10px; display:flex; align-items:center; justify-content:center; border-radius:99px; background:rgba(0,0,0,.4); backdrop-filter:blur(6px); }
+  .speed-chip.active span{ background:var(--ember); }
 
   .saved-grid{ padding:0; }
   .saved-grid .result-title{ color:#fff; }
@@ -2239,6 +2283,10 @@ const feedEl = document.getElementById('feed');
 let cloudFeedState = 'loading';
 let currentSlide = null;        // 今画面に出ているショート
 let currentAudibleState = true; // ミュート状態をスライド間で引き継ぐ
+// 再生速度（スライドをまたいで引き継ぎ、端末に覚えておく）
+const PLAYBACK_RATE_KEY = 'zonenow_playback_rate';
+const PLAYBACK_RATES = [1, 1.25, 1.5, 2];
+let playbackRate = PLAYBACK_RATES.includes(loadJSON(PLAYBACK_RATE_KEY, 1)) ? loadJSON(PLAYBACK_RATE_KEY, 1) : 1;
 const meterTimers = new WeakMap();  // スライドごとのZoneメーター満了タイマー
 const countedSlides = new WeakSet(); // 視聴本数に数え済みのスライド（上に戻っても二重に数えない）
 let viewedCount = 0;
@@ -2274,7 +2322,10 @@ function createSlide(v){
   slide.innerHTML = `
     <div class="zone-meter"><div class="zone-meter-fill"></div></div>
     ${isImage ? photoMediaHtml(v) : `<video src="${v.short}" data-src="${v.short}"${coverUrlOf(v) ? ` poster="${escapeHtml(coverUrlOf(v))}"` : ''} muted loop playsinline preload="none"></video>
-    <div class="video-status"><div class="spinner" aria-hidden="true"></div><p class="video-status-text"></p><button class="video-retry">もう一度読み込む</button></div>`}
+    <div class="video-status"><div class="spinner" aria-hidden="true"></div><p class="video-status-text"></p><button class="video-retry">もう一度読み込む</button></div>
+    <div class="seek-bar" role="slider" aria-label="再生位置" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="seek-track"><div class="seek-fill"></div><div class="seek-thumb"></div></div></div>
+    <div class="seek-time" aria-hidden="true"></div>
+    <button class="speed-chip" data-role="speed" aria-label="再生速度"><span>${formatRate(playbackRate)}</span></button>`}
 
     <div class="pause-indicator" aria-hidden="true">${icon('play')}</div>
 
@@ -2376,10 +2427,21 @@ function attachSlideEvents(slide, v){
     });
   }
 
-  // 画面をタップで一時停止／再生（ボタン類のタップは除く）
+  if(video) attachVideoControls(slide, video);
+
+  // 画面をタップで一時停止／再生、すばやく2回タップでいいね（ボタン類・シークバーのタップは除く）
+  // 2回目のタップを待つぶん、一時停止は少しだけ遅れる。投稿前のプレビューは、いいねできないのですぐ止める
+  let tapTimer = null;
   slide.addEventListener('click', (e)=>{
-    if(e.target.closest('button, .action-rail')) return;
-    togglePause(slide);
+    if(e.target.closest('button, .action-rail, .seek-bar')) return;
+    if(!slide.closest('#feed')){ togglePause(slide); return; }
+    if(tapTimer){
+      clearTimeout(tapTimer);
+      tapTimer = null;
+      likeByDoubleTap(slide, v, e);
+      return;
+    }
+    tapTimer = setTimeout(()=>{ tapTimer = null; togglePause(slide); }, DOUBLE_TAP_MS);
   });
 
   // いいね・保存（みんなの投稿はサーバーにも。同じ動画の他のスライドの表示もそろえる）
@@ -2630,12 +2692,13 @@ function activateSlide(slide){
   const onComplete = ()=>{ if(currentSlide === slide) recordWatch(slide.dataset.id); };
   if(video){
     video.currentTime = 0;
+    applyPlaybackRate(slide);
     video.play().catch(()=>{});
     // すぐ再生できないときだけ「読み込み中」を出す（一瞬だけ出てチラつかないよう少し待つ）
     setTimeout(()=>{
       if(slide.classList.contains('is-active') && !slide.classList.contains('is-error') && video.readyState < 3) slide.classList.add('is-loading');
     }, 300);
-    const start = ()=> runZoneMeter(slide, meter, video.duration && isFinite(video.duration) ? video.duration : 20, onComplete);
+    const start = ()=> runZoneMeter(slide, meter, knownDuration(video) ? knownDuration(video) / playbackRate : 20, onComplete);
     if(video.readyState >= 1) start();
     else video.addEventListener('loadedmetadata', ()=>{
       if(!slide.classList.contains('is-active')) return;
@@ -2650,7 +2713,7 @@ function activateSlide(slide){
 
 function deactivateSlide(slide){
   if(!slide) return;
-  slide.classList.remove('is-active', 'is-paused', 'is-loading');
+  slide.classList.remove('is-active', 'is-paused', 'is-loading', 'is-seeking');
   meterStates.delete(slide);
   const video = slide.querySelector('video');
   const meter = slide.querySelector('.zone-meter-fill');
@@ -2713,6 +2776,110 @@ function resumeZoneMeter(slide){
   animateMeter(slide, Math.min(1, st.elapsed / st.duration), Math.max(0, st.duration - st.elapsed));
 }
 
+// ---- 動画の操作：シークバー・再生速度 ----
+// Zoneメーター（=「最後まで見た」の判定）は、シーク位置ではなく実際に見た時間で溜まる。
+// 速度を上げたぶん早く溜まり、ドラッグ中は止まる
+function formatRate(rate){ return `${rate}x`; }
+function formatVideoTime(sec){
+  if(!isFinite(sec) || sec < 0) sec = 0;
+  const total = Math.floor(sec);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+function knownDuration(video){ return video.duration > 0 && isFinite(video.duration) ? video.duration : 0; }
+
+function attachVideoControls(slide, video){
+  const bar = slide.querySelector('.seek-bar');
+  const track = bar.querySelector('.seek-track');
+  const fill = bar.querySelector('.seek-fill');
+  const thumb = bar.querySelector('.seek-thumb');
+  const timeEl = slide.querySelector('.seek-time');
+  const render = (t)=>{
+    const d = knownDuration(video);
+    const pct = d ? Math.min(100, Math.max(0, t / d * 100)) : 0;
+    fill.style.width = thumb.style.left = `${pct}%`;
+    bar.setAttribute('aria-valuenow', String(Math.round(pct)));
+    timeEl.innerHTML = `${formatVideoTime(t)} <span class="seek-total">/ ${formatVideoTime(d)}</span>`;
+  };
+  video.addEventListener('timeupdate', ()=>{ if(!slide.classList.contains('is-seeking')) render(video.currentTime); });
+  const seekTo = (clientX)=>{
+    const d = knownDuration(video);
+    if(!d) return;
+    const rect = track.getBoundingClientRect();
+    const t = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)) * d;
+    video.currentTime = t;
+    render(t);
+  };
+  bar.addEventListener('pointerdown', (e)=>{
+    if(!slide.classList.contains('is-active') || !knownDuration(video)) return;
+    e.preventDefault();
+    try{ bar.setPointerCapture(e.pointerId); }catch(err){}
+    slide.classList.add('is-seeking');
+    if(!slide.classList.contains('is-paused')){ video.pause(); pauseZoneMeter(slide); }
+    seekTo(e.clientX);
+  });
+  bar.addEventListener('pointermove', (e)=>{ if(slide.classList.contains('is-seeking')) seekTo(e.clientX); });
+  const endSeek = ()=>{
+    if(!slide.classList.contains('is-seeking')) return;
+    slide.classList.remove('is-seeking');
+    if(slide.classList.contains('is-active') && !slide.classList.contains('is-paused')){
+      video.play().catch(()=>{});
+      resumeZoneMeter(slide);
+    }
+  };
+  bar.addEventListener('pointerup', endSeek);
+  bar.addEventListener('pointercancel', endSeek);
+  bar.addEventListener('lostpointercapture', endSeek);
+  // iPhoneで、シークバーを横に動かしたときにフィードが縦にスクロールしないように
+  bar.addEventListener('touchmove', (e)=> e.preventDefault(), { passive:false });
+
+  slide.querySelector('[data-role="speed"]').addEventListener('click', ()=>{
+    playbackRate = PLAYBACK_RATES[(PLAYBACK_RATES.indexOf(playbackRate) + 1) % PLAYBACK_RATES.length];
+    saveJSON(PLAYBACK_RATE_KEY, playbackRate);
+    applyPlaybackRate(slide);
+    rescaleZoneMeter(slide);
+    showToast(`再生速度：${formatRate(playbackRate)}`);
+  });
+}
+
+function applyPlaybackRate(slide){
+  const video = slide.querySelector('video');
+  if(!video) return;
+  // 読み込み直すと playbackRate は defaultPlaybackRate に戻るので、両方そろえる
+  video.defaultPlaybackRate = playbackRate;
+  video.playbackRate = playbackRate;
+  const chip = slide.querySelector('[data-role="speed"]');
+  chip.firstElementChild.textContent = formatRate(playbackRate);
+  chip.classList.toggle('active', playbackRate !== 1);
+}
+
+// 再生速度を変えたら、Zoneメーターの溜まった割合はそのままに、残りの時間を新しい速度に合わせる
+function rescaleZoneMeter(slide){
+  const st = meterStates.get(slide);
+  const video = slide.querySelector('video');
+  if(!st || st.done || !video || !knownDuration(video)) return;
+  const running = !slide.classList.contains('is-paused') && !slide.classList.contains('is-seeking');
+  const elapsed = st.elapsed + (running ? (Date.now() - st.startedAt) / 1000 : 0);
+  const ratio = Math.min(1, elapsed / st.duration);
+  st.duration = knownDuration(video) / playbackRate;
+  st.elapsed = ratio * st.duration;
+  st.startedAt = Date.now();
+  if(running) animateMeter(slide, ratio, st.duration - st.elapsed);
+}
+
+// すばやく2回タップでいいね（もう押してあるときは、ハートを出すだけで取り消さない）
+const DOUBLE_TAP_MS = 260;
+function likeByDoubleTap(slide, v, e){
+  const rect = slide.getBoundingClientRect();
+  const heart = document.createElement('div');
+  heart.className = 'tap-heart';
+  heart.innerHTML = icon('heart');
+  heart.style.left = `${e.clientX - rect.left}px`;
+  heart.style.top = `${e.clientY - rect.top}px`;
+  slide.appendChild(heart);
+  setTimeout(()=> heart.remove(), 800);
+  if(!engagementOf(v.id).liked) slide.querySelector('[data-role="like"]').click();
+}
+
 // タップで一時停止 ↔ 再生（動画・楽曲・Zoneメーターをまとめて止める）
 function togglePause(slide){
   if(!slide.classList.contains('is-active')) return;
@@ -2726,6 +2893,30 @@ function togglePause(slide){
   }
   applySlideAudio(slide);
 }
+
+// パソコンのキーボード操作：スペース=一時停止／再生、←→=5秒戻す・進める、↑↓=前・次の動画
+document.addEventListener('keydown', (e)=>{
+  if(e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target.closest ? e.target : document.body;
+  if(t.closest('input, textarea, select, [contenteditable="true"]')) return;
+  if(t.closest('button') && !t.closest('.short-slide')) return;
+  if(document.querySelector('.sheet-overlay.show') || isStudyNudgeOpen()) return;
+  const onHome = screens.home.classList.contains('active');
+  const slide = onHome ? currentSlide : (screens.preview.classList.contains('active') ? previewSlide : null);
+  if(!slide || !slide.classList.contains('is-active')) return;
+  const video = slide.querySelector('video');
+  if(e.key === ' '){
+    e.preventDefault();
+    if(t.closest('button')) t.blur(); // 押したばかりのいいね等がスペースでもう一度押されないように
+    togglePause(slide);
+  } else if((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && video && knownDuration(video)){
+    e.preventDefault();
+    video.currentTime = Math.min(knownDuration(video), Math.max(0, video.currentTime + (e.key === 'ArrowRight' ? 5 : -5)));
+  } else if((e.key === 'ArrowDown' || e.key === 'ArrowUp') && onHome){
+    e.preventDefault();
+    feedEl.scrollBy({ top:(e.key === 'ArrowDown' ? 1 : -1) * feedEl.clientHeight, behavior:'smooth' });
+  }
+});
 
 // ---- 勉強の催促 ----
 // 表示する言葉。毎回ランダムで、前回と同じものは続けて出さない。ここに足せばレパートリーが増える
@@ -4432,6 +4623,13 @@ function hideUploadProgress(){
   document.getElementById('upload-media').innerHTML = '';
 }
 
+// アップロード中にタブを閉じたり再読み込みしようとしたら、ブラウザに確認を出してもらう（パソコン向け）
+window.addEventListener('beforeunload', (e)=>{
+  if(!document.getElementById('upload-overlay').classList.contains('show')) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
 // 投稿をサーバーに送る。送れたら投稿（VIDEOS に入れる形）を返す。失敗したら送りかけたファイルを消して投げ直す
 async function publishCloudPost(post, compressor){
   const client = await getCloud();
@@ -5323,9 +5521,10 @@ async function renderAccountStatus(){
   let id = null;
   try{ id = await cloudUserId(); }catch(e){}
   const pending = loadJSON(SYNC_QUEUE_KEY, []).length;
-  el.innerHTML = (id ? 'ログイン中です。記録はサーバーにも保存しています。' : 'まだサーバーに登録できていません（電波がつながったら自動で登録します）。')
+  el.innerHTML = (id ? `ログイン中です（アカウント番号：${escapeHtml(id.slice(0, 8))}）。記録はサーバーにも保存しています。` : 'まだサーバーに登録できていません（電波がつながったら自動で登録します）。')
     + (pending ? `<br>まだ送れていない変更：${pending}件（電波がつながったら自動で送ります）` : '')
-    + '<br>※ テスト期間は名前だけの登録です。ブラウザのデータを消すと、このアカウントには戻れません。';
+    + '<br>※ テスト期間は名前だけの登録です。ブラウザのデータを消すと、このアカウントには戻れません。'
+    + (IS_NATIVE_APP ? '' : '<br>※ iPhoneでは、Safariで開いたときとホーム画面から開いたときで、別のアカウントになります。いつも同じ開き方で使ってね。');
 }
 function renderSettingsScreen(){
   renderAccountStatus();
@@ -5503,16 +5702,30 @@ if(iosInstallHint){
   banner.classList.add('show');
 }
 
+// ---- 端末に保存したデータを守る ----
+// アカウント・記録・投稿は端末（ブラウザ）にも保存している。容量が足りないときなどに
+// ブラウザが勝手に消さないよう「消さないで」とお願いしておく（できるかはブラウザしだい）
+if(navigator.storage && navigator.storage.persist){
+  navigator.storage.persisted().then(done=> done || navigator.storage.persist()).catch(()=>{});
+}
+
 // ---- Service Worker登録 ----
 if('serviceWorker' in navigator && !IS_NATIVE_APP){ // iPhoneアプリの中ではファイルがアプリに入っているので不要
   // 新しい版のService Workerに切り替わったら1回だけ再読み込みして最新の画面にする
   // （初めて開いたときは切り替えではないので再読み込みしない）
   const hadController = !!navigator.serviceWorker.controller;
   let reloadedForUpdate = false;
+  // ただし、投稿のアップロード中・投稿の入力中・文字の入力中などに再読み込みすると書きかけが消えるので、手が空くまで待つ
+  const busyForReload = ()=>
+    document.getElementById('upload-overlay').classList.contains('show')
+    || screens.create.classList.contains('active') || screens.preview.classList.contains('active')
+    || !!document.querySelector('.sheet-overlay.show')
+    || [...document.querySelectorAll('.screen.active textarea, .screen.active input[type="text"], .screen.active input:not([type])')].some(el=> el.value.trim());
   navigator.serviceWorker.addEventListener('controllerchange', ()=>{
     if(!hadController || reloadedForUpdate) return;
     reloadedForUpdate = true;
-    location.reload();
+    const reloadWhenIdle = ()=>{ if(busyForReload()) setTimeout(reloadWhenIdle, 3000); else location.reload(); };
+    reloadWhenIdle();
   });
   window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('sw.js').catch(()=>{ /* プレビュー環境では失敗することがありますが問題ありません */ });

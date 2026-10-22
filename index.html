@@ -126,6 +126,8 @@
   .badge.kind-motivation{ background:rgba(91,110,245,.9); }
   .badge.kind-trivia{ background:rgba(150,98,0,.92); }
   .badge.kind-other{ background:rgba(30,120,110,.9); }
+  .badge.kind-problem{ background:rgba(214,60,90,.9); }
+  .badge.kind-vlog{ background:rgba(140,60,120,.92); }
 
   /* ---- 上部バー：検索（通知は気が散らないようプロフィール画面に置いている） ---- */
   #feed-topbar{
@@ -1430,7 +1432,7 @@
       </div>
 
       <div class="post-field">
-        <label class="post-label">教科（任意・やる気/豆知識なら「なし」でOK）</label>
+        <label class="post-label">教科（任意・やる気/豆知識/Vlogなら「なし」でOK）</label>
         <div class="chip-row" id="post-subject-chips"></div>
         <input type="text" class="post-input other-input" id="post-subject-chips-other" placeholder="教科名を入力（例：情報）" />
       </div>
@@ -1591,11 +1593,14 @@ const SUBJECTS = [
   { id:'social', label:'社会' },
   { id:'other', label:'その他' },
 ];
-// 動画の種類。解説＝授業系 / やる気＝勉強を促す系 / 豆知識＝勉強にまつわる面白い話 / その他＝自由入力（例：体験談）
+// 動画の種類。解説＝授業系 / 問題＝問題を出す・解く系 / やる気＝勉強を促す系 / 豆知識＝勉強にまつわる面白い話
+// / Vlog＝勉強の様子や一日の記録 / その他＝自由入力（例：体験談）
 const KINDS = [
   { id:'lesson', label:'解説' },
+  { id:'problem', label:'問題' },
   { id:'motivation', label:'やる気' },
   { id:'trivia', label:'豆知識' },
+  { id:'vlog', label:'Vlog' },
   { id:'other', label:'その他' },
 ];
 const IMAGE_DISPLAY_SECONDS = 8; // 写真投稿のZoneメーター表示時間(秒)
@@ -1789,7 +1794,12 @@ function subjectLabelOf(item){
 function gradeLabelOf(item){
   return item.grade === 'other' && item.gradeOther ? item.gradeOther : labelOf(TARGETS, item.grade);
 }
-function kindOf(v){ return v.kind || 'lesson'; }
+// 知らない種類（サーバーから来た想定外の値・新しい版で増えた種類）は「その他」として扱う。
+// 種類はクラス名にも使うので、ここで決まった値だけに絞っておく
+function kindOf(v){
+  if(!v.kind) return 'lesson';
+  return KINDS.some(k=> k.id === v.kind) ? v.kind : 'other';
+}
 function kindLabelOf(v){ return kindOf(v) === 'other' && v.kindOther ? v.kindOther : labelOf(KINDS, kindOf(v)); }
 
 // 中1〜中3 / 高1〜高3 をまとめた区分（同じ区分の動画も少しだけ優先して出すため）
@@ -2296,7 +2306,8 @@ let lastNudgeAt = 0;
 // （タグは「#」なしの文字列の配列で返す）
 function hashtagListOf(v){
   if(v.hashtags && v.hashtags.length) return v.hashtags.slice();
-  const tags = { lesson:['勉強'], motivation:['やる気', '勉強習慣'], trivia:['豆知識', '雑学'], other:[kindLabelOf(v)] }[kindOf(v)].slice();
+  const byKind = { lesson:['勉強'], problem:['問題', '演習'], motivation:['やる気', '勉強習慣'], trivia:['豆知識', '雑学'], vlog:['勉強Vlog'] };
+  const tags = (byKind[kindOf(v)] || [kindLabelOf(v)]).slice(); // その他・知らない種類は種類の名前
   const subject = subjectLabelOf(v);
   if(subject) tags.push(subject);
   const level = schoolLevelOf(v.grade);
@@ -3322,10 +3333,14 @@ const gradientByKind = {
   lesson: 'linear-gradient(160deg, #2B2E63, #10131A)',
   motivation: 'linear-gradient(160deg, var(--cta-from), var(--cta-to))',
   trivia: 'linear-gradient(160deg, #8A5A00, #10131A)',
+  vlog: 'linear-gradient(160deg, #7A2E5C, #10131A)',
   other: 'linear-gradient(160deg, #1E6B62, #10131A)',
 };
 function thumbGradientOf(v){
-  return kindOf(v) === 'lesson' ? (gradientBySubject[v.subject] || gradientByKind.lesson) : gradientByKind[kindOf(v)];
+  // 解説・問題は教科の色。それ以外は種類の色（知らない種類は「その他」の色）
+  const kind = kindOf(v);
+  if(kind === 'lesson' || kind === 'problem') return gradientBySubject[v.subject] || gradientByKind.lesson;
+  return gradientByKind[kind] || gradientByKind.other;
 }
 
 // 写真の投稿は1枚目をサムネイルに、それ以外は種類・教科の色

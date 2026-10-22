@@ -269,6 +269,7 @@ function startFakeSupabase() {
   check('送れたらキューは空', await waitFor(() => page.evaluate(() => JSON.parse(localStorage.getItem('zonenow_sync_queue')).length === 0)));
   await page.click('#settings-back'); await page.waitForTimeout(150); await page.click('#profile-gear'); await page.waitForTimeout(200);
   check('設定に「ログイン中」', (await page.textContent('#settings-account')).includes('ログイン中'));
+  check('設定にアカウント番号と開き方の注意', /アカウント番号：[0-9a-f-]{8}/.test(await page.textContent('#settings-account')) && (await page.textContent('#settings-account')).includes('ホーム画面から開いたとき'), await page.textContent('#settings-account'));
 
   state.section = 'ご意見';
   await nav(page, 'profile'); await page.click('#profile-gear'); await page.waitForTimeout(200);

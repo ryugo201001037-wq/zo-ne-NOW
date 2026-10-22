@@ -120,14 +120,30 @@ const { check, state, report } = createChecker();
   check('Xでポスト', opened.some(u => u.startsWith('https://twitter.com/intent/tweet') && decodeURIComponent(u).includes(`?v=${id0}`)), opened[1]);
   await page.screenshot({ path: OUT + 'ft-share.png' });
 
-  // 一時停止
+  // 一時停止（2回目のタップ＝ダブルタップを待つので、少しあとで止まる）
   await page.mouse.click(160, 420);
+  await page.waitForTimeout(350);
   check('画面タップで一時停止', await page.$eval(s0, el => el.classList.contains('is-paused')));
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(250); // 一時停止マークが出きるまで
   await page.screenshot({ path: OUT + 'ft-paused.png' });
   check('一時停止マークが出る', await page.$eval(`${s0} .pause-indicator`, el => getComputedStyle(el).opacity === '1'));
   await page.mouse.click(160, 420);
+  await page.waitForTimeout(350);
   check('もう一度タップで再生', !(await page.$eval(s0, el => el.classList.contains('is-paused'))));
+
+  // ダブルタップでいいね（一時停止にはならない。もう一度ダブルタップしても取り消さない）
+  await page.click(`${s0} [data-role="like"]`); // いったん取り消す
+  check('ダブルタップ前はいいねなし', (await cnt('like')) === '0');
+  await page.mouse.dblclick(160, 420);
+  check('ダブルタップでハートが出る', !!(await page.$(`${s0} .tap-heart`)));
+  await page.waitForTimeout(350);
+  check('ダブルタップでいいね', (await cnt('like')) === '1' && (await evalq(() => localStorage.getItem('zonenow_likes'))).includes(id0));
+  check('ダブルタップでは一時停止しない', !(await page.$eval(s0, el => el.classList.contains('is-paused'))));
+  await page.mouse.dblclick(160, 420);
+  await page.waitForTimeout(350);
+  check('もう一度ダブルタップしても取り消さない', (await cnt('like')) === '1');
+  await page.waitForTimeout(500);
+  check('ハートは消える', !(await page.$(`${s0} .tap-heart`)));
 
   // シークバー：ドラッグで好きな位置へ。ドラッグ中は時間を大きく出し、離すと再生に戻る（一時停止にはならない）
   check('動画にシークバーがある', !!(await page.$(`${s0} .seek-bar`)));
@@ -342,12 +358,14 @@ const { check, state, report } = createChecker();
   check('自分の投稿でも楽曲が流れる', (await evalq(() => music.track && music.track.id)) === 'focus');
   await page.waitForTimeout(1500);
   await page.mouse.click(160, 420);
+  await page.waitForTimeout(350); // ダブルタップかどうかを待ってから止まる
   const w1 = await page.$eval(`${first} .zone-meter-fill`, e => parseFloat(e.style.width));
   await page.waitForTimeout(1200);
   const w2 = await page.$eval(`${first} .zone-meter-fill`, e => parseFloat(e.style.width));
   check('一時停止でZoneメーターが止まる', w1 > 0 && w1 === w2, `${w1} → ${w2}`);
   check('一時停止で楽曲が止まる', !(await evalq(() => music.track)));
   await page.mouse.click(160, 420);
+  await page.waitForTimeout(350);
   check('再生で楽曲が戻る', (await evalq(() => music.track && music.track.id)) === 'focus');
   await page.$eval(`${first} .photo-track`, t => t.scrollTo({ left: t.clientWidth * 2, behavior: 'instant' }));
   await page.waitForTimeout(150);

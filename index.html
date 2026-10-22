@@ -455,6 +455,18 @@
   }
   .pause-indicator svg{ width:32px; height:32px; margin-left:5px; fill:currentColor; }
   .short-slide.is-paused .pause-indicator{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+  /* ダブルタップのいいね */
+  .tap-heart{
+    position:absolute; z-index:8; width:96px; height:96px; margin:-48px 0 0 -48px; color:var(--ember); pointer-events:none;
+    animation:tap-heart .75s ease-out forwards;
+  }
+  .tap-heart svg{ width:100%; height:100%; fill:currentColor; filter:drop-shadow(0 4px 12px rgba(0,0,0,.35)); }
+  @keyframes tap-heart{
+    0%{ opacity:0; transform:scale(.4) rotate(-10deg); }
+    15%{ opacity:1; transform:scale(1.12) rotate(-10deg); }
+    30%{ transform:scale(1) rotate(-10deg); }
+    100%{ opacity:0; transform:translateY(-70px) scale(1.15) rotate(-10deg); }
+  }
 
   /* ---- シークバー（ドラッグで好きな場所へ）と再生速度 ---- */
   .seek-bar{
@@ -2417,10 +2429,19 @@ function attachSlideEvents(slide, v){
 
   if(video) attachVideoControls(slide, video);
 
-  // 画面をタップで一時停止／再生（ボタン類・シークバーのタップは除く）
+  // 画面をタップで一時停止／再生、すばやく2回タップでいいね（ボタン類・シークバーのタップは除く）
+  // 2回目のタップを待つぶん、一時停止は少しだけ遅れる。投稿前のプレビューは、いいねできないのですぐ止める
+  let tapTimer = null;
   slide.addEventListener('click', (e)=>{
     if(e.target.closest('button, .action-rail, .seek-bar')) return;
-    togglePause(slide);
+    if(!slide.closest('#feed')){ togglePause(slide); return; }
+    if(tapTimer){
+      clearTimeout(tapTimer);
+      tapTimer = null;
+      likeByDoubleTap(slide, v, e);
+      return;
+    }
+    tapTimer = setTimeout(()=>{ tapTimer = null; togglePause(slide); }, DOUBLE_TAP_MS);
   });
 
   // いいね・保存（みんなの投稿はサーバーにも。同じ動画の他のスライドの表示もそろえる）
@@ -2843,6 +2864,20 @@ function rescaleZoneMeter(slide){
   st.elapsed = ratio * st.duration;
   st.startedAt = Date.now();
   if(running) animateMeter(slide, ratio, st.duration - st.elapsed);
+}
+
+// すばやく2回タップでいいね（もう押してあるときは、ハートを出すだけで取り消さない）
+const DOUBLE_TAP_MS = 260;
+function likeByDoubleTap(slide, v, e){
+  const rect = slide.getBoundingClientRect();
+  const heart = document.createElement('div');
+  heart.className = 'tap-heart';
+  heart.innerHTML = icon('heart');
+  heart.style.left = `${e.clientX - rect.left}px`;
+  heart.style.top = `${e.clientY - rect.top}px`;
+  slide.appendChild(heart);
+  setTimeout(()=> heart.remove(), 800);
+  if(!engagementOf(v.id).liked) slide.querySelector('[data-role="like"]').click();
 }
 
 // タップで一時停止 ↔ 再生（動画・楽曲・Zoneメーターをまとめて止める）
@@ -4588,6 +4623,13 @@ function hideUploadProgress(){
   document.getElementById('upload-media').innerHTML = '';
 }
 
+// アップロード中にタブを閉じたり再読み込みしようとしたら、ブラウザに確認を出してもらう（パソコン向け）
+window.addEventListener('beforeunload', (e)=>{
+  if(!document.getElementById('upload-overlay').classList.contains('show')) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
 // 投稿をサーバーに送る。送れたら投稿（VIDEOS に入れる形）を返す。失敗したら送りかけたファイルを消して投げ直す
 async function publishCloudPost(post, compressor){
   const client = await getCloud();
@@ -5479,9 +5521,10 @@ async function renderAccountStatus(){
   let id = null;
   try{ id = await cloudUserId(); }catch(e){}
   const pending = loadJSON(SYNC_QUEUE_KEY, []).length;
-  el.innerHTML = (id ? 'ログイン中です。記録はサーバーにも保存しています。' : 'まだサーバーに登録できていません（電波がつながったら自動で登録します）。')
+  el.innerHTML = (id ? `ログイン中です（アカウント番号：${escapeHtml(id.slice(0, 8))}）。記録はサーバーにも保存しています。` : 'まだサーバーに登録できていません（電波がつながったら自動で登録します）。')
     + (pending ? `<br>まだ送れていない変更：${pending}件（電波がつながったら自動で送ります）` : '')
-    + '<br>※ テスト期間は名前だけの登録です。ブラウザのデータを消すと、このアカウントには戻れません。';
+    + '<br>※ テスト期間は名前だけの登録です。ブラウザのデータを消すと、このアカウントには戻れません。'
+    + (IS_NATIVE_APP ? '' : '<br>※ iPhoneでは、Safariで開いたときとホーム画面から開いたときで、別のアカウントになります。いつも同じ開き方で使ってね。');
 }
 function renderSettingsScreen(){
   renderAccountStatus();
@@ -5659,16 +5702,30 @@ if(iosInstallHint){
   banner.classList.add('show');
 }
 
+// ---- 端末に保存したデータを守る ----
+// アカウント・記録・投稿は端末（ブラウザ）にも保存している。容量が足りないときなどに
+// ブラウザが勝手に消さないよう「消さないで」とお願いしておく（できるかはブラウザしだい）
+if(navigator.storage && navigator.storage.persist){
+  navigator.storage.persisted().then(done=> done || navigator.storage.persist()).catch(()=>{});
+}
+
 // ---- Service Worker登録 ----
 if('serviceWorker' in navigator && !IS_NATIVE_APP){ // iPhoneアプリの中ではファイルがアプリに入っているので不要
   // 新しい版のService Workerに切り替わったら1回だけ再読み込みして最新の画面にする
   // （初めて開いたときは切り替えではないので再読み込みしない）
   const hadController = !!navigator.serviceWorker.controller;
   let reloadedForUpdate = false;
+  // ただし、投稿のアップロード中・投稿の入力中・文字の入力中などに再読み込みすると書きかけが消えるので、手が空くまで待つ
+  const busyForReload = ()=>
+    document.getElementById('upload-overlay').classList.contains('show')
+    || screens.create.classList.contains('active') || screens.preview.classList.contains('active')
+    || !!document.querySelector('.sheet-overlay.show')
+    || [...document.querySelectorAll('.screen.active textarea, .screen.active input[type="text"], .screen.active input:not([type])')].some(el=> el.value.trim());
   navigator.serviceWorker.addEventListener('controllerchange', ()=>{
     if(!hadController || reloadedForUpdate) return;
     reloadedForUpdate = true;
-    location.reload();
+    const reloadWhenIdle = ()=>{ if(busyForReload()) setTimeout(reloadWhenIdle, 3000); else location.reload(); };
+    reloadWhenIdle();
   });
   window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('sw.js').catch(()=>{ /* プレビュー環境では失敗することがありますが問題ありません */ });

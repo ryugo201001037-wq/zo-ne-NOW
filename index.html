@@ -1332,6 +1332,12 @@
         <p style="margin:8px 0 0"><a class="settings-link privacy-link" target="_blank" rel="noopener">プライバシーポリシーを読む</a></p>
       </div>
 
+      <div class="settings-section" id="settings-cover-section">
+        <div class="record-section-title">動画の表紙</div>
+        <p class="settings-text">この端末のアカウントで投稿した動画のうち、表紙がないものに表紙を作ります（動画の最初の1秒あたりの一場面）。作り終わるまで、アプリを開いたままにしてください。</p>
+        <button class="study-btn full" id="settings-make-covers">動画の表紙を作る</button>
+      </div>
+
       <div class="settings-section">
         <div class="record-section-title">データの削除</div>
         <p class="settings-text">アカウントと、プロフィール・勉強記録・投稿など、ゾーンNOWのデータをすべて削除して、最初の状態に戻します。</p>
@@ -4331,7 +4337,8 @@ function captureCover(src, crossOrigin){
     video.playsInline = true;
     video.preload = 'auto';
     if(crossOrigin) video.crossOrigin = 'anonymous';
-    video.style.cssText = 'position:fixed; left:-9999px; top:0; width:2px; height:2px;';
+    // 画面の外に置くと、iPhone は動画を止めて絵を読み込まないことがあるので、画面の中にほぼ見えない大きさで置く
+    video.style.cssText = 'position:fixed; right:0; bottom:0; width:4px; height:4px; opacity:0.01; pointer-events:none; z-index:-1;';
     let settled = false;
     const finish = (err, blob)=>{
       if(settled) return;
@@ -4342,8 +4349,8 @@ function captureCover(src, crossOrigin){
       video.remove();
       if(err) reject(err); else resolve(blob);
     };
-    const timer = setTimeout(()=> finish(new Error('cover timeout')), 20000);
-    video.onerror = ()=> finish(new Error('cover load failed'));
+    const timer = setTimeout(()=> finish(new Error('読み込みに時間がかかりすぎた')), 20000);
+    video.onerror = ()=> finish(new Error('動画を読み込めなかった'));
     video.onloadedmetadata = ()=>{
       video.currentTime = Math.min(1, (video.duration || 3) / 3);
       video.play().then(()=> video.pause()).catch(()=>{}); // iPhoneは再生しないと絵を読み込まないことがある
@@ -4355,8 +4362,8 @@ function captureCover(src, crossOrigin){
         canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
         canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
         canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob(blob=> blob ? finish(null, blob) : finish(new Error('cover encode failed')), 'image/jpeg', 0.8);
-      }catch(e){ finish(e); }
+        canvas.toBlob(blob=> blob ? finish(null, blob) : finish(new Error('画像にできなかった')), 'image/jpeg', 0.8);
+      }catch(e){ finish(new Error(e && e.name === 'SecurityError' ? '動画の絵を取り出せなかった（読み込みの許可）' : '画像にできなかった')); }
     };
     document.body.appendChild(video);
     video.src = src;
@@ -4364,23 +4371,36 @@ function captureCover(src, crossOrigin){
 }
 
 // 自分の古い動画で表紙がないものは、プロフィールを開いたときに裏で作る（表紙を置けるのは投稿した本人だけのため）
-let coverBackfillDone = false;
-async function backfillMyCovers(){
-  if(coverBackfillDone || !cloudEnabled()) return;
+// 作っている間は進み具合を、終わったら結果（作れなかったときはその理由）を出す。manual＝設定のボタンから
+let coverBackfillDone = false, coverBackfillRunning = false;
+async function backfillMyCovers(manual){
+  if(coverBackfillRunning || (coverBackfillDone && !manual) || !cloudEnabled()) return;
   const mine = VIDEOS.filter(v=> v.cloud && v.own && v.mediaType === 'video');
-  if(!mine.length) return; // まだ投稿を読み込んでいない（読み込んだあと、もう一度プロフィールを開いたときに作る）
+  if(!mine.length){ // まだ投稿を読み込んでいない（読み込んだあと、もう一度プロフィールを開いたときに作る）
+    if(manual) showToast('この端末のアカウントで投稿した動画が見つかりませんでした');
+    return;
+  }
+  coverBackfillRunning = true;
   coverBackfillDone = true;
-  let made = 0;
-  for(const v of mine){
+  const missing = [];
+  for(const v of mine) if(!(await imageLoads(`${coverUrlOf(v)}?check=${Date.now()}`))) missing.push(v);
+  let made = 0, firstError = '';
+  for(const v of missing){
+    showToast(`動画の表紙を作っています（${made + 1}/${missing.length}）`);
     try{
-      if(await imageLoads(`${coverUrlOf(v)}?check=${Date.now()}`)) continue; // もうある
       const blob = await captureCover(postFileUrl(v.mediaPaths[0]), true);
       await uploadPostFile(coverPathOf(v), blob, ()=>{});
       made++;
       refreshCoverOf(v);
-    }catch(e){ coverBackfillDone = false; } // 作れなかった動画は色の背景のまま。次に開いたときにまた試す
+    }catch(e){
+      coverBackfillDone = false; // 作れなかった動画は色の背景のまま。次に開いたときにまた試す
+      if(!firstError) firstError = e && e.status ? `送れなかった（${e.status}）` : (e && e.message) || 'わからない理由';
+    }
   }
-  if(made) showToast(`動画の表紙を${made}本作りました`);
+  coverBackfillRunning = false;
+  if(!missing.length){ if(manual) showToast('この端末のアカウントの動画には、もう全部表紙があります'); return; }
+  if(made === missing.length) showToast(`動画の表紙を${made}本作りました`);
+  else showToast(`表紙を${made}/${missing.length}本作りました。作れなかった理由：${firstError}`);
 }
 // 画像として読み込めるか（表紙があるか）。サーバーは「ない」ときにほかのサイトからの読み込みの許可を付けずに返すので、
 // fetch では答えを読めない。画像の読み込みなら、あるかないかだけは分かる
@@ -5279,6 +5299,8 @@ document.getElementById('profile-avatar-input').addEventListener('change', async
 
 // ---- 設定画面 ----
 document.getElementById('settings-version').textContent = `ゾーンNOW バージョン ${APP_VERSION}（${IS_NATIVE_APP ? 'iPhoneアプリ' : 'ウェブ'}）`;
+document.getElementById('settings-make-covers').addEventListener('click', ()=> backfillMyCovers(true));
+if(!cloudEnabled()) document.getElementById('settings-cover-section').style.display = 'none';
 // プライバシーポリシーは公開ページに置く（iPhoneアプリでは Safari で開く）
 document.querySelectorAll('.privacy-link').forEach(a=>{ a.href = PRIVACY_URL; });
 

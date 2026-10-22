@@ -507,6 +507,18 @@ function startFakeSupabase() {
   check('本人がプロフィールを開くと、古い動画の表紙を作る', await waitFor(() => fake.files.has(`${uid}/${oldId}/cover.jpg`), 15000));
   check('作った表紙が一覧のカードに出る', await waitFor(() => page.$eval(`.result-card[data-id="${oldId}"] .result-thumb`, el => el.style.background.includes('cover.jpg'))));
   check('表紙を作ったと伝える', (await toast(page)).includes('表紙'));
+  await page.click('#profile-gear'); await page.waitForTimeout(200);
+  await page.click('#settings-make-covers');
+  check('設定の「動画の表紙を作る」：全部あれば、そう伝える', await waitFor(async () => (await toast(page)).includes('もう全部表紙があります')));
+  // 動画が読めない投稿（ファイルがない）は、作れなかった理由を出す
+  const brokenId = crypto.randomUUID();
+  fake.posts.push({ id: brokenId, user_id: uid, creator: 'みなと', title: '読めない動画', kind: 'lesson', kind_other: '', subject: 'math', subject_other: '', grade: 'high1', grade_other: '',
+    unit: '', hashtags: [], music_id: '', media_type: 'video', media_paths: [`${uid}/${brokenId}/0.webm`], duration: 2, created_at: new Date().toISOString() });
+  await page.evaluate(() => loadCloudPosts());
+  await page.click('#settings-make-covers');
+  check('作れなかったときは、本数と理由を出す', await waitFor(async () => /表紙を0\/1本作りました。作れなかった理由：動画を読み込めなかった/.test(await toast(page)), 25000), await toast(page));
+  fake.posts = fake.posts.filter(r => r.id !== brokenId);
+  await page.click('#settings-back'); await page.waitForTimeout(150);
 
   // ========== すべて削除（退会） ==========
   state.section = '退会';

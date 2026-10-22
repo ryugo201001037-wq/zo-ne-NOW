@@ -33,9 +33,10 @@ function startFakeSupabase() {
 
     // ---- Storage（投稿のファイル置き場） ----
     const PUBLIC = '/storage/v1/object/public/posts/';
-    if (p.startsWith(PUBLIC) && req.method === 'GET') {
+    if (p.startsWith(PUBLIC) && (req.method === 'GET' || req.method === 'HEAD')) {
       const file = fake.files.get(decodeURIComponent(p.slice(PUBLIC.length)));
       if (!file) return send(404, { message: 'not found' });
+      if (req.method === 'HEAD') { res.writeHead(200, { ...cors, 'Content-Type': file.type, 'Content-Length': file.body.length }); return res.end(); }
       if (req.headers.range === 'bytes=0-65535') fake.warmed.push(decodeURIComponent(p.slice(PUBLIC.length))); // 先読み
       res.writeHead(200, { ...cors, 'Content-Type': file.type, 'Content-Length': file.body.length });
       res.end(file.body);
@@ -315,6 +316,8 @@ function startFakeSupabase() {
   check('ファイルは自分のフォルダに置く', vpost && vpost.media_paths.length === 1 && vpost.media_paths[0].startsWith(`${uid}/${vpost.id}/0.`) && fake.files.has(vpost.media_paths[0]) && fake.files.get(vpost.media_paths[0]).type.startsWith('video/'));
   const sampleBytes = require('fs').readFileSync(require('path').join(ASSETS, 'sample.webm'));
   check('小さい動画は、元のファイルをそのまま送る（中身が同じ）', !!vpost && fake.files.get(vpost.media_paths[0]).body.equals(sampleBytes), vpost && String(fake.files.get(vpost.media_paths[0]).body.length));
+  const coverOf = post => `${post.user_id}/${post.id}/cover.jpg`;
+  check('動画の表紙（JPEG）も一緒に保存する', await waitFor(() => fake.files.has(coverOf(vpost))) && fake.files.get(coverOf(vpost)).type === 'image/jpeg' && fake.files.get(coverOf(vpost)).body.length > 0);
   check('投稿したらホームの先頭に出る', await waitFor(async () => (await active(page)) === 'home-screen' && await page.$eval('#feed .short-slide:first-child', el => el.dataset.id) === (vpost && vpost.id)));
   check('「みんなのフィードに流れます」と伝える', (await toast(page)).includes('みんなのフィード'));
   check('進み具合の画面は消える', !(await page.isVisible('#upload-overlay')));
@@ -374,6 +377,7 @@ function startFakeSupabase() {
   check('ほかの人にもみんなの投稿が届く', await waitFor(() => op.evaluate(() => VIDEOS.filter(v => v.cloud).length === 4)));
   check('共有リンクの投稿が先頭に出る', await waitFor(() => op.$eval('#feed .short-slide:first-child', el => el.dataset.id).then(id => id === vpost.id)));
   const src = await op.$eval('#feed .short-slide:first-child video', el => el.dataset.src);
+  check('フィードでは、読み込み中に表紙を出す', (await op.$eval('#feed .short-slide:first-child video', el => el.getAttribute('poster'))) === `${fake.url}/storage/v1/object/public/posts/${coverOf(vpost)}`);
   check('動画はサーバーの公開URLから読む', src.startsWith(fake.url + '/storage/v1/object/public/posts/'));
   check('サーバーの動画を再生できる', await op.evaluate(async u => (await fetch(u)).ok, src));
   check('ほかの人の投稿にはフォローボタン', await op.isVisible('#feed .short-slide:first-child [data-role="follow"]'));
@@ -395,12 +399,13 @@ function startFakeSupabase() {
   state.section = 'いいね・保存・コメント';
   const first = '#feed .short-slide:first-child';
   const countOf = (pg, sel, role) => pg.$eval(`${sel} [data-role="${role}"] .action-count`, el => el.textContent);
+  // いいねを押してすぐ保存を押しても、両方とも届く（前は、いいねを送っている間の保存が無視されていた）
   await op.click(`${first} [data-role="like"]`);
+  await op.click(`${first} [data-role="bookmark"]`);
   check('いいねがサーバーに届く', await waitFor(() => fake.likes.some(r => r.post_id === vpost.id && r.user_id === otherUid())));
   check('いいねの数が1になり、押した状態になる', (await countOf(op, first, 'like')) === '1' && await op.$eval(`${first} [data-role="like"]`, el => el.classList.contains('active')));
-  await op.click(`${first} [data-role="bookmark"]`);
-  check('保存もサーバーに届き、数が出る', await waitFor(() => fake.saves.some(r => r.post_id === vpost.id)) && (await countOf(op, first, 'bookmark')) === '1');
-  check('保存した投稿は、プロフィールの「保存」にも並ぶ', await op.evaluate(id => JSON.parse(localStorage.getItem('zonenow_saves')).includes(id), vpost.id));
+  check('すぐ続けて押した保存もサーバーに届き、数が出る', await waitFor(() => fake.saves.some(r => r.post_id === vpost.id)) && (await countOf(op, first, 'bookmark')) === '1');
+  check('保存した投稿は、プロフィールの「保存」にも並ぶ', await waitFor(() => op.evaluate(id => JSON.parse(localStorage.getItem('zonenow_saves') || '[]').includes(id), vpost.id)));
   await op.click(`${first} [data-role="comment"]`);
   check('コメント欄を開ける（まだ0件）', await waitFor(async () => (await op.textContent('#comment-sheet-title')) === 'コメント 0件'));
   await op.fill('#comment-input', 'わかりやすい！');
@@ -487,8 +492,21 @@ function startFakeSupabase() {
   await nav(page, 'profile');
   check('プロフィールに自分の投稿（3件）', (await page.textContent('#profile-posts-count')) === '3');
   await page.click(`[data-delete-post="${vpost.id}"]`); await page.click('#confirm-ok');
-  check('消すとサーバーの投稿もファイルも消える', await waitFor(() => !fake.posts.some(r => r.id === vpost.id) && !fake.files.has(vpost.media_paths[0])));
+  check('消すとサーバーの投稿もファイルも表紙も消える', await waitFor(() => !fake.posts.some(r => r.id === vpost.id) && !fake.files.has(vpost.media_paths[0]) && !fake.files.has(coverOf(vpost))));
+
   check('ほかの人の投稿・ファイルは残る', !!fake.posts.find(r => r.id === spost.id) && fake.files.has(spost.media_paths[0]));
+
+  state.section = '古い動画の表紙';
+  // 表紙の仕組みができる前の投稿（表紙なし）：投稿した本人がプロフィールを開くと、裏で表紙を作る
+  const oldId = crypto.randomUUID();
+  fake.files.set(`${uid}/${oldId}/0.webm`, { type: 'video/webm', body: require('fs').readFileSync(require('path').join(ASSETS, 'sample.webm')), owner: uid });
+  fake.posts.push({ id: oldId, user_id: uid, creator: 'みなと', title: '表紙のない古い動画', kind: 'lesson', kind_other: '', subject: 'math', subject_other: '', grade: 'high1', grade_other: '',
+    unit: '', hashtags: [], music_id: '', media_type: 'video', media_paths: [`${uid}/${oldId}/0.webm`], duration: 2, created_at: new Date().toISOString() });
+  await page.evaluate(() => { coverBackfillDone = false; return loadCloudPosts(); }); // 表紙づくりは1回の起動で1回なので、この確認のために戻す
+  await nav(page, 'home'); await nav(page, 'profile');
+  check('本人がプロフィールを開くと、古い動画の表紙を作る', await waitFor(() => fake.files.has(`${uid}/${oldId}/cover.jpg`), 15000));
+  check('作った表紙が一覧のカードに出る', await waitFor(() => page.$eval(`.result-card[data-id="${oldId}"] .result-thumb`, el => el.style.background.includes('cover.jpg'))));
+  check('表紙を作ったと伝える', (await toast(page)).includes('表紙'));
 
   // ========== すべて削除（退会） ==========
   state.section = '退会';

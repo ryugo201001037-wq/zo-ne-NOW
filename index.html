@@ -2267,7 +2267,7 @@ function createSlide(v){
   slide.dataset.music = track ? track.id : '';
   slide.innerHTML = `
     <div class="zone-meter"><div class="zone-meter-fill"></div></div>
-    ${isImage ? photoMediaHtml(v) : `<video src="${v.short}" data-src="${v.short}" muted loop playsinline preload="none"></video>
+    ${isImage ? photoMediaHtml(v) : `<video src="${v.short}" data-src="${v.short}"${coverUrlOf(v) ? ` poster="${escapeHtml(coverUrlOf(v))}"` : ''} muted loop playsinline preload="none"></video>
     <div class="video-status"><div class="spinner" aria-hidden="true"></div><p class="video-status-text"></p><button class="video-retry">もう一度読み込む</button></div>`}
 
     <div class="pause-indicator" aria-hidden="true">${icon('play')}</div>
@@ -3133,7 +3133,8 @@ function thumbGradientOf(v){
 
 // 写真の投稿は1枚目をサムネイルに、それ以外は種類・教科の色
 function thumbBackgroundOf(v){
-  const photo = v.mediaType === 'image' ? (v.images && v.images[0]) || v.short : null;
+  // 写真の投稿はその写真、みんなの投稿の動画は表紙（表紙がなければ下の色の背景が見える）
+  const photo = v.mediaType === 'image' ? (v.images && v.images[0]) || v.short : coverUrlOf(v) || null;
   return photo && /^(blob:|data:image\/|https?:)/.test(photo)
     ? `url('${encodeURI(photo).replace(/'/g, '%27')}') center/cover no-repeat, ${thumbGradientOf(v)}`
     : thumbGradientOf(v);
@@ -4029,7 +4030,7 @@ async function deleteOwnPost(id){
     const client = await getCloud();
     const { error } = await client.from('posts').delete().eq('id', id);
     if(error) throw error;
-    client.storage.from(POST_BUCKET).remove(target.mediaPaths).catch(()=>{});
+    client.storage.from(POST_BUCKET).remove([...target.mediaPaths, ...(coverPathOf(target) ? [coverPathOf(target)] : [])]).catch(()=>{});
   } else {
     try{ await postDb('readwrite', store=> store.delete(id)); }catch(e){}
   }
@@ -4163,7 +4164,7 @@ async function loadCloudStats(ids){
       if(error) return;
       data.forEach(r=>{
         const old = cloudStats.get(r.post_id);
-        if(old && old.busy) return; // 押している途中の表示は変えない
+        if(old && (old.busy_likes || old.busy_saves)) return; // 押している途中の表示は変えない
         cloudStats.set(r.post_id, { likes:Number(r.likes), saves:Number(r.saves), comments:Number(r.comments), liked:r.liked, saved:r.saved, at:Date.now() });
         syncEngagement(r.post_id);
       });
@@ -4178,11 +4179,12 @@ function refreshCloudStatsOf(v){
 // いいね／保存を押す（すぐ表示を変えてからサーバーに送る。送れなかったら元に戻す）。押した後の状態を返す（失敗は null）
 async function toggleCloudReaction(v, table){
   const st = cloudStats.get(v.id) || { ...engagementOf(v.id), at:0 };
-  if(st.busy) return null;
+  const busy = 'busy_' + table; // いいねと保存は別々に（いいねを送っている間に保存を押しても無視しない）
+  if(st[busy]) return null;
   const flag = table === 'likes' ? 'liked' : 'saved';
   const on = !st[flag];
-  const before = { ...st };
-  Object.assign(st, { [flag]: on, [table]: Math.max(0, st[table] + (on ? 1 : -1)), busy:true });
+  const before = { [flag]: st[flag], [table]: st[table] };
+  Object.assign(st, { [flag]: on, [table]: Math.max(0, st[table] + (on ? 1 : -1)), [busy]:true });
   cloudStats.set(v.id, st);
   syncEngagement(v.id);
   try{
@@ -4190,12 +4192,12 @@ async function toggleCloudReaction(v, table){
     const res = on ? await client.from(table).insert({ post_id: v.id }) : await client.from(table).delete().eq('post_id', v.id);
     if(res.error && res.status !== 409) throw res.error; // 409＝もう押してあった
   }catch(e){
-    cloudStats.set(v.id, { ...before, busy:false });
+    Object.assign(st, before, { [busy]:false }); // 押す前に戻す（もう片方の状態はそのまま）
     syncEngagement(v.id);
     showToast('送れませんでした。電波の状態を確かめて、もう一度押してね');
     return null;
   }
-  st.busy = false;
+  st[busy] = false;
   return on;
 }
 
@@ -4314,6 +4316,89 @@ async function uploadPostFile(path, blob, onProgress){
   });
 }
 
+// ---- 動画の表紙画像（動画の一場面を切り出したJPEG。投稿と同じフォルダの cover.jpg） ----
+// フィードでは読み込み中に表紙を出し（真っ黒にしない）、一覧のカードにも使う。表紙がない古い投稿は、色の背景のまま
+const COVER_MAX_SIDE = 720;
+function coverPathOf(v){
+  return v && v.cloud && v.mediaType === 'video' && v.mediaPaths && v.mediaPaths[0] ? v.mediaPaths[0].replace(/[^/]+$/, 'cover.jpg') : '';
+}
+function coverUrlOf(v){ const path = coverPathOf(v); return path ? postFileUrl(path) : ''; }
+// 動画から1枚切り出す（最初の1秒あたり。短い動画は長さの1/3）。ほかのサイトの動画は crossOrigin で読む
+function captureCover(src, crossOrigin){
+  return new Promise((resolve, reject)=>{
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+    if(crossOrigin) video.crossOrigin = 'anonymous';
+    video.style.cssText = 'position:fixed; left:-9999px; top:0; width:2px; height:2px;';
+    let settled = false;
+    const finish = (err, blob)=>{
+      if(settled) return;
+      settled = true;
+      clearTimeout(timer);
+      video.removeAttribute('src');
+      video.load();
+      video.remove();
+      if(err) reject(err); else resolve(blob);
+    };
+    const timer = setTimeout(()=> finish(new Error('cover timeout')), 20000);
+    video.onerror = ()=> finish(new Error('cover load failed'));
+    video.onloadedmetadata = ()=>{
+      video.currentTime = Math.min(1, (video.duration || 3) / 3);
+      video.play().then(()=> video.pause()).catch(()=>{}); // iPhoneは再生しないと絵を読み込まないことがある
+    };
+    video.onseeked = ()=>{
+      try{
+        const scale = Math.min(1, COVER_MAX_SIDE / Math.max(video.videoWidth, video.videoHeight));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+        canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(blob=> blob ? finish(null, blob) : finish(new Error('cover encode failed')), 'image/jpeg', 0.8);
+      }catch(e){ finish(e); }
+    };
+    document.body.appendChild(video);
+    video.src = src;
+  });
+}
+
+// 自分の古い動画で表紙がないものは、プロフィールを開いたときに裏で作る（表紙を置けるのは投稿した本人だけのため）
+let coverBackfillDone = false;
+async function backfillMyCovers(){
+  if(coverBackfillDone || !cloudEnabled()) return;
+  const mine = VIDEOS.filter(v=> v.cloud && v.own && v.mediaType === 'video');
+  if(!mine.length) return; // まだ投稿を読み込んでいない（読み込んだあと、もう一度プロフィールを開いたときに作る）
+  coverBackfillDone = true;
+  let made = 0;
+  for(const v of mine){
+    try{
+      if(await imageLoads(`${coverUrlOf(v)}?check=${Date.now()}`)) continue; // もうある
+      const blob = await captureCover(postFileUrl(v.mediaPaths[0]), true);
+      await uploadPostFile(coverPathOf(v), blob, ()=>{});
+      made++;
+      refreshCoverOf(v);
+    }catch(e){ coverBackfillDone = false; } // 作れなかった動画は色の背景のまま。次に開いたときにまた試す
+  }
+  if(made) showToast(`動画の表紙を${made}本作りました`);
+}
+// 画像として読み込めるか（表紙があるか）。サーバーは「ない」ときにほかのサイトからの読み込みの許可を付けずに返すので、
+// fetch では答えを読めない。画像の読み込みなら、あるかないかだけは分かる
+function imageLoads(url){
+  return new Promise(resolve=>{
+    const img = new Image();
+    img.onload = ()=> resolve(true);
+    img.onerror = ()=> resolve(false);
+    img.src = url;
+  });
+}
+// 表紙ができたら、画面に出ているその動画のカードとスライドに反映する
+function refreshCoverOf(v){
+  const url = coverUrlOf(v);
+  document.querySelectorAll(`.short-slide[data-id="${CSS.escape(v.id)}"] video`).forEach(video=>{ video.poster = url; });
+  document.querySelectorAll(`.result-card[data-id="${CSS.escape(v.id)}"] .result-thumb`).forEach(el=>{ el.style.background = thumbBackgroundOf(v); });
+}
+
 // ---- アップロード中の画面 ----
 function showUploadProgress(title, ratio){
   document.getElementById('upload-overlay').classList.add('show');
@@ -4337,8 +4422,13 @@ async function publishCloudPost(post, compressor){
 
   // 1) 送るファイルを用意する（動画は必要なら軽くする、写真は縮小する）
   let blobs = post.files;
+  let cover = null;
   if(post.mediaType === 'video'){
     const file = post.files[0];
+    // 表紙は元の動画から切り出す（作れなくても投稿はできる）
+    const coverSrc = URL.createObjectURL(file);
+    try{ cover = await captureCover(coverSrc, false); }catch(e){ cover = null; }
+    URL.revokeObjectURL(coverSrc);
     if(compressor){
       compressor.video.muted = false;
       media.appendChild(compressor.video); // 軽くしている動画をそのまま見せる（音は出ない）
@@ -4358,6 +4448,7 @@ async function publishCloudPost(post, compressor){
 
   // 2) ファイルを送る
   const paths = blobs.map((b, i)=> `${userId}/${postId}/${i}.${extOf(b.type)}`);
+  const coverPath = `${userId}/${postId}/cover.jpg`;
   const total = blobs.reduce((n, b)=> n + b.size, 0);
   let sent = 0;
   try{
@@ -4366,6 +4457,7 @@ async function publishCloudPost(post, compressor){
       sent += blobs[i].size;
     }
     showUploadProgress('仕上げています…', 1);
+    if(cover){ try{ await uploadPostFile(coverPath, cover, ()=>{}); }catch(e){ /* 表紙が送れなくても投稿は続ける */ } }
     // 3) 投稿の内容を書く
     const { error } = await client.from('posts').insert({
       id: postId, creator: post.creator, title: post.title, kind: post.kind, kind_other: post.kindOther || '',
@@ -4375,7 +4467,7 @@ async function publishCloudPost(post, compressor){
     });
     if(error) throw error;
   }catch(err){
-    client.storage.from(POST_BUCKET).remove(paths).catch(()=>{});
+    client.storage.from(POST_BUCKET).remove(cover ? [...paths, coverPath] : paths).catch(()=>{});
     throw err;
   }
   return { ...post, id: postId, cloud: true, own: true, userId, mediaPaths: paths };
@@ -4393,9 +4485,10 @@ async function deleteMyPostFiles(){
   const client = await getCloud();
   const userId = await cloudUserId();
   if(!client || !userId) return;
-  const { data, error } = await client.from('posts').select('media_paths').eq('user_id', userId);
+  const { data, error } = await client.from('posts').select('media_type, media_paths').eq('user_id', userId);
   if(error) throw error;
-  const paths = (data || []).flatMap(r=> r.media_paths);
+  // 動画は表紙（cover.jpg）も一緒に消す
+  const paths = (data || []).flatMap(r=> r.media_type === 'video' ? [...r.media_paths, r.media_paths[0].replace(/[^/]+$/, 'cover.jpg')] : r.media_paths);
   if(!paths.length) return;
   const res = await client.storage.from(POST_BUCKET).remove(paths);
   if(res.error) throw res.error;
@@ -5030,6 +5123,7 @@ function renderProfileScreen(){
   updateNotifyBadges();
 
   renderProfileGrid();
+  backfillMyCovers(); // 自分の古い動画に表紙がなければ、裏で作る
 
   const totals = studyTotals();
   document.getElementById('profile-study-today').textContent = formatStudyTime(totals.today);

@@ -54,6 +54,13 @@
   ::-webkit-scrollbar{ display:none; }
 
   #app{ position:fixed; inset:0; overflow:hidden; }
+  /* iOS 26 のホーム画面アプリ（black-translucent＋viewport-fit=cover）では、画面の高さがステータスバーの分だけ
+     短く伝えられ、下に帯が残る不具合がある（WebKit bug 301108）。ホーム画面アプリのときだけ、足りない分を足す。
+     不具合のない環境では 100lvh（画面の高さ）を超えないので、何も変わらない */
+  @media (display-mode: standalone){
+    html{ min-height:min(100lvh, calc(100% + var(--safe-top))); }
+    #app{ bottom:auto; height:min(100lvh, calc(100% + var(--safe-top))); }
+  }
 
   /* ============================================================
      画面切り替え（home / search / ai / record / profile / notifications / create / onboarding）

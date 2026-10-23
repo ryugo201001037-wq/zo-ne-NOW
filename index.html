@@ -39,6 +39,9 @@
     --font-ui:'Inter', 'Zen Kaku Gothic New', sans-serif;
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
+    /* ボトムナビの下の余白。iPhoneのホームバーの余白（34px）をそのまま足すとナビが浮いて見えるので、
+       ホームバーと重ならない範囲で少し詰める（ホームバーのない端末は0） */
+    --safe-nav: max(0px, calc(var(--safe-bottom) - 16px));
   }
 
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -64,7 +67,7 @@
   /* フィードに出す動画がないとき（読み込み中・まだ投稿がない・読み込めない） */
   #feed-empty{
     position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
-    padding:0 32px calc(90px + var(--safe-bottom)); text-align:center; color:rgba(255,255,255,.75); pointer-events:none;
+    padding:0 32px calc(90px + var(--safe-nav)); text-align:center; color:rgba(255,255,255,.75); pointer-events:none;
   }
   #feed-empty[hidden]{ display:none; }
   #feed-empty button{ pointer-events:auto; padding:0 20px; }
@@ -86,7 +89,7 @@
   }
   .photo-page{ position:relative; flex:0 0 100%; height:100%; scroll-snap-align:start; scroll-snap-stop:always; }
   .photo-dots{
-    position:absolute; left:0; right:0; bottom:calc(var(--safe-bottom) + 78px); z-index:5;
+    position:absolute; left:0; right:0; bottom:calc(var(--safe-nav) + 78px); z-index:5;
     display:flex; justify-content:center; gap:6px; pointer-events:none;
   }
   .photo-dots span{ width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.4); transition:background .2s, width .2s; }
@@ -160,7 +163,7 @@
 
   /* ---- 右側アクションレール：アバター・いいね・コメント・保存・シェア・ミュート ---- */
   .action-rail{
-    position:absolute; right:12px; bottom:calc(var(--safe-bottom) + 108px); z-index:6;
+    position:absolute; right:12px; bottom:calc(var(--safe-nav) + 108px); z-index:6;
     display:flex; flex-direction:column; align-items:center; gap:16px;
   }
   .avatar-wrap{ position:relative; margin-bottom:2px; }
@@ -192,7 +195,7 @@
 
   /* ---- 下部キャプション：タグ・説明・音源 ---- */
   .caption-block{
-    position:absolute; left:16px; right:78px; bottom:calc(var(--safe-bottom) + 96px); z-index:4;
+    position:absolute; left:16px; right:78px; bottom:calc(var(--safe-nav) + 96px); z-index:4;
   }
   .caption-text{ font-size:15px; font-weight:500; line-height:1.5; margin:0 0 6px; text-shadow:0 1px 6px rgba(0,0,0,.4); }
   .caption-hashtags{ font-family:var(--font-ui); font-size:12px; color:rgba(255,255,255,.8); margin:0 0 4px; }
@@ -203,7 +206,7 @@
   ============================================================ */
   .bottom-nav{
     position:absolute; left:0; right:0; bottom:0; z-index:10;
-    padding:10px 20px calc(10px + var(--safe-bottom));
+    padding:10px 20px calc(10px + var(--safe-nav));
     display:flex; justify-content:space-around; align-items:center;
     background:linear-gradient(180deg, rgba(16,19,26,0) 0%, rgba(16,19,26,.55) 40%, rgba(16,19,26,.55) 100%);
   }
@@ -265,7 +268,7 @@
   ============================================================ */
   .ai-wrap{
     flex:1; min-height:0; display:flex; flex-direction:column;
-    padding:calc(var(--safe-top) + 18px) 16px calc(78px + var(--safe-bottom));
+    padding:calc(var(--safe-top) + 18px) 16px calc(78px + var(--safe-nav));
   }
   .ai-header{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:0 4px 10px; }
   .ai-status{ font-family:var(--font-ui); font-size:11.5px; color:rgba(255,255,255,.5); margin:4px 0 0; }
@@ -349,7 +352,7 @@
   ============================================================ */
   .record-wrap{
     flex:1; overflow-y:auto;
-    padding:calc(var(--safe-top) + 20px) 20px calc(96px + var(--safe-bottom));
+    padding:calc(var(--safe-top) + 20px) 20px calc(96px + var(--safe-nav));
   }
   .record-title{ font-size:20px; font-weight:700; margin:0 0 4px; }
   .record-sub{ font-family:var(--font-ui); font-size:12.5px; color:rgba(255,255,255,.55); margin:0 0 26px; line-height:1.6; }
@@ -472,7 +475,7 @@
 
   /* ---- シークバー（ドラッグで好きな場所へ）と再生速度 ---- */
   .seek-bar{
-    position:absolute; left:0; right:0; bottom:calc(var(--safe-bottom) + 62px); z-index:7;
+    position:absolute; left:0; right:0; bottom:calc(var(--safe-nav) + 62px); z-index:7;
     height:28px; padding:0 14px; display:flex; align-items:center; touch-action:none; cursor:pointer;
   }
   .seek-track{ position:relative; flex:1; height:3px; border-radius:99px; background:rgba(255,255,255,.25); transition:height .15s; }
@@ -484,7 +487,7 @@
   .short-slide.is-seeking .seek-track{ height:6px; }
   .short-slide.is-seeking .seek-thumb, .short-slide.is-paused .seek-thumb{ opacity:1; }
   .seek-time{
-    position:absolute; left:0; right:0; bottom:calc(var(--safe-bottom) + 108px); z-index:7; text-align:center; pointer-events:none;
+    position:absolute; left:0; right:0; bottom:calc(var(--safe-nav) + 108px); z-index:7; text-align:center; pointer-events:none;
     font-family:var(--font-ui); font-size:24px; font-weight:700; color:#fff; text-shadow:0 1px 8px rgba(0,0,0,.6);
     font-variant-numeric:tabular-nums; opacity:0; transition:opacity .15s;
   }
@@ -715,7 +718,7 @@
   ============================================================ */
   .post-form-wrap{
     flex:1; overflow-y:auto;
-    padding:calc(var(--safe-top) + 16px) 20px calc(96px + var(--safe-bottom));
+    padding:calc(var(--safe-top) + 16px) 20px calc(96px + var(--safe-nav));
   }
   .post-form-header{ display:flex; align-items:center; gap:12px; margin-bottom:20px; }
   .post-form-title{ font-size:18px; font-weight:700; margin:0; }
@@ -800,7 +803,7 @@
      トースト（簡易な一時通知）
   ============================================================ */
   .toast{
-    position:absolute; left:50%; bottom:calc(var(--safe-bottom) + 116px); z-index:50;
+    position:absolute; left:50%; bottom:calc(var(--safe-nav) + 116px); z-index:50;
     transform:translate(-50%,8px);
     background:rgba(0,0,0,.82); color:#fff; font-family:var(--font-ui); font-size:12.5px;
     padding:9px 16px; border-radius:99px; opacity:0; pointer-events:none;
@@ -813,7 +816,7 @@
   ============================================================ */
   #install-banner{
     position:absolute; left:14px; right:14px; z-index:20;
-    bottom:calc(78px + var(--safe-bottom));
+    bottom:calc(78px + var(--safe-nav));
     background:var(--white); color:var(--ink-text); border-radius:16px;
     padding:13px 14px; display:none; align-items:center; gap:12px;
     box-shadow:0 10px 30px rgba(0,0,0,.35);

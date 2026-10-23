@@ -205,10 +205,14 @@ const { check, state, report } = createChecker();
     const i = slides.indexOf(currentSlide);
     const hasSrc = s => { const v = s.querySelector('video'); return !!(v && v.getAttribute('src')); };
     const loaded = slides.filter(s => { const v = s.querySelector('video'); return v && v.dataset.loaded; }).length;
-    return { i, loaded, nearOk: [i - 1, i, i + 1, i + 2].every(k => !slides[k] || !slides[k].querySelector('video') || hasSrc(slides[k])), farReleased: slides.slice(0, Math.max(0, i - 2)).every(s => !hasSrc(s)) };
+    const preloadOf = k => { const v = slides[k] && slides[k].querySelector('video'); return v ? v.preload : null; };
+    return { i, loaded, nearOk: [i, i + 1].every(k => !slides[k] || !slides[k].querySelector('video') || hasSrc(slides[k])),
+      // 通り過ぎた動画は src ごと手放す。まだ来ていない先の動画は src があっても preload="none"（何も読まない）
+      farReleased: slides.slice(0, i).every(s => !hasSrc(s)) && slides.slice(i + 2).every(s => !hasSrc(s) || s.querySelector('video').preload === 'none'),
+      cur: preloadOf(i), next: preloadOf(i + 1) };
   });
-  check('次の動画を先読みしている', media.nearOk, JSON.stringify(media));
-  check('離れた動画は読み込みを手放す（何本見ても4本まで）', media.loaded <= 4 && media.farReleased, JSON.stringify(media));
+  check('次の動画を先読みしている（最初の部分だけ）', media.nearOk && media.cur === 'auto' && [null, 'metadata'].includes(media.next), JSON.stringify(media));
+  check('通り過ぎた動画・先の動画は読み込みを手放す（何本見ても2本まで）', media.loaded <= 2 && media.farReleased, JSON.stringify(media));
   await scrollFeed(3);
   check('戻ると読み込み直して再生する', await evalq(() => { const v = currentSlide.querySelector('video'); return currentSlide === document.querySelectorAll('#feed .short-slide')[3] && currentSlide.classList.contains('is-active') && (!v || !!v.getAttribute('src')); }));
   await scrollFeed(14);

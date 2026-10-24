@@ -498,14 +498,27 @@ function startFakeSupabase() {
   check('ほかの人の投稿・ファイルは残る', !!fake.posts.find(r => r.id === spost.id) && fake.files.has(spost.media_paths[0]));
 
   state.section = '古い動画の表紙';
-  // 表紙の仕組みができる前の投稿（表紙なし）：投稿した本人がプロフィールを開くと、裏で表紙を作る
+  // 表紙の仕組みができる前の投稿（表紙なし）：設定の「動画の表紙を作る」を押したときだけ作る。
+  // プロフィールを開いただけでは動画をダウンロードしない（前は開くたびに試して、配信量を大量に使っていた）
   const oldId = crypto.randomUUID();
   fake.files.set(`${uid}/${oldId}/0.webm`, { type: 'video/webm', body: require('fs').readFileSync(require('path').join(ASSETS, 'sample.webm')), owner: uid });
   fake.posts.push({ id: oldId, user_id: uid, creator: 'みなと', title: '表紙のない古い動画', kind: 'lesson', kind_other: '', subject: 'math', subject_other: '', grade: 'high1', grade_other: '',
     unit: '', hashtags: [], music_id: '', media_type: 'video', media_paths: [`${uid}/${oldId}/0.webm`], duration: 2, created_at: new Date().toISOString() });
-  await page.evaluate(() => { coverBackfillDone = false; return loadCloudPosts(); }); // 表紙づくりは1回の起動で1回なので、この確認のために戻す
-  await nav(page, 'home'); await nav(page, 'profile');
-  check('本人がプロフィールを開くと、古い動画の表紙を作る', await waitFor(() => fake.files.has(`${uid}/${oldId}/cover.jpg`), 15000));
+  await page.evaluate(() => {
+    window.__coverCaptures = 0;
+    const original = captureCover;
+    captureCover = (...args) => { window.__coverCaptures++; return original(...args); }; // 表紙づくり（動画のダウンロード）が何回動いたか数える
+    return loadCloudPosts();
+  });
+  for (let i = 0; i < 3; i++) { await nav(page, 'record'); await nav(page, 'profile'); }
+  await page.evaluate(() => loadCloudPosts()); // プロフィールを開いたまま、投稿を読み直しても
+  await page.waitForTimeout(1500);
+  check('プロフィールを何度開いても、表紙づくり（動画のダウンロード）は動かない',
+    (await page.evaluate(() => window.__coverCaptures)) === 0 && !fake.files.has(`${uid}/${oldId}/cover.jpg`));
+  await page.click('#profile-gear'); await page.waitForTimeout(200);
+  await page.click('#settings-make-covers');
+  check('設定のボタンで、古い動画の表紙を作る', await waitFor(() => fake.files.has(`${uid}/${oldId}/cover.jpg`), 15000));
+  await page.click('#settings-back'); await page.waitForTimeout(150);
   check('作った表紙が一覧のカードに出る', await waitFor(() => page.$eval(`.result-card[data-id="${oldId}"] .result-thumb`, el => el.style.background.includes('cover.jpg'))));
   check('表紙を作ったと伝える', (await toast(page)).includes('表紙'));
   await page.click('#profile-gear'); await page.waitForTimeout(200);

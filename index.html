@@ -2342,7 +2342,7 @@ function createSlide(v){
   slide.dataset.music = track ? track.id : '';
   slide.innerHTML = `
     <div class="zone-meter"><div class="zone-meter-fill"></div></div>
-    ${isImage ? photoMediaHtml(v) : `<video src="${v.short}" data-src="${v.short}"${coverUrlOf(v) ? ` poster="${escapeHtml(coverUrlOf(v))}"` : ''} muted loop playsinline preload="none"></video>
+    ${isImage ? photoMediaHtml(v) : `<video src="${v.short}" data-src="${v.short}"${coverUrlOf(v) ? ` poster="${escapeHtml(coverUrlOf(v))}"` : ''} muted playsinline preload="none"></video>
     <div class="video-status"><div class="spinner" aria-hidden="true"></div><p class="video-status-text"></p><button class="video-retry">もう一度読み込む</button></div>
     <div class="seek-bar" role="slider" aria-label="再生位置" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="seek-track"><div class="seek-fill"></div><div class="seek-thumb"></div></div></div>
     <div class="seek-time" aria-hidden="true"></div>
@@ -2448,7 +2448,23 @@ function attachSlideEvents(slide, v){
     });
   }
 
-  if(video) attachVideoControls(slide, video);
+  if(video){
+    attachVideoControls(slide, video);
+    // くり返し再生は MAX_PLAYS 回まで。そのあとは一時停止にして、▶（タップ）でまた最初から。
+    // 開いたまま置きっぱなしでも、同じ動画を何度もダウンロードし続けない（iPhoneはくり返すたびに読み直すことがある）
+    video.addEventListener('ended', ()=>{
+      if(!slide.classList.contains('is-active') || slide.classList.contains('is-seeking') || slide.classList.contains('is-paused')) return;
+      const plays = Number(slide.dataset.plays) || 1;
+      if(plays < MAX_PLAYS){
+        slide.dataset.plays = String(plays + 1);
+        video.currentTime = 0;
+        video.play().catch(()=>{});
+      } else {
+        slide.dataset.plays = '1'; // 再開したら、また MAX_PLAYS 回まで
+        togglePause(slide);
+      }
+    });
+  }
 
   // 画面をタップで一時停止／再生、すばやく2回タップでいいね（ボタン類・シークバーのタップは除く）
   // 2回目のタップを待つぶん、一時停止は少しだけ遅れる。投稿前のプレビューは、いいねできないのですぐ止める
@@ -2715,6 +2731,7 @@ function activateSlide(slide){
   const onComplete = ()=>{ if(currentSlide === slide) recordWatch(slide.dataset.id); };
   if(video){
     video.currentTime = 0;
+    slide.dataset.plays = '1';
     applyPlaybackRate(slide);
     video.play().catch(()=>{});
     // すぐ再生できないときだけ「読み込み中」を出す（一瞬だけ出てチラつかないよう少し待つ）
@@ -2760,7 +2777,7 @@ document.addEventListener('visibilitychange', ()=>{
   }
 });
 
-// フィードの動画はloop再生でendedイベントが発火しないため、動画・写真ともに
+// 動画はくり返し再生の途中でも見終わりが分かるよう、動画・写真ともに
 // メーターと同じ秒数のタイマーで「最後まで見た」を判定する。一時停止中はメーターも止める
 const meterStates = new WeakMap(); // スライド → { duration, elapsed, startedAt, onComplete }
 function runZoneMeter(slide, meter, durationSeconds, onComplete){
@@ -2888,6 +2905,8 @@ function rescaleZoneMeter(slide){
   st.startedAt = Date.now();
   if(running) animateMeter(slide, ratio, st.duration - st.elapsed);
 }
+
+const MAX_PLAYS = 3; // 1本の動画を続けてくり返す回数の上限（配信量の節約）
 
 // すばやく2回タップでいいね（もう押してあるときは、ハートを出すだけで取り消さない）
 const DOUBLE_TAP_MS = 260;
@@ -4588,7 +4607,7 @@ function captureCover(src, crossOrigin){
   });
 }
 
-// 自分の古い動画で表紙がないものは、プロフィールを開いたときに裏で作る（表紙を置けるのは投稿した本人だけのため）
+// 自分の古い動画で表紙がないものを作る（表紙を置けるのは投稿した本人だけのため）。設定のボタンから呼ぶ
 // 作っている間は進み具合を、終わったら結果（作れなかったときはその理由）を出す。manual＝設定のボタンから
 let coverBackfillDone = false, coverBackfillRunning = false;
 async function backfillMyCovers(manual){
@@ -5368,7 +5387,9 @@ function renderProfileScreen(){
   updateNotifyBadges();
 
   renderProfileGrid();
-  backfillMyCovers(); // 自分の古い動画に表紙がなければ、裏で作る
+  // 古い動画の表紙づくりは、設定の「動画の表紙を作る」を押したときだけ（自動ではやらない）。
+  // 以前はプロフィールを開くたびに裏で試していて、作れない動画があると開くたびに動画をダウンロードし直し、
+  // 配信量（Supabaseの egress）を大量に使っていた
 
   const totals = studyTotals();
   document.getElementById('profile-study-today').textContent = formatStudyTime(totals.today);

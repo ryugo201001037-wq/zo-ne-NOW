@@ -12,10 +12,17 @@ id = "REPLACE_WITH_KV_NAMESPACE_ID"
 [vars]
 # アプリを公開するURL（カンマ区切りで複数可）。ここに無いサイトからは呼べない
 # capacitor://localhost はiPhoneアプリ（Capacitor）の中から呼ぶときのもの
-ALLOWED_ORIGINS = "capacitor://localhost, http://localhost:8139"
+# https://ryugo201001037-wq.github.io はウェブ版（GitHub Pages の /app/）
+ALLOWED_ORIGINS = "capacitor://localhost, https://ryugo201001037-wq.github.io, http://localhost:8139"
 # 1端末あたり1日の質問回数
 DAILY_LIMIT = "20"
-# 使うモデル
+# 使うAI："sakura"＝さくらのAI Engine（さくらインターネット）／"anthropic"＝Claude
+AI_PROVIDER = "sakura"
+# さくらで使うモデル（さくらのコントロールパネルのモデル一覧にある名前）
+SAKURA_MODEL = "gpt-oss-120b"
+# Claude で使うモデル（AI_PROVIDER = "anthropic" のとき）
 MODEL = "claude-haiku-5-5"
 
-# APIキーはここに書かない。`npx wrangler secret put ANTHROPIC_API_KEY` で登録する
+# APIキーはここに書かない（GitHubやチャットにも貼らない）。次のコマンドで、サーバーの秘密の設定に登録する
+#   さくら：`npx wrangler secret put SAKURA_API_KEY`
+#   Claude：`npx wrangler secret put ANTHROPIC_API_KEY`

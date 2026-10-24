@@ -182,6 +182,20 @@ const { check, state, report } = createChecker();
   await page.keyboard.press(' ');
   check('もう一度スペースで再生', !(await page.$eval(s0, el => el.classList.contains('is-paused'))));
 
+  // くり返し再生は3回まで（開いたまま置きっぱなしでも、ダウンロードし続けない）
+  const nearEnd = plays => page.$eval(s0, (el, p) => { el.dataset.plays = String(p); const v = el.querySelector('video'); v.currentTime = Math.max(0, v.duration - 0.15); return v.play().catch(() => {}); }, plays);
+  await nearEnd(1);
+  await page.waitForTimeout(600);
+  const again = await page.$eval(s0, el => ({ plays: el.dataset.plays, paused: el.classList.contains('is-paused'), t: el.querySelector('video').currentTime }));
+  check('見終わったら、最初からくり返す（2回目）', again.plays === '2' && !again.paused && again.t < 1, JSON.stringify(again));
+  await nearEnd(3);
+  await page.waitForTimeout(600);
+  const stopped = await page.$eval(s0, el => ({ plays: el.dataset.plays, paused: el.classList.contains('is-paused'), videoPaused: el.querySelector('video').paused }));
+  check('3回見たら一時停止になる', stopped.paused && stopped.videoPaused && stopped.plays === '1', JSON.stringify(stopped));
+  await page.mouse.click(160, 420);
+  await page.waitForTimeout(400);
+  check('タップでまた再生できる', await page.$eval(s0, el => !el.classList.contains('is-paused') && !el.querySelector('video').paused));
+
   const creator = await page.$eval(`${s0} [data-role="follow"]`, b => b.dataset.followKey).catch(() => null);
   if (creator) {
     await page.click(`${s0} [data-role="follow"]`);

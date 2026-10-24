@@ -124,13 +124,17 @@ TestFlightに出す手順は [docs/TESTFLIGHT.md](docs/TESTFLIGHT.md)。
 
 ## AIサーバー（server/）
 
-AIコーチの「問題の解説」は、本番ではこのサーバー経由でClaude（Haiku）に聞きます。
+AIコーチの「問題の解説」は、本番ではこのサーバー経由でAIに聞きます。使うAIは `wrangler.toml` の `AI_PROVIDER` で選びます。
+- `sakura`（今の設定）… [さくらのAI Engine](https://ai.sakura.ad.jp/sakura-ai/ai-engine/)（さくらインターネット）。データが国内で完結し、チャットは月3,000回まで無料。モデルは `SAKURA_MODEL`（`gpt-oss-120b`）
+- `anthropic` … Claude（`MODEL`）
+
 claude.aiのプレビューで開いたときは、見ている人のClaudeの利用枠を使うので、サーバーは使いません。
 
 - APIキーはサーバーの秘密の設定にだけ置き、アプリには入れない
-- 1端末あたり1日20回まで（`wrangler.toml` の `DAILY_LIMIT`）。日本時間0時にリセット
+- 1端末あたり1日20回まで（`wrangler.toml` の `DAILY_LIMIT`）。日本時間0時にリセット。AIが返事を始める前に失敗したときは数えない（さくらのとき）
 - 回答は少しずつ返す（アプリの「停止」でAIへの問い合わせも止まる）
-- 注意：端末IDはブラウザのデータを消すとリセットできる。ログイン機能ができたらアカウント単位に変える。最終的な歯止めとして、Anthropic Consoleで月の利用額の上限を必ず設定する
+- 写真：さくらで写真を付けて断られたら、アプリには `images_unavailable` を返す。アプリは写真ボタンを隠して、文字で聞くよう案内する
+- 注意：端末IDはブラウザのデータを消すとリセットできる。ログイン機能ができたらアカウント単位に変える。最終的な歯止めとして、AIの会社の管理画面で利用額の上限を必ず設定する（さくらは「無償プラン」なら無料枠を超えても請求されず、遅くなるだけ）
 
 ### 公開する手順
 
@@ -138,9 +142,13 @@ claude.aiのプレビューで開いたときは、見ている人のClaudeの�
 2. `cd server && npm install`
 3. `npx wrangler login`（ブラウザでCloudflareにログイン）
 4. `npx wrangler kv namespace create USAGE` → 表示された `id` を `wrangler.toml` の `REPLACE_WITH_KV_NAMESPACE_ID` に書く
-5. [Anthropic Console](https://console.anthropic.com/) でAPIキーを作り、**月の利用額の上限を設定**する
-6. `npx wrangler secret put ANTHROPIC_API_KEY` → キーを貼り付ける（キーはファイルやチャットに書かない）
-7. `wrangler.toml` の `ALLOWED_ORIGINS` を、アプリを公開するURL（例：`https://zonenow.example.com`）にする
+5. AIのAPIキーを作る
+   - さくら：さくらのクラウドのコントロールパネルで「さくらのAI Engine」を有効にし、APIキー（アカウントトークン）を作る。プランは「基盤モデル無償プラン」から始める
+   - Claude：[Anthropic Console](https://console.anthropic.com/) でAPIキーを作り、**月の利用額の上限を設定**する
+6. キーをサーバーの秘密の設定に入れる（キーはファイル・GitHub・チャットに書かない）
+   - さくら：`npx wrangler secret put SAKURA_API_KEY` → キーを貼り付ける
+   - Claude：`npx wrangler secret put ANTHROPIC_API_KEY`
+7. `wrangler.toml` の `ALLOWED_ORIGINS` に、アプリを公開するURLが入っているか確かめる（ウェブ版は `https://ryugo201001037-wq.github.io`）
 8. `npx wrangler deploy` → 表示されたURL（`https://zonenow-ai.xxxx.workers.dev`）を、`index.html` の `AI_SERVER_URL_DEFAULT` に書く
 
 無料プランの回数を数える保存場所（KV）は、書き込みが1日1,000回までです（全員の質問の合計が1日約1,000問まで）。超えそうなら有料プラン（月5ドル）にします。

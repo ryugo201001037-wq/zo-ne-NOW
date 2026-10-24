@@ -1,9 +1,11 @@
 // ゾーンNOW AIサーバーの本体（Cloudflare Workers）
-// アプリから問題（文字・写真）を受け取り、Claude に解説させて、できた分から少しずつ返す。
-// ・APIキーはサーバーの秘密の設定（ANTHROPIC_API_KEY）にだけ置き、アプリには渡さない
+// アプリから問題（文字・写真）を受け取り、AIに解説させて、できた分から少しずつ返す。
+// AIは設定 AI_PROVIDER で選ぶ：'sakura'＝さくらのAI Engine（sakura.js）／それ以外＝Claude（Anthropic）
+// ・APIキーはサーバーの秘密の設定（SAKURA_API_KEY／ANTHROPIC_API_KEY）にだけ置き、アプリには渡さない
 // ・使いすぎ防止に、端末ごとに1日の質問回数を数える（日本時間の0時にリセット）
 import Anthropic from '@anthropic-ai/sdk';
 import { buildSystemPrompt } from './prompt.js';
+import { startSakura, readSakuraStream } from './sakura.js';
 
 const DEFAULT_MODEL = 'claude-haiku-5-5';
 const DEFAULT_DAILY_LIMIT = 20;
@@ -55,7 +57,8 @@ export function parseAskBody(body) {
 }
 
 // makeClient はテストで差し替えるための引数
-export function createHandler({ makeClient = env => new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }), now = () => Date.now() } = {}) {
+// makeClient・fetchImpl はテストで差し替えるための引数
+export function createHandler({ makeClient = env => new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }), fetchImpl = (...a) => fetch(...a), now = () => Date.now() } = {}) {
   return async function handle(request, env, ctx) {
     // ---- どのサイトから呼べるか（CORS）：自分のアプリのURLだけ許可 ----
     const origin = request.headers.get('Origin') || '';
@@ -93,8 +96,11 @@ export function createHandler({ makeClient = env => new Anthropic({ apiKey: env.
     const countKey = `count:${jstDateKey(now())}:${deviceId}`;
     const used = Number(await env.USAGE.get(countKey)) || 0;
     if (used >= limit) return json(429, { error: 'daily_limit', limit }, { ...cors, 'X-Remaining': '0' });
-    await env.USAGE.put(countKey, String(used + 1), { expirationTtl: COUNT_TTL_SECONDS });
+    const countUse = () => env.USAGE.put(countKey, String(used + 1), { expirationTtl: COUNT_TTL_SECONDS });
     const remaining = limit - used - 1;
+
+    if (env.AI_PROVIDER === 'sakura') return askSakura({ env, ask, cors, ctx, countUse, remaining, fetchImpl });
+    await countUse();
 
     // ---- AIに聞いて、できた分から返す（1行に1つのJSON） ----
     const client = makeClient(env);
@@ -131,8 +137,43 @@ export function createHandler({ makeClient = env => new Anthropic({ apiKey: env.
 
     // 回答を最後まで送り切るまで、Workerを止めないようにする
     if (ctx) ctx.waitUntil(finish);
-    return new Response(readable, {
-      headers: { ...cors, 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store', 'X-Remaining': String(remaining) },
-    });
+    return streamResponse(readable, cors, remaining);
   };
+}
+
+function streamResponse(readable, cors, remaining) {
+  return new Response(readable, {
+    headers: { ...cors, 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store', 'X-Remaining': String(remaining) },
+  });
+}
+
+// さくらのAI Engine で答える。返事が始まる前に失敗したら回数は数えず、エラーをそのまま返す
+// （写真を読めないモデルなら images_unavailable：アプリは写真ボタンを隠して、文字で聞くよう案内する）
+async function askSakura({ env, ask, cors, ctx, countUse, remaining, fetchImpl }) {
+  const controller = new AbortController();
+  const hasImage = Array.isArray(ask.turns.at(-1).content);
+  const started = await startSakura({ env, system: buildSystemPrompt(ask), turns: ask.turns, hasImage, maxTokens: MAX_TOKENS, signal: controller.signal, fetchImpl });
+  if (started.error) return json(started.error === 'busy' ? 503 : started.error === 'images_unavailable' ? 400 : 502, { error: started.error }, cors);
+  await countUse();
+
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+  const encoder = new TextEncoder();
+  const send = event => writer.write(encoder.encode(JSON.stringify(event) + '\n'));
+  const finish = (async () => {
+    try {
+      // アプリ側が接続を切ったら（停止ボタンなど）、さくらへの問い合わせも止める
+      const result = await readSakuraStream(started.body, text => send({ type: 'delta', text }).catch(() => controller.abort()));
+      if (controller.signal.aborted) return;
+      if (result.refused) await send({ type: 'error', code: 'refused' });
+      else await send({ type: 'done', truncated: result.truncated });
+    } catch (err) {
+      if (!controller.signal.aborted) console.error('sakura stream error', err && err.message);
+      await send({ type: 'error', code: controller.signal.aborted ? 'cancelled' : 'upstream_error' }).catch(() => {});
+    } finally {
+      await writer.close().catch(() => {});
+    }
+  })();
+  if (ctx) ctx.waitUntil(finish);
+  return streamResponse(readable, cors, remaining);
 }

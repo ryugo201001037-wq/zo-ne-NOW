@@ -384,17 +384,33 @@ function startFakeSupabase() {
   await titles[0].fill('まとめて投稿その1');
   await titles[1].fill('まとめて投稿その2');
   await page.click('#bulk-submit');
-  check('学年を選んでいないと伝える', (await toast(page)).includes('ターゲット学年'));
-  await page.click('#bulk-grade-chips .chip[data-id="high1"]');
-  await page.click('#bulk-subject-chips .chip[data-id="math"]');
+  check('学年が選ばれていない動画があると伝える', (await toast(page)).includes('学年が選ばれていない動画があります（2本）'), await toast(page));
+  // 全部まとめて変える → 2本目だけ個別に変える
+  await page.selectOption('#bulk-all-fields [data-all="grade"]', 'high1');
+  await page.selectOption('#bulk-all-fields [data-all="subject"]', 'math');
+  const rowSel = (n, field) => `#bulk-list .bulk-row:nth-child(${n}) [data-field="${field}"]`;
+  check('「全部まとめて変える」で、全部の動画に入る', (await page.$eval(rowSel(1, 'grade'), el => el.value)) === 'high1' && (await page.$eval(rowSel(2, 'subject'), el => el.value)) === 'math');
+  await page.selectOption(rowSel(2, 'kind'), 'problem');
+  await page.selectOption(rowSel(2, 'grade'), 'junior3');
+  await page.selectOption(rowSel(1, 'kind'), 'other');
+  check('「その他」を選ぶと、その動画に入力欄が出る', await page.isVisible('#bulk-list .bulk-row:nth-child(1) [data-other="kind"]'));
+  check('個別に変えても、ほかの動画は変わらない', (await page.$eval(rowSel(1, 'grade'), el => el.value)) === 'high1' && (await page.$eval(rowSel(2, 'grade'), el => el.value)) === 'junior3');
   await page.fill('#bulk-tags', '#GPTチャンネル 数学');
+  await page.click('#bulk-submit');
+  check('「その他」が空なら伝える', (await toast(page)).includes('「その他」の内容が入っていない動画があります（1本）'), await toast(page));
+  await page.fill('#bulk-list .bulk-row:nth-child(1) [data-other="kind"]', '体験談');
+  check('タイトルは入れたまま残っている', (await page.$eval('#bulk-list .bulk-row:nth-child(1) [data-title]', el => el.value)) === 'まとめて投稿その1');
   await page.click('#bulk-submit');
   check('何本投稿するか確かめる', (await page.textContent('#confirm-message')) === '2本の動画を投稿しますか？');
   await page.click('#confirm-ok');
-  check('2本とも投稿される（タイトルは1本ずつ、学年・教科・タグは共通）', await waitFor(() => ['まとめて投稿その1', 'まとめて投稿その2'].every(t => {
-    const r = fake.posts.find(x => x.title === t);
-    return r && r.user_id === uid && r.grade === 'high1' && r.subject === 'math' && JSON.stringify(r.hashtags) === '["GPTチャンネル","数学"]' && fake.files.has(r.media_paths[0]);
-  }), 15000), JSON.stringify(fake.posts.filter(x => x.title.startsWith('まとめて')).map(x => [x.title, x.grade, x.hashtags])));
+  const posted = t => fake.posts.find(x => x.title === t);
+  check('2本とも投稿される（種類・学年・教科は1本ずつ、タグは共通）', await waitFor(() => {
+    const a = posted('まとめて投稿その1'), b = posted('まとめて投稿その2');
+    return a && b && a.user_id === uid && b.user_id === uid
+      && a.kind === 'other' && a.kind_other === '体験談' && a.grade === 'high1' && a.subject === 'math'
+      && b.kind === 'problem' && b.grade === 'junior3' && b.subject === 'math'
+      && [a, b].every(r => JSON.stringify(r.hashtags) === '["GPTチャンネル","数学"]' && fake.files.has(r.media_paths[0]));
+  }, 15000), JSON.stringify(fake.posts.filter(x => x.title.startsWith('まとめて')).map(x => [x.title, x.kind, x.kind_other, x.grade, x.subject, x.hashtags])));
   check('終わったら何本投稿したか伝える', await waitFor(async () => (await toast(page)).includes('2本を投稿しました')), await toast(page));
   check('投稿した動画は「投稿しました」になる', (await page.$$eval('#bulk-list .bulk-row.done', rs => rs.length)) === 2);
   check('まとめて投稿でも表紙を作る', await waitFor(() => fake.posts.filter(x => x.title.startsWith('まとめて投稿その')).every(x => fake.files.has(coverOf(x)))));
@@ -404,6 +420,7 @@ function startFakeSupabase() {
   await page.setInputFiles('#bulk-file-input', [vid('一括3.webm')]);
   await waitFor(async () => (await page.$$eval('#bulk-list .bulk-row.ready', rs => rs.length)) === 1);
   check('新しく選ぶと、投稿し終わった分は一覧から外れる', (await page.$$eval('#bulk-list .bulk-row', rs => rs.length)) === 2); // 一括3と、読めない動画
+  check('あとから選んだ動画にも、まとめて選んだ学年が入っている', (await page.$eval('#bulk-list .bulk-row.ready [data-field="grade"]', el => el.value)) === 'high1');
   await page.fill('#bulk-list [data-title]', 'まとめて投稿その3');
   await page.click('#bulk-submit'); await page.click('#confirm-ok');
   check('送れなかった動画は「失敗」と理由を出す', await waitFor(async () => (await page.$$eval('#bulk-list .bulk-row.failed', rs => rs.length)) === 1), await page.textContent('#bulk-list'));

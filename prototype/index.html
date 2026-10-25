@@ -49,7 +49,17 @@ const VIDEOS = [
   { url: "https://www.youtube.com/shorts/gepsDegr244", title: "【検証】英単語を書きまくったら覚えられるのか" },
   { url: "https://www.youtube.com/shorts/HAodjQWCkZA", title: "高校数学【数1】各分野・単元の優先度" },
   { url: "https://www.youtube.com/shorts/T2f4dV83deY", title: "1分スタディ 古文単語「見る」" },
+  { url: "https://www.youtube.com/shorts/hMG5g43SKU4", title: "【東大生の学び方】受かるかどうかは姿勢で分かる" },
+  { url: "https://www.youtube.com/shorts/D2dl2qDain4", title: "estimate 覚え方" },
+  { url: "https://www.youtube.com/shorts/sXN496gWxrc", title: "【東大式】カフェインはこの時間は摂らないで" },
+  { url: "https://www.youtube.com/shorts/H_XP7qbhevw", title: "単語帳をしていると場所で覚えてしまう" },
+  { url: "https://www.youtube.com/shorts/THSPBEptLJU", title: "青チャートって一日何時間やったら終わりますか？" },
+  { url: "https://www.youtube.com/shorts/0GkFd9AQgHY", title: "recognize 覚え方" },
+  { url: "https://www.youtube.com/shorts/O8EIaKmn9uU", title: "共テ対策が間に合ってない科目が多すぎて焦ってます" },
 ];
+
+// この本数を見終わったところで、途中の「勉強を始めよう」カードを出す（最後にも出す）
+const NUDGE_AFTER = 8;
 
 const feed = document.getElementById('feed');
 let soundOn = false;
@@ -111,15 +121,31 @@ const observer = new IntersectionObserver(entries => {
   for (const e of entries) e.isIntersecting ? play(e.target) : stop(e.target);
 }, { threshold: 0.6 });
 
+// 「勉強を始めよう」と促すカード
+function makeNudge(title, lead, hint) {
+  const card = document.createElement('section');
+  card.className = 'card';
+  card.innerHTML = `<h1>${title}</h1><p class="lead">${lead}</p>`;
+  if (hint) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.textContent = hint;
+    card.appendChild(p);
+  }
+  return card;
+}
+
 VIDEOS.forEach((v, i) => {
-  const card = makeCard(v, i);
-  feed.appendChild(card);
+  feed.appendChild(makeCard(v, i));
+  if (i + 1 === NUDGE_AFTER && i + 1 < VIDEOS.length) {
+    const nudge = makeNudge('ここで一回、', 'スマホを置いて、勉強を始めよう。', '続きを見るなら ↑ 上にスワイプ');
+    nudge.id = 'nudge';
+    feed.appendChild(nudge);
+  }
 });
 
-const end = document.createElement('section');
-end.className = 'card';
+const end = makeNudge('ここまで。', 'スマホを置いて、勉強しよう。');
 end.id = 'end';
-end.innerHTML = '<h1>ここまで。</h1><p class="lead">スマホを置いて、勉強しよう。</p>';
 feed.appendChild(end);
 
 document.getElementById('startBtn').addEventListener('click', () => {

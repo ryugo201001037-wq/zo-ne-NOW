@@ -367,6 +367,54 @@ function startFakeSupabase() {
   await page.click('#preview-post'); await page.click('#confirm-ok');
   check('電波が戻れば、もう一度押して投稿できる', await waitFor(() => fake.posts.some(r => r.title === '送れない投稿'), 6000));
 
+  state.section = 'まとめて投稿';
+  const vid = name => ({ name, mimeType: 'video/webm', buffer: sampleBytes });
+  await nav(page, 'create');
+  check('投稿画面に「まとめて投稿」の入口がある', await page.isVisible('#bulk-open'));
+  await page.click('#bulk-open'); await page.waitForTimeout(200);
+  check('まとめて投稿の画面が開く', (await active(page)) === 'bulk-screen');
+  await page.setInputFiles('#bulk-file-input', [vid('一括1.webm'), vid('一括2.webm'), { name: 'broken.mp4', mimeType: 'video/mp4', buffer: require('fs').readFileSync(require('path').join(ASSETS, 'broken.mp4')) }]);
+  check('選んだ動画が一覧に並び、読めない動画は投稿できないと出る', await waitFor(async () => {
+    const rows = await page.$$eval('#bulk-list .bulk-row', rs => rs.map(r => r.className));
+    return rows.length === 3 && rows.filter(c => c.includes('ready')).length === 2 && rows.filter(c => c.includes('invalid')).length === 1;
+  }), JSON.stringify(await page.$$eval('#bulk-list .bulk-row', rs => rs.map(r => r.className + ' ' + r.textContent.trim().slice(0, 40)))));
+  await page.click('#bulk-submit');
+  check('タイトルが空なら、何本空いているか伝える', (await toast(page)).includes('タイトルが入っていない動画があります（2本）'), await toast(page));
+  const titles = await page.$$('#bulk-list [data-title]');
+  await titles[0].fill('まとめて投稿その1');
+  await titles[1].fill('まとめて投稿その2');
+  await page.click('#bulk-submit');
+  check('学年を選んでいないと伝える', (await toast(page)).includes('ターゲット学年'));
+  await page.click('#bulk-grade-chips .chip[data-id="high1"]');
+  await page.click('#bulk-subject-chips .chip[data-id="math"]');
+  await page.fill('#bulk-tags', '#GPTチャンネル 数学');
+  await page.click('#bulk-submit');
+  check('何本投稿するか確かめる', (await page.textContent('#confirm-message')) === '2本の動画を投稿しますか？');
+  await page.click('#confirm-ok');
+  check('2本とも投稿される（タイトルは1本ずつ、学年・教科・タグは共通）', await waitFor(() => ['まとめて投稿その1', 'まとめて投稿その2'].every(t => {
+    const r = fake.posts.find(x => x.title === t);
+    return r && r.user_id === uid && r.grade === 'high1' && r.subject === 'math' && JSON.stringify(r.hashtags) === '["GPTチャンネル","数学"]' && fake.files.has(r.media_paths[0]);
+  }), 15000), JSON.stringify(fake.posts.filter(x => x.title.startsWith('まとめて')).map(x => [x.title, x.grade, x.hashtags])));
+  check('終わったら何本投稿したか伝える', await waitFor(async () => (await toast(page)).includes('2本を投稿しました')), await toast(page));
+  check('投稿した動画は「投稿しました」になる', (await page.$$eval('#bulk-list .bulk-row.done', rs => rs.length)) === 2);
+  check('まとめて投稿でも表紙を作る', await waitFor(() => fake.posts.filter(x => x.title.startsWith('まとめて投稿その')).every(x => fake.files.has(coverOf(x)))));
+  check('投稿した動画はアプリのフィードの候補に入る', await page.evaluate(() => VIDEOS.filter(v => v.cloud && v.title.startsWith('まとめて投稿その') && v.short.includes('/storage/v1/object/public/posts/')).length === 2));
+  // 送れなかった動画だけ、もう一度押すと送り直す
+  fake.failUpload = true;
+  await page.setInputFiles('#bulk-file-input', [vid('一括3.webm')]);
+  await waitFor(async () => (await page.$$eval('#bulk-list .bulk-row.ready', rs => rs.length)) === 1);
+  check('新しく選ぶと、投稿し終わった分は一覧から外れる', (await page.$$eval('#bulk-list .bulk-row', rs => rs.length)) === 2); // 一括3と、読めない動画
+  await page.fill('#bulk-list [data-title]', 'まとめて投稿その3');
+  await page.click('#bulk-submit'); await page.click('#confirm-ok');
+  check('送れなかった動画は「失敗」と理由を出す', await waitFor(async () => (await page.$$eval('#bulk-list .bulk-row.failed', rs => rs.length)) === 1), await page.textContent('#bulk-list'));
+  check('送れなかった本数を伝える', (await toast(page)).includes('送れなかった動画が1本'), await toast(page));
+  fake.failUpload = false;
+  await page.click('#bulk-submit'); await page.click('#confirm-ok');
+  check('もう一度押すと、送れなかった動画だけ送り直す', await waitFor(() => fake.posts.filter(x => x.title === 'まとめて投稿その3').length === 1, 10000)
+    && fake.posts.filter(x => x.title === 'まとめて投稿その1').length === 1);
+  await page.click('#bulk-back'); await page.waitForTimeout(150);
+  check('戻ると投稿画面', (await active(page)) === 'create-screen');
+
   state.section = 'ほかの人のフィード';
   const usersBeforeOther = new Set(fake.users.keys());
   const otherUid = () => [...fake.users.keys()].find(id => !usersBeforeOther.has(id));
@@ -375,7 +423,7 @@ function startFakeSupabase() {
   await other.page.click('#onboarding-grade-chips .chip[data-id="high1"]');
   await other.page.click('#onboarding-submit');
   const op = other.page;
-  check('ほかの人にもみんなの投稿が届く', await waitFor(() => op.evaluate(() => VIDEOS.filter(v => v.cloud).length === 4)));
+  check('ほかの人にもみんなの投稿が届く', await waitFor(() => op.evaluate(() => VIDEOS.filter(v => v.cloud).length === 7))); // ふつうの投稿4＋まとめて投稿3
   check('共有リンクの投稿が先頭に出る', await waitFor(() => op.$eval('#feed .short-slide:first-child', el => el.dataset.id).then(id => id === vpost.id)));
   const src = await op.$eval('#feed .short-slide:first-child video', el => el.dataset.src);
   check('フィードでは、読み込み中に表紙を出す', (await op.$eval('#feed .short-slide:first-child video', el => el.getAttribute('poster'))) === `${fake.url}/storage/v1/object/public/posts/${coverOf(vpost)}`);
@@ -491,7 +539,7 @@ function startFakeSupabase() {
 
   state.section = '自分の投稿を消す';
   await nav(page, 'profile');
-  check('プロフィールに自分の投稿（3件）', (await page.textContent('#profile-posts-count')) === '3');
+  check('プロフィールに自分の投稿（6件：ふつう3＋まとめて3）', (await page.textContent('#profile-posts-count')) === '6');
   await page.click(`[data-delete-post="${vpost.id}"]`); await page.click('#confirm-ok');
   check('消すとサーバーの投稿もファイルも表紙も消える', await waitFor(() => !fake.posts.some(r => r.id === vpost.id) && !fake.files.has(vpost.media_paths[0]) && !fake.files.has(coverOf(vpost))));
 

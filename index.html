@@ -799,6 +799,25 @@
 
   .post-note{ font-family:var(--font-ui); font-size:11.5px; color:rgba(255,255,255,.45); line-height:1.6; margin:2px 0 22px; }
 
+  /* まとめて投稿 */
+  .bulk-open{ width:100%; margin:0 0 18px; }
+  .bulk-open[hidden]{ display:none; }
+  .bulk-wrap{ padding-bottom:calc(32px + var(--safe-bottom)); }
+  .bulk-pick{ width:100%; margin-bottom:14px; cursor:pointer; }
+  .bulk-list{ display:flex; flex-direction:column; gap:10px; margin-bottom:22px; }
+  .bulk-list:empty{ display:none; }
+  .bulk-row{ padding:12px; border-radius:14px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); }
+  .bulk-row.done{ border-color:rgba(51,214,166,.5); }
+  .bulk-row.failed, .bulk-row.invalid{ border-color:rgba(255,90,54,.55); }
+  .bulk-row-head{ display:flex; align-items:center; gap:8px; margin-bottom:8px; font-family:var(--font-ui); font-size:12px; }
+  .bulk-name{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:rgba(255,255,255,.75); }
+  .bulk-meta{ flex:0 0 auto; color:rgba(255,255,255,.45); font-variant-numeric:tabular-nums; }
+  .bulk-remove{ flex:0 0 auto; width:40px; height:40px; margin:-10px -8px -10px 0; color:rgba(255,255,255,.6); font-size:18px; }
+  .bulk-status{ margin:8px 0 0; font-family:var(--font-ui); font-size:12px; color:rgba(255,255,255,.6); }
+  .bulk-status:empty{ display:none; }
+  .bulk-row.done .bulk-status{ color:var(--mint); }
+  .bulk-row.failed .bulk-status, .bulk-row.invalid .bulk-status{ color:var(--ember-soft); }
+
   .post-submit{
     width:100%; padding:14px; border-radius:14px; text-align:center;
     background:linear-gradient(135deg, var(--cta-from), var(--cta-to)); color:#fff;
@@ -1412,6 +1431,7 @@
         <button class="back-btn" id="post-back">←</button>
         <h1 class="post-form-title">動画・写真を投稿</h1>
       </div>
+      <button class="tool-btn bulk-open" id="bulk-open" hidden>動画をまとめて投稿する（20本ずつ）</button>
 
       <label class="post-upload" id="post-upload-label">
         <input type="file" id="post-file-input" accept="video/*,image/*" multiple hidden />
@@ -1473,6 +1493,44 @@
       <button class="post-submit" id="post-next">次へ</button>
     </div>
     <div class="bottom-nav solid-dark" data-active-nav="create"></div>
+  </section>
+
+  <!-- ============ まとめて投稿（動画を何本も。投稿画面から開く） ============ -->
+  <section id="bulk-screen" class="screen dark-screen">
+    <div class="post-form-wrap bulk-wrap">
+      <div class="post-form-header">
+        <button class="back-btn" id="bulk-back">←</button>
+        <h1 class="post-form-title">動画をまとめて投稿</h1>
+      </div>
+      <p class="post-note">動画を一度に20本まで選べます。種類・学年・教科・ハッシュタグは、選んだ動画すべてに同じものが付きます。送っている間は、この画面を開いたままにしてね。</p>
+
+      <label class="tool-btn bulk-pick" id="bulk-pick">
+        <input type="file" id="bulk-file-input" accept="video/*" multiple hidden />＋ 動画を選ぶ
+      </label>
+      <div class="bulk-list" id="bulk-list"></div>
+
+      <div class="post-field">
+        <label class="post-label">種類（全部の動画に付く）</label>
+        <div class="chip-row" id="bulk-kind-chips"></div>
+        <input type="text" class="post-input other-input" id="bulk-kind-chips-other" placeholder="種類を入力（例：体験談、勉強法）" />
+      </div>
+      <div class="post-field">
+        <label class="post-label">ターゲット学年（全部の動画に付く）</label>
+        <div class="chip-row" id="bulk-grade-chips"></div>
+        <input type="text" class="post-input other-input" id="bulk-grade-chips-other" placeholder="対象を入力（例：浪人生）" />
+      </div>
+      <div class="post-field">
+        <label class="post-label">教科（任意・全部の動画に付く）</label>
+        <div class="chip-row" id="bulk-subject-chips"></div>
+        <input type="text" class="post-input other-input" id="bulk-subject-chips-other" placeholder="教科名を入力（例：情報）" />
+      </div>
+      <div class="post-field">
+        <label class="post-label">ハッシュタグ（任意・最大5個・全部の動画に付く）</label>
+        <input type="text" class="post-input" id="bulk-tags" placeholder="例：#GPTチャンネル #数学" maxlength="120" />
+      </div>
+
+      <button class="post-submit" id="bulk-submit">まとめて投稿する</button>
+    </div>
   </section>
 
   <!-- ============ 楽曲を選ぶ（投稿画面から開く） ============ -->
@@ -2247,9 +2305,10 @@ const screens = {
   preview: document.getElementById('preview-screen'),
   settings: document.getElementById('settings-screen'),
   user: document.getElementById('user-screen'),
+  bulk: document.getElementById('bulk-screen'),
 };
 // ボトムナビに無い画面は、どのタブの中の画面かを決めておく（そのタブを点灯させる）
-const NAV_PARENT = { search:'home', notifications:'profile', history:'record', people:'profile', preview:'create', settings:'profile', user:'home' };
+const NAV_PARENT = { search:'home', notifications:'profile', history:'record', people:'profile', preview:'create', settings:'profile', user:'home', bulk:'create' };
 function showScreen(name){
   Object.values(screens).forEach(s=>s.classList.remove('active'));
   screens[name].classList.add('active');
@@ -4294,6 +4353,192 @@ async function deleteOwnPost(id){
 
 document.getElementById('post-back').addEventListener('click', ()=> showScreen('home'));
 
+// ---- まとめて投稿（動画を何本も） ----
+// 動画を選んで、一覧で1本ずつタイトルを入れる。種類・学年・教科・ハッシュタグは全部に同じものを付ける。
+// 送るのはふつうの投稿と同じ仕組み（publishCloudPost）で、1本ずつ順番に。失敗した動画だけ、もう一度押せば送り直す。
+// iPhoneは、画面を触った直後でないと音付きの再生（＝動画を軽くする処理）を始められないため、
+// 軽くする必要がある大きい動画は失敗することがある。その動画は、ふつうの投稿で1本ずつ送ってもらう
+const BULK_MAX = 20;
+let bulkItems = [];     // { key, file, duration, title, status, note }
+let bulkRunning = false;
+let bulkKeySeq = 0;
+const bulkKind = createChoice('bulk-kind-chips', KINDS, { id:'lesson' });
+const bulkTarget = createChoice('bulk-grade-chips', TARGETS);
+const bulkSubject = createChoice('bulk-subject-chips', POST_SUBJECT_OPTIONS, { id:'' });
+const bulkListEl = document.getElementById('bulk-list');
+
+// 「#英語 #単語」「英語、単語」などから、ハッシュタグの配列にする（最大 MAX_HASHTAGS 個）
+function parseHashtagText(text){
+  const tags = [];
+  for(const word of text.split(/[\s,、#＃]+/).map(w=> w.trim()).filter(Boolean)){
+    const tag = word.slice(0, HASHTAG_MAX_LENGTH);
+    if(!tags.includes(tag)) tags.push(tag);
+  }
+  return tags.slice(0, MAX_HASHTAGS);
+}
+// 動画の長さ（秒）。読めなければ NaN
+function probeVideoDuration(file){
+  return new Promise(resolve=>{
+    const video = document.createElement('video');
+    const url = URL.createObjectURL(file);
+    let settled = false;
+    const done = d=>{
+      if(settled) return;
+      settled = true;
+      clearTimeout(timer);
+      video.removeAttribute('src');
+      video.load();
+      URL.revokeObjectURL(url);
+      resolve(d);
+    };
+    const timer = setTimeout(()=> done(NaN), 15000);
+    video.preload = 'metadata';
+    video.muted = true;
+    video.onloadedmetadata = ()=> done(isFinite(video.duration) ? video.duration : NaN);
+    video.onerror = ()=> done(NaN);
+    video.src = url;
+  });
+}
+const BULK_STATUS_TEXT = { checking:'確認しています…', ready:'', waiting:'順番を待っています', done:'投稿しました ✓' };
+function bulkRowHtml(item){
+  const locked = bulkRunning || item.status === 'done' || item.status === 'invalid' || item.status === 'checking';
+  const meta = [item.duration ? formatVideoTime(item.duration) : '', `${Math.max(0.1, item.file.size / MB).toFixed(1)}MB`].filter(Boolean).join('・');
+  return `
+    <div class="bulk-row ${item.status}" data-key="${item.key}">
+      <div class="bulk-row-head">
+        <span class="bulk-name">${escapeHtml(item.file.name)}</span>
+        <span class="bulk-meta">${meta}</span>
+        ${bulkRunning || item.status === 'done' ? '' : `<button class="bulk-remove" data-remove="${item.key}" aria-label="この動画を外す">×</button>`}
+      </div>
+      ${item.status === 'invalid' ? '' : `<input type="text" class="post-input bulk-title" data-title="${item.key}" maxlength="60" placeholder="タイトルを入力" value="${escapeHtml(item.title)}" ${locked ? 'disabled' : ''} />`}
+      <p class="bulk-status">${escapeHtml(item.note || BULK_STATUS_TEXT[item.status] || '')}</p>
+    </div>`;
+}
+function renderBulkList(){
+  bulkListEl.innerHTML = bulkItems.map(bulkRowHtml).join('');
+  const pending = bulkItems.filter(it=> it.status === 'ready' || it.status === 'failed').length;
+  const submit = document.getElementById('bulk-submit');
+  submit.textContent = bulkRunning ? '投稿しています…' : pending ? `まとめて投稿する（${pending}本）` : 'まとめて投稿する';
+  submit.disabled = bulkRunning;
+  document.getElementById('bulk-pick').style.display = bulkRunning ? 'none' : '';
+}
+// 1行だけ書き換える（送っている間に、ほかの行のタイトル入力を邪魔しないように）
+function renderBulkRow(item){
+  const row = bulkListEl.querySelector(`.bulk-row[data-key="${item.key}"]`);
+  if(row) row.outerHTML = bulkRowHtml(item);
+}
+
+document.getElementById('bulk-open').addEventListener('click', ()=> showScreen('bulk'));
+document.getElementById('bulk-back').addEventListener('click', ()=>{
+  if(bulkRunning){ showToast('送っている途中です。終わるまで、この画面のまま待ってね'); return; }
+  showScreen('create');
+});
+document.getElementById('bulk-file-input').addEventListener('change', async (e)=>{
+  const input = e.target;
+  const picked = [...input.files];
+  input.value = ''; // 同じファイルを選び直しても反応するように
+  if(!picked.length || bulkRunning) return;
+  bulkItems = bulkItems.filter(it=> it.status !== 'done'); // 投稿し終わった分は一覧から外す
+  const videos = picked.filter(f=> f.type.startsWith('video/'));
+  if(videos.length < picked.length) showToast('動画ではないファイルは外しました');
+  const room = BULK_MAX - bulkItems.length;
+  if(videos.length > room) showToast(`一度に選べるのは${BULK_MAX}本までです（${Math.max(0, room)}本だけ追加しました）`);
+  const added = videos.slice(0, Math.max(0, room)).map(file=> ({ key: String(++bulkKeySeq), file, duration:0, title:'', status:'checking', note:'' }));
+  bulkItems.push(...added);
+  renderBulkList();
+  for(const item of added){
+    const d = await probeVideoDuration(item.file);
+    if(!bulkItems.includes(item)) continue; // 確かめている間に外された
+    item.duration = isFinite(d) ? d : 0;
+    if(!isFinite(d)) item.note = 'この動画は読み込めませんでした（別の形式で試してください）';
+    else if(d > MAX_POST_VIDEO_SECONDS + 0.5) item.note = `${MAX_POST_VIDEO_SECONDS / 60}分を超えているので投稿できません`;
+    else if(item.file.size > MAX_POST_VIDEO_MB * MB) item.note = `${MAX_POST_VIDEO_MB}MBを超えているので投稿できません`;
+    else if(item.file.size > MAX_UPLOAD_MB * MB && !canCompressVideo()) item.note = `この端末では${MAX_UPLOAD_MB}MBより大きい動画を送れません`;
+    item.status = item.note ? 'invalid' : 'ready';
+    renderBulkRow(item);
+  }
+  renderBulkList();
+});
+bulkListEl.addEventListener('input', (e)=>{
+  const key = e.target.dataset && e.target.dataset.title;
+  const item = key && bulkItems.find(it=> it.key === key);
+  if(item) item.title = e.target.value;
+});
+bulkListEl.addEventListener('click', (e)=>{
+  const btn = e.target.closest('[data-remove]');
+  if(!btn || bulkRunning) return;
+  bulkItems = bulkItems.filter(it=> it.key !== btn.dataset.remove);
+  renderBulkList();
+});
+
+document.getElementById('bulk-submit').addEventListener('click', async ()=>{
+  if(bulkRunning) return;
+  if(!cloudEnabled()){ showToast('まとめて投稿は、サーバーにつながっているときだけ使えます'); return; }
+  if(bulkItems.some(it=> it.status === 'checking')){ showToast('動画を確かめています。少し待ってからもう一度押してね'); return; }
+  const targets = bulkItems.filter(it=> it.status === 'ready' || it.status === 'failed');
+  if(!targets.length){ showToast('投稿する動画を選んでください'); return; }
+  const untitled = targets.filter(it=> !it.title.trim());
+  if(untitled.length){
+    showToast(`タイトルが入っていない動画があります（${untitled.length}本）`);
+    const input = bulkListEl.querySelector(`[data-title="${untitled[0].key}"]`);
+    if(input) input.focus();
+    return;
+  }
+  const choiceError = bulkKind.error('種類') || bulkTarget.error('ターゲット学年') || bulkSubject.error('教科');
+  if(choiceError){ showToast(choiceError); return; }
+  if(!await confirmDialog(`${targets.length}本の動画を投稿しますか？`, '投稿する')) return;
+
+  bulkRunning = true;
+  const shared = {
+    kind: bulkKind.id, kindOther: bulkKind.other, subject: bulkSubject.id, subjectOther: bulkSubject.other,
+    grade: bulkTarget.id, gradeOther: bulkTarget.other, unit:'', musicId:null,
+    hashtags: parseHashtagText(document.getElementById('bulk-tags').value),
+    creator: (loadProfile() || {}).name || 'あなた', mediaType:'video', own:true,
+  };
+  targets.forEach(it=>{ it.status = 'waiting'; it.note = ''; });
+  renderBulkList();
+  let done = 0, failed = 0, stoppedByLeaving = false;
+  for(const item of targets){
+    if(stoppedByLeaving){ item.status = 'ready'; renderBulkRow(item); continue; }
+    item.status = 'working';
+    item.note = '準備しています…';
+    renderBulkRow(item);
+    const post = { ...shared, files:[item.file], title:item.title.trim(), duration:Math.round(item.duration), createdAt:Date.now() };
+    const compressor = needsCompression(item.file, item.duration) && canCompressVideo() ? prepareCompressor(item.file) : null;
+    try{
+      const published = await publishCloudPost(post, compressor, (title, ratio)=>{
+        item.note = `${title.replace('…', '')}（${Math.round(Math.max(0, Math.min(1, ratio)) * 100)}%）`;
+        const status = bulkListEl.querySelector(`.bulk-row[data-key="${item.key}"] .bulk-status`);
+        if(status) status.textContent = item.note;
+      });
+      delete published.files;
+      published.short = postFileUrl(published.mediaPaths[0]); // 端末のファイルではなく、送った先のURLで見せる
+      VIDEOS.unshift(published);
+      item.status = 'done';
+      item.note = '';
+      done++;
+    }catch(err){
+      failed++;
+      item.status = 'failed';
+      if(err && err.code === 'left'){ stoppedByLeaving = true; item.note = '画面を離れたので止めました。もう一度押すと続きから送ります'; }
+      else if(compressor && err && err.name === 'NotAllowedError') item.note = 'この動画は大きいので、ふつうの投稿で1本ずつ送ってね';
+      else item.note = uploadErrorMessage(err);
+    }finally{
+      releaseCompressor(compressor);
+    }
+    renderBulkRow(item);
+  }
+  bulkRunning = false;
+  renderBulkList();
+  if(done){
+    refreshUpcomingFeed(); // 新しい投稿を、次に流れる動画に混ぜる
+    renderChips();
+    renderResults();
+    tapFeedback('MEDIUM');
+  }
+  showToast(failed ? `${done}本を投稿しました。送れなかった動画が${failed}本あります（もう一度押すと送り直します）` : `${done}本を投稿しました！`);
+});
+
 // ---- みんなに見える投稿（サーバー：Supabase） ----
 // ファイル本体は Storage の posts バケット（<user_id>/<投稿id>/<番号>.<拡張子>）、内容は posts テーブルに入れる。
 // フィードには新しい順に最大 CLOUD_FEED_LIMIT 件を読み込み、見本の動画より出やすくする
@@ -4671,13 +4916,15 @@ function hideUploadProgress(){
 
 // アップロード中にタブを閉じたり再読み込みしようとしたら、ブラウザに確認を出してもらう（パソコン向け）
 window.addEventListener('beforeunload', (e)=>{
-  if(!document.getElementById('upload-overlay').classList.contains('show')) return;
+  if(!document.getElementById('upload-overlay').classList.contains('show') && !bulkRunning) return;
   e.preventDefault();
   e.returnValue = '';
 });
 
 // 投稿をサーバーに送る。送れたら投稿（VIDEOS に入れる形）を返す。失敗したら送りかけたファイルを消して投げ直す
-async function publishCloudPost(post, compressor){
+// onProgress(見出し, 0〜1)：ふつうはアップロード中の画面に出す。まとめて投稿では一覧の行に出す
+async function publishCloudPost(post, compressor, onProgress = showUploadProgress){
+  const overlay = onProgress === showUploadProgress;
   const client = await getCloud();
   const userId = await ensureAccount();
   const postId = newUuid();
@@ -4695,18 +4942,18 @@ async function publishCloudPost(post, compressor){
     URL.revokeObjectURL(coverSrc);
     if(compressor){
       compressor.video.muted = false;
-      media.appendChild(compressor.video); // 軽くしている動画をそのまま見せる（音は出ない）
-      showUploadProgress('動画を軽くしています…', 0);
-      const small = await compressVideo(compressor, r=> showUploadProgress('動画を軽くしています…', r));
+      if(overlay) media.appendChild(compressor.video); // 軽くしている動画をそのまま見せる（音は出ない）
+      onProgress('動画を軽くしています…', 0);
+      const small = await compressVideo(compressor, r=> onProgress('動画を軽くしています…', r));
       blobs = [small.size < file.size || file.size > MAX_UPLOAD_MB * MB ? small : file];
     }
     if(blobs[0].size > MAX_UPLOAD_MB * MB) throw Object.assign(new Error('too big'), { code:'too_big' });
   } else {
-    showUploadProgress('写真を準備しています…', 0);
+    onProgress('写真を準備しています…', 0);
     blobs = [];
     for(const f of post.files){
       blobs.push(await resizePhotoForUpload(f));
-      showUploadProgress('写真を準備しています…', blobs.length / post.files.length);
+      onProgress('写真を準備しています…', blobs.length / post.files.length);
     }
   }
 
@@ -4717,10 +4964,10 @@ async function publishCloudPost(post, compressor){
   let sent = 0;
   try{
     for(let i = 0; i < blobs.length; i++){
-      await uploadPostFile(paths[i], blobs[i], r=> showUploadProgress('アップロードしています…', (sent + r * blobs[i].size) / total));
+      await uploadPostFile(paths[i], blobs[i], r=> onProgress('アップロードしています…', (sent + r * blobs[i].size) / total));
       sent += blobs[i].size;
     }
-    showUploadProgress('仕上げています…', 1);
+    onProgress('仕上げています…', 1);
     if(cover){ try{ await uploadPostFile(coverPath, cover, ()=>{}); }catch(e){ /* 表紙が送れなくても投稿は続ける */ } }
     // 3) 投稿の内容を書く
     const { error } = await client.from('posts').insert({
@@ -5563,6 +5810,7 @@ document.getElementById('feedback-send').addEventListener('click', ()=>{
   showToast('送りました。ありがとうございます！');
 });
 if(IS_NATIVE_APP) document.getElementById('settings-install-section').style.display = 'none';
+document.getElementById('bulk-open').hidden = !cloudEnabled();
 async function renderAccountStatus(){
   const el = document.getElementById('settings-account');
   if(!cloudEnabled()){ el.textContent = '記録はこの端末の中だけに保存しています（サーバーには送っていません）。'; return; }
@@ -5766,7 +6014,7 @@ if('serviceWorker' in navigator && !IS_NATIVE_APP){ // iPhoneアプリの中で�
   // ただし、投稿のアップロード中・投稿の入力中・文字の入力中などに再読み込みすると書きかけが消えるので、手が空くまで待つ
   const busyForReload = ()=>
     document.getElementById('upload-overlay').classList.contains('show')
-    || screens.create.classList.contains('active') || screens.preview.classList.contains('active')
+    || screens.create.classList.contains('active') || screens.preview.classList.contains('active') || screens.bulk.classList.contains('active')
     || !!document.querySelector('.sheet-overlay.show')
     || [...document.querySelectorAll('.screen.active textarea, .screen.active input[type="text"], .screen.active input:not([type])')].some(el=> el.value.trim());
   navigator.serviceWorker.addEventListener('controllerchange', ()=>{

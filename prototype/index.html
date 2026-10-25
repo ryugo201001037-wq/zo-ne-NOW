@@ -39,11 +39,16 @@
 
 <script>
 // ここに見せる勉強動画を入れる（YouTube ショートのリンク、または mp4 のURL）。
-// 下の mp4 は動作確認用の見本で、勉強動画ではない。検証の前に入れ替えること。
+// 投稿者が埋め込みを止めている動画は再生されないので、その時は別の動画に入れ替える。
 const VIDEOS = [
-  { url: "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4", title: "（見本）ここに勉強動画1" },
-  { url: "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4", title: "（見本）ここに勉強動画2" },
-  { url: "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4", title: "（見本）ここに勉強動画3" },
+  { url: "https://www.youtube.com/shorts/YbyxMcTNY3U", title: "朝いちにやるべき勉強のポイント" },
+  { url: "https://www.youtube.com/shorts/1oUj7eJQulg", title: "宅浪で東大に合格したわたしのカフェ勉強ルーティン" },
+  { url: "https://www.youtube.com/shorts/vjRGMNcjoCk", title: "勉強の集中が途切れたらやるべきこと" },
+  { url: "https://www.youtube.com/shorts/f270X-Worlo", title: "分散学習【科学的勉強法】" },
+  { url: "https://www.youtube.com/shorts/nTgVnBPIPzc", title: "絶対にやってはいけない英単語の覚え方" },
+  { url: "https://www.youtube.com/shorts/gepsDegr244", title: "【検証】英単語を書きまくったら覚えられるのか" },
+  { url: "https://www.youtube.com/shorts/HAodjQWCkZA", title: "高校数学【数1】各分野・単元の優先度" },
+  { url: "https://www.youtube.com/shorts/T2f4dV83deY", title: "1分スタディ 古文単語「見る」" },
 ];
 
 const feed = document.getElementById('feed');

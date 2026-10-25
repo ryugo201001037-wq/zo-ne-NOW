@@ -138,13 +138,13 @@ function makeNudge(title, lead, hint) {
 VIDEOS.forEach((v, i) => {
   feed.appendChild(makeCard(v, i));
   if (i + 1 === NUDGE_AFTER && i + 1 < VIDEOS.length) {
-    const nudge = makeNudge('ここで一回、', 'スマホを置いて、勉強を始めよう。', '続きを見るなら ↑ 上にスワイプ');
+    const nudge = makeNudge('ここで一回、', 'スマホを置いて、<br>学校の課題か、<br>やりたかった勉強を始めよう。', 'まだ始められない人だけ ↑ で続き');
     nudge.id = 'nudge';
     feed.appendChild(nudge);
   }
 });
 
-const end = makeNudge('ここまで。', 'スマホを置いて、勉強しよう。');
+const end = makeNudge('ここまで。', 'スマホを置いて、<br>学校の課題か、<br>やりたかった勉強を始めよう。');
 end.id = 'end';
 feed.appendChild(end);
 

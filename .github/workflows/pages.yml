@@ -1,6 +1,7 @@
 # ウェブ版（GitHub Pages）に、2つの版を並べて公開する
 #   https://ryugo201001037-wq.github.io/zo-ne-NOW/      … 前のプロトタイプ（claude/zonenow-mvp-short-video-gcjp2s の docs/ をそのまま）
 #   https://ryugo201001037-wq.github.io/zo-ne-NOW/app/  … 今の版（main）
+#   https://ryugo201001037-wq.github.io/zo-ne-NOW/kensho/ … 検証用の勉強版TikTok（main の prototype/）
 # 前のプロトタイプのブランチには何も書き込まない（読むだけ）
 #
 # 使うには、リポジトリの Settings → Pages の「Source」を「GitHub Actions」にする
@@ -51,6 +52,7 @@ jobs:
           for f in index.html manifest.json sw.js privacy.html icons vendor; do
             cp -R "current/$f" site/app/
           done
+          cp -R current/prototype site/kensho
           touch site/.nojekyll
           echo "前のプロトタイプ：$(git -C prototype log -1 --format='%h %s')"
           echo "今の版（/app/）：$(git -C current log -1 --format='%h %s')"

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>勉強版TikTok（検証用）</title>
+<style>
+  /* 色は3色だけ：黒（背景）・白（文字）・緑（ボタン） */
+  :root { --bg:#000; --text:#fff; --accent:#22c55e; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; background:var(--bg); color:var(--text);
+    font-family:-apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; font-size:16px; }
+  #feed { height:100dvh; overflow-y:scroll; scroll-snap-type:y mandatory; }
+  .card { position:relative; height:100dvh; scroll-snap-align:start; scroll-snap-stop:always;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:24px; text-align:center; overflow:hidden; }
+  .card video, .card iframe { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; border:0; }
+  .caption { position:absolute; left:16px; right:16px; bottom:max(24px, env(safe-area-inset-bottom));
+    text-align:left; font-size:16px; line-height:1.5; text-shadow:0 1px 4px var(--bg); pointer-events:none; }
+  .count { position:absolute; top:max(16px, env(safe-area-inset-top)); right:16px; font-size:16px;
+    text-shadow:0 1px 4px var(--bg); pointer-events:none; }
+  h1 { font-size:32px; margin-bottom:12px; }
+  .lead { font-size:20px; margin-bottom:8px; }
+  .note { font-size:16px; line-height:1.6; margin-bottom:32px; }
+  button { min-height:48px; padding:0 32px; font-size:18px; font-weight:bold; border:0; border-radius:24px;
+    background:var(--accent); color:var(--bg); cursor:pointer; }
+  .hint { position:absolute; bottom:max(24px, env(safe-area-inset-bottom)); font-size:16px; }
+</style>
+</head>
+<body>
+<div id="feed">
+  <section class="card" id="start">
+    <h1>勉強版TikTok</h1>
+    <p class="lead">次の動画も、ぜんぶ勉強。</p>
+    <p class="note">娯楽の動画は出てきません。<br>見終わったら、そのまま勉強を始めよう。</p>
+    <button id="startBtn" type="button">はじめる</button>
+  </section>
+</div>
+
+<script>
+// ここに見せる勉強動画を入れる（YouTube ショートのリンク、または mp4 のURL）。
+// 下の mp4 は動作確認用の見本で、勉強動画ではない。検証の前に入れ替えること。
+const VIDEOS = [
+  { url: "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4", title: "（見本）ここに勉強動画1" },
+  { url: "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4", title: "（見本）ここに勉強動画2" },
+  { url: "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4", title: "（見本）ここに勉強動画3" },
+];
+
+const feed = document.getElementById('feed');
+let soundOn = false;
+
+// YouTube のリンクなら動画IDを取り出す。それ以外は null
+function youtubeId(url) {
+  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:shorts\/|watch\?v=|embed\/))([\w-]{11})/);
+  return m ? m[1] : null;
+}
+
+function makeCard(video, i) {
+  const card = document.createElement('section');
+  card.className = 'card';
+  card.dataset.index = i;
+  const caption = document.createElement('p');
+  caption.className = 'caption';
+  caption.textContent = video.title || '';
+  const count = document.createElement('p');
+  count.className = 'count';
+  count.textContent = `${i + 1} / ${VIDEOS.length}`;
+  card.append(caption, count);
+  return card;
+}
+
+// 画面に入ったカードだけ再生し、外れたら止める（YouTube は外れたら読み込みを外す）
+function play(card) {
+  const v = VIDEOS[card.dataset.index];
+  const id = youtubeId(v.url);
+  if (id) {
+    if (!card.querySelector('iframe')) {
+      const f = document.createElement('iframe');
+      f.src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&playsinline=1&loop=1&playlist=${id}&mute=${soundOn ? 0 : 1}`;
+      f.allow = 'autoplay; encrypted-media';
+      card.prepend(f);
+    }
+    return;
+  }
+  let el = card.querySelector('video');
+  if (!el) {
+    el = document.createElement('video');
+    el.src = v.url;
+    el.loop = true;
+    el.playsInline = true;
+    el.addEventListener('click', () => (el.paused ? el.play() : el.pause()));
+    card.prepend(el);
+  }
+  el.muted = !soundOn;
+  el.play().catch(() => {});
+}
+
+function stop(card) {
+  const f = card.querySelector('iframe');
+  if (f) f.remove();
+  const el = card.querySelector('video');
+  if (el) el.pause();
+}
+
+const observer = new IntersectionObserver(entries => {
+  for (const e of entries) e.isIntersecting ? play(e.target) : stop(e.target);
+}, { threshold: 0.6 });
+
+VIDEOS.forEach((v, i) => {
+  const card = makeCard(v, i);
+  feed.appendChild(card);
+});
+
+const end = document.createElement('section');
+end.className = 'card';
+end.id = 'end';
+end.innerHTML = '<h1>ここまで。</h1><p class="lead">スマホを置いて、勉強しよう。</p>';
+feed.appendChild(end);
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  soundOn = true; // ボタンを押したあとなら、ブラウザが音ありの再生を許す
+  const hint = document.createElement('p');
+  hint.className = 'hint';
+  hint.textContent = '↑ 上にスワイプ';
+  document.getElementById('start').appendChild(hint);
+  feed.querySelectorAll('.card[data-index]').forEach(c => observer.observe(c));
+  feed.children[1].scrollIntoView({ behavior: 'smooth' });
+});
+</script>
+</body>
+</html>

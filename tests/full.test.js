@@ -196,6 +196,32 @@ const { check, state, report } = createChecker();
   await page.waitForTimeout(400);
   check('タップでまた再生できる', await page.$eval(s0, el => !el.classList.contains('is-paused') && !el.querySelector('video').paused));
 
+  // 横長の動画・写真は、画面いっぱいに広げず（切らず）全体を見せる。縦長はいっぱいのまま
+  check('縦長の動画は画面いっぱい', await page.$eval(`${s0} video`, v => !v.classList.contains('fit-contain') && getComputedStyle(v).objectFit === 'cover'));
+  const fs = require('fs');
+  const fitResult = await evalq(async ({ video, image }) => {
+    const toUrl = (b64, type) => URL.createObjectURL(new Blob([Uint8Array.from(atob(b64), ch => ch.charCodeAt(0))], { type }));
+    const base = VIDEOS.find(x => x.mediaType !== 'image');
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed; left:-9999px; width:390px; height:844px;';
+    document.body.appendChild(box);
+    const vs = createSlide({ ...base, id: 'landscape-video', short: toUrl(video, 'video/webm') });
+    const is = createSlide({ ...base, id: 'landscape-image', mediaType: 'image', short: toUrl(image, 'image/png'), images: undefined, musicId: null });
+    box.append(vs, is);
+    const v = vs.querySelector('video');
+    v.preload = 'metadata';
+    v.load();
+    await new Promise(r => { if (v.readyState >= 1) r(); else v.addEventListener('loadedmetadata', r, { once: true }); setTimeout(r, 4000); });
+    const img = is.querySelector('.short-media-image');
+    await new Promise(r => { if (img.complete) r(); else img.addEventListener('load', r, { once: true }); setTimeout(r, 4000); });
+    await new Promise(r => setTimeout(r, 50));
+    const result = { video: v.classList.contains('fit-contain') && getComputedStyle(v).objectFit === 'contain', image: img.classList.contains('fit-contain') && getComputedStyle(img).objectFit === 'contain', w: v.videoWidth, h: v.videoHeight };
+    box.remove();
+    return result;
+  }, { video: fs.readFileSync(A + 'landscape.webm').toString('base64'), image: fs.readFileSync(A + 'landscape.png').toString('base64') });
+  check('横長の動画は、切らずに全体を見せる', fitResult.video, JSON.stringify(fitResult));
+  check('横長の写真も、切らずに全体を見せる', fitResult.image, JSON.stringify(fitResult));
+
   const creator = await page.$eval(`${s0} [data-role="follow"]`, b => b.dataset.followKey).catch(() => null);
   if (creator) {
     await page.click(`${s0} [data-role="follow"]`);

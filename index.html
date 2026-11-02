@@ -89,6 +89,8 @@
   .short-slide video, .short-slide .short-media-image{
     position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
   }
+  /* 横長・正方形に近い動画や写真は、画面いっぱいに広げると切れすぎるので、全体を見せる（上下は黒）。縦長は画面いっぱいのまま */
+  .short-slide video.fit-contain, .short-slide .short-media-image.fit-contain{ object-fit:contain; }
   /* 複数枚の写真：横スワイプで切り替え */
   .photo-track{
     position:absolute; inset:0; display:flex; overflow-x:auto; overflow-y:hidden;
@@ -2511,6 +2513,13 @@ function attachSlideEvents(slide, v){
     });
   }
 
+  // 動画・写真の形を見て、横長なら切らずに全体を見せる
+  if(video) video.addEventListener('loadedmetadata', ()=> video.classList.toggle('fit-contain', shouldFitContain(video.videoWidth, video.videoHeight)));
+  slide.querySelectorAll('.short-media-image').forEach(img=>{
+    const fit = ()=> img.classList.toggle('fit-contain', shouldFitContain(img.naturalWidth, img.naturalHeight));
+    if(img.complete) fit(); else img.addEventListener('load', fit);
+  });
+
   if(video){
     attachVideoControls(slide, video);
     // くり返し再生は MAX_PLAYS 回まで。そのあとは一時停止にして、▶（タップ）でまた最初から。
@@ -2970,6 +2979,10 @@ function rescaleZoneMeter(slide){
 }
 
 const MAX_PLAYS = 3; // 1本の動画を続けてくり返す回数の上限（配信量の節約）
+// 幅÷高さがこれ以上（3:4より横長）なら、画面いっぱいに広げると切れすぎるので、切らずに全体を見せる。
+// ふつうの縦動画（9:16＝0.56）は今まで通り画面いっぱい（スマホの画面のほうが細長いので、左右が少しだけ切れる）
+const FIT_CONTAIN_MIN_RATIO = 0.7;
+function shouldFitContain(width, height){ return width > 0 && height > 0 && width / height >= FIT_CONTAIN_MIN_RATIO; }
 
 // すばやく2回タップでいいね（もう押してあるときは、ハートを出すだけで取り消さない）
 const DOUBLE_TAP_MS = 260;

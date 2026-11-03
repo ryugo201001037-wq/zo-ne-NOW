@@ -178,6 +178,8 @@ const entry = (id, subject, minutes, daysAgo) => ({ id, subject, subjectOther: '
     await policy.goto(APP_URL.replace(/[^/]*$/, '') + 'privacy.html');
     check('プライバシーポリシーのページが開ける', (await policy.textContent('h1')) === 'プライバシーポリシー' && !policyErrors.length);
     check('ポリシーに、投稿がみんなに見えること・削除のしかたが書いてある', /すべての人が見られます/.test(await policy.textContent('main')) && /すべてのデータを削除する/.test(await policy.textContent('main')));
+    const policyText = await policy.textContent('main');
+    check('ポリシーに書き忘れ（【要記入】）がなく、運営者と連絡先が入っている', !policyText.includes('要記入') && policyText.includes('ゾーンNOW運営チーム') && /連絡先：\S+@\S+/.test(policyText));
     await policy.close();
     await f.page.click('#feedback-send');
     check('ご意見：空では送らない', (await f.page.textContent('#toast')).includes('入力'));

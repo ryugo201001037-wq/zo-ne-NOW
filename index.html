@@ -2333,6 +2333,7 @@ function showScreen(name){
   if(name === 'home') resumeFeed();
   else deactivateSlide(currentSlide);
   if(name !== 'preview') closePreview();
+  requestAnimationFrame(()=> loadVisibleThumbs(screens[name]));
 }
 
 // ---- ボトムナビ：5項目(ホーム/AI/＋/記録/プロフィール)を共通生成 ----
@@ -3476,8 +3477,33 @@ function renderResults(){
   empty.style.display = results.length ? 'none' : 'block';
 
   grid.innerHTML = results.map(resultCardHtml).join('');
+  lazyThumbs(grid);
   grid.querySelectorAll('.result-card').forEach(card=>{
     card.addEventListener('click', ()=> jumpToShort(card.dataset.id));
+  });
+}
+
+// 一覧の表紙（画像）は、その画面を開いていて、画面に映ったカードの分だけ読み込む。
+// 投稿を全部読み込むので、開いていない検索画面などの表紙まで一度に読むと、配信量が大きく増えてしまう。
+// 読み込むまでは、色の背景（通信なし）を出しておく
+const thumbObserver = 'IntersectionObserver' in window
+  ? new IntersectionObserver(entries=> entries.forEach(e=>{ if(e.isIntersecting) loadThumb(e.target); }), { rootMargin:'300px 0px' })
+  : null;
+function loadThumb(el){
+  if(!el.dataset.bg || !el.closest('.screen.active')) return;
+  el.style.background = el.dataset.bg;
+  delete el.dataset.bg;
+  if(thumbObserver) thumbObserver.unobserve(el);
+}
+function lazyThumbs(root){
+  root.querySelectorAll('.result-thumb[data-bg]').forEach(el=>{ if(thumbObserver) thumbObserver.observe(el); else loadThumb(el); });
+}
+// 画面を開いたとき：隠れていた間に並べておいたカードのうち、もう画面に映っているものを読み込む
+function loadVisibleThumbs(screen){
+  const bottom = window.innerHeight + 300;
+  screen.querySelectorAll('.result-thumb[data-bg]').forEach(el=>{
+    const r = el.getBoundingClientRect();
+    if(r.bottom > -300 && r.top < bottom) loadThumb(el);
   });
 }
 
@@ -3485,7 +3511,7 @@ function renderResults(){
 function resultCardHtml(v){
   return `
     <button class="result-card" data-id="${escapeHtml(v.id)}">
-      <div class="result-thumb" style="background:${thumbBackgroundOf(v)}">
+      <div class="result-thumb" style="background:${thumbGradientOf(v)}" data-bg="${escapeHtml(thumbBackgroundOf(v))}">
         <span class="badge">${escapeHtml(gradeLabelOf(v))}</span>
         <span class="result-duration">${v.duration}秒</span>
       </div>
@@ -3591,6 +3617,7 @@ function renderUserPosts(posts, message){
   const empty = document.getElementById('user-grid-empty');
   document.getElementById('user-posts-count').textContent = posts ? posts.length : '';
   grid.innerHTML = (posts || []).map(resultCardHtml).join('');
+  lazyThumbs(grid);
   grid.style.display = posts && posts.length ? 'grid' : 'none';
   empty.style.display = posts && posts.length ? 'none' : 'block';
   empty.textContent = !posts ? '読み込み中…' : message || 'まだ投稿はありません。';
@@ -4610,9 +4637,12 @@ document.getElementById('bulk-submit').addEventListener('click', async ()=>{
 
 // ---- みんなに見える投稿（サーバー：Supabase） ----
 // ファイル本体は Storage の posts バケット（<user_id>/<投稿id>/<番号>.<拡張子>）、内容は posts テーブルに入れる。
-// フィードには新しい順に最大 CLOUD_FEED_LIMIT 件を読み込み、見本の動画より出やすくする
+// フィードには、サーバーにある投稿を全部読み込み、その中からランダムに流す（見本の動画より出やすくする）。
+// 読み込むのはタイトルなどの短い情報だけ（1件数百バイト）。動画そのものは、流れてきたときに1本ずつ読む。
+// ※ 投稿が数千件を超えて重くなったら、サーバーからランダムに少しずつ取ってくる形に変える
 const POST_BUCKET = 'posts';
-const CLOUD_FEED_LIMIT = 100;
+// 1回に読む件数（Supabase が1回で返せる上限が1000件のため。テストでは小さくして、何回かに分けて読めるか確かめる）
+const CLOUD_PAGE_SIZE = Number(zonenowConfig.cloudPageSize) || 1000;
 const CLOUD_FEED_WEIGHT = 4;         // 本物の投稿は見本の動画の4倍出やすい
 const CLOUD_FEED_REFRESH_MS = 3 * 60 * 1000; // アプリに戻ってきたとき、これより前に読んでいたら読み直す
 const MAX_UPLOAD_MB = 50;            // 1ファイルの上限（Supabase 無料プランの上限に合わせる）
@@ -4672,6 +4702,19 @@ function cloudPostToVideo(row, myId){
   };
 }
 
+// サーバーの投稿を全部（新しい順に）読む。CLOUD_PAGE_SIZE 件ずつ、足りなくなるまで続けて読む
+async function fetchAllPosts(client){
+  const rows = [];
+  for(let from = 0; ; from += CLOUD_PAGE_SIZE){
+    const { data, error } = await client.from('posts').select('*')
+      .order('created_at', { ascending:false }).order('id', { ascending:true }) // 同じ時刻でも並びがぶれないように
+      .range(from, from + CLOUD_PAGE_SIZE - 1);
+    if(error || !data) throw error || new Error('no data');
+    rows.push(...data);
+    if(data.length < CLOUD_PAGE_SIZE) return rows;
+  }
+}
+
 // みんなの投稿を読み込んで VIDEOS に入れ直す（今見ている動画の次から、新しい並びにする）
 async function loadCloudPosts(){
   if(!cloudEnabled()) return;
@@ -4679,8 +4722,7 @@ async function loadCloudPosts(){
     const client = await getCloud();
     const myId = await cloudUserId();
     if(!myId) return;
-    const { data, error } = await client.from('posts').select('*').order('created_at', { ascending:false }).limit(CLOUD_FEED_LIMIT);
-    if(error || !data) throw error || new Error('no data');
+    const data = await fetchAllPosts(client);
     cloudPostsLoadedAt = Date.now();
     cloudFeedState = 'ready';
     // 自分がさっき投稿したもの（端末のファイルで表示中）は、そのまま使う
@@ -4967,7 +5009,10 @@ function imageLoads(url){
 function refreshCoverOf(v){
   const url = coverUrlOf(v);
   document.querySelectorAll(`.short-slide[data-id="${CSS.escape(v.id)}"] video`).forEach(video=>{ video.poster = url; });
-  document.querySelectorAll(`.result-card[data-id="${CSS.escape(v.id)}"] .result-thumb`).forEach(el=>{ el.style.background = thumbBackgroundOf(v); });
+  document.querySelectorAll(`.result-card[data-id="${CSS.escape(v.id)}"] .result-thumb`).forEach(el=>{
+    if(el.dataset.bg) el.dataset.bg = thumbBackgroundOf(v); // まだ読み込んでいないカードは、読み込むときに新しい表紙を使う
+    else el.style.background = thumbBackgroundOf(v);
+  });
 }
 
 // ---- アップロード中の画面 ----
@@ -5733,6 +5778,7 @@ function renderProfileGrid(){
     ? `<div class="card-wrap">${resultCardHtml(v)}<button class="card-delete" data-delete-post="${escapeHtml(v.id)}">削除</button></div>`
     : resultCardHtml(v)
   ).join('');
+  lazyThumbs(grid);
   grid.style.display = list.length ? 'grid' : 'none';
   const empty = document.getElementById('profile-grid-empty');
   empty.style.display = list.length ? 'none' : 'block';

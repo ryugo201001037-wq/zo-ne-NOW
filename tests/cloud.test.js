@@ -99,7 +99,12 @@ function startFakeSupabase() {
     }
     if (p === '/rest/v1/posts' && req.method === 'GET') {
       const user = (url.searchParams.get('user_id') || '').replace(/^eq\./, '');
-      return send(200, fake.posts.filter(r => !user || r.user_id === user).slice().sort((a, b) => b.created_at.localeCompare(a.created_at)));
+      const rows = fake.posts.filter(r => !user || r.user_id === user).slice().sort((a, b) => b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id));
+      // 何件目から何件か（アプリは全部の投稿を、何回かに分けて読む）
+      const offset = Number(url.searchParams.get('offset')) || 0;
+      const limit = url.searchParams.has('limit') ? Number(url.searchParams.get('limit')) : rows.length;
+      fake.postReads = (fake.postReads || 0) + 1;
+      return send(200, rows.slice(offset, offset + limit));
     }
     if (p === '/rest/v1/posts' && req.method === 'POST') {
       for (const row of [].concat(body)) {
@@ -435,12 +440,24 @@ function startFakeSupabase() {
   state.section = 'ほかの人のフィード';
   const usersBeforeOther = new Set(fake.users.keys());
   const otherUid = () => [...fake.users.keys()].find(id => !usersBeforeOther.has(id));
-  const other = await openApp({}, {}, `?v=${vpost.id}`);
+  fake.postReads = 0;
+  const other = await openApp({}, { cloudPageSize: 2 }, `?v=${vpost.id}`); // 2件ずつ読む設定で、全部読めるか確かめる
   await other.page.fill('#onboarding-name', 'ゆい');
   await other.page.click('#onboarding-grade-chips .chip[data-id="high1"]');
   await other.page.click('#onboarding-submit');
   const op = other.page;
   check('ほかの人にもみんなの投稿が届く', await waitFor(() => op.evaluate(() => VIDEOS.filter(v => v.cloud).length === 7))); // ふつうの投稿4＋まとめて投稿3
+  check('投稿は何回かに分けて、全部読む（上限で古い投稿が消えない）', await op.evaluate(n => VIDEOS.filter(v => v.cloud).length === n, fake.posts.length) && fake.postReads >= 4, `読んだ回数 ${fake.postReads}`);
+  // 一覧の表紙は、開いている画面で映ったものだけ読み込む（開いていない検索画面の分は読まない）
+  const thumbState = () => op.evaluate(() => {
+    const thumbs = [...document.querySelectorAll('#result-grid .result-thumb')];
+    return { total: thumbs.length, waiting: thumbs.filter(t => t.dataset.bg).length, loadedCover: thumbs.some(t => !t.dataset.bg && t.style.background.includes('cover.jpg')) };
+  });
+  const hiddenThumbs = await thumbState();
+  check('検索画面を開くまでは、一覧の表紙を読み込まない', hiddenThumbs.total >= 7 && hiddenThumbs.waiting === hiddenThumbs.total, JSON.stringify(hiddenThumbs));
+  await op.click('#search-open-btn');
+  check('検索画面を開くと、映っている表紙を読み込む', await waitFor(async () => (await thumbState()).loadedCover), JSON.stringify(await thumbState()));
+  await op.click('#search-back'); await op.waitForTimeout(150);
   check('共有リンクの投稿が先頭に出る', await waitFor(() => op.$eval('#feed .short-slide:first-child', el => el.dataset.id).then(id => id === vpost.id)));
   const src = await op.$eval('#feed .short-slide:first-child video', el => el.dataset.src);
   check('フィードでは、読み込み中に表紙を出す', (await op.$eval('#feed .short-slide:first-child video', el => el.getAttribute('poster'))) === `${fake.url}/storage/v1/object/public/posts/${coverOf(vpost)}`);
@@ -584,7 +601,7 @@ function startFakeSupabase() {
   await page.click('#settings-make-covers');
   check('設定のボタンで、古い動画の表紙を作る', await waitFor(() => fake.files.has(`${uid}/${oldId}/cover.jpg`), 15000));
   await page.click('#settings-back'); await page.waitForTimeout(150);
-  check('作った表紙が一覧のカードに出る', await waitFor(() => page.$eval(`.result-card[data-id="${oldId}"] .result-thumb`, el => el.style.background.includes('cover.jpg'))));
+  check('作った表紙がプロフィールの一覧のカードに出る', await waitFor(() => page.$eval(`#profile-grid .result-card[data-id="${oldId}"] .result-thumb`, el => el.style.background.includes('cover.jpg'))));
   check('表紙を作ったと伝える', (await toast(page)).includes('表紙'));
   await page.click('#profile-gear'); await page.waitForTimeout(200);
   await page.click('#settings-make-covers');

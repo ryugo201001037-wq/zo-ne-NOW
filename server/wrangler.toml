@@ -19,7 +19,11 @@ DAILY_LIMIT = "20"
 # 使うAI："sakura"＝さくらのAI Engine（さくらインターネット）／"anthropic"＝Claude
 AI_PROVIDER = "sakura"
 # さくらで使うモデル（さくらのコントロールパネルのモデル一覧にある名前）
+# 文字だけの質問：数学に強い gpt-oss
 SAKURA_MODEL = "gpt-oss-120b"
+# 写真付きの質問：画像を読めるモデル（「preview」はお試し版。名前が変わったら、ここを直す）
+# ほかの候補：preview/Qwen3-VL-30B-A3B-Instruct、preview/Qwen3.6-35B-A3B、preview/gemma-4-31B-it
+SAKURA_VISION_MODEL = "preview/Kimi-K2.6"
 # Claude で使うモデル（AI_PROVIDER = "anthropic" のとき）
 MODEL = "claude-haiku-5-5"
 

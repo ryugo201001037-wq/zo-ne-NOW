@@ -85,11 +85,23 @@ test('さくら：写真は data URL にして今回の質問に付ける', asyn
     body.messages = [{ role: 'user', content: '前の質問' }, { role: 'assistant', content: '前の答え' }, { role: 'user', content: 'この問題' }];
     await readEvents(await s.call(ask(body)));
     const msgs = s.state.received[0].body.messages;
+    assert.equal(s.state.received[0].body.model, 'preview/Kimi-K2.6', '写真付きの質問は、画像を読めるモデルに送る');
     assert.equal(msgs[1].content, '前の質問', '前の質問には付けない');
     assert.deepEqual(msgs[3].content, [
       { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,aGVsbG8=' } },
       { type: 'text', text: 'この問題' },
     ]);
+  } finally { s.close(); }
+});
+
+test('さくら：画像を読めるモデルは設定で変えられる', async () => {
+  const s = await fakeSakura(() => ({ chunks: [{ content: 'OK' }] }));
+  try {
+    s.env.SAKURA_VISION_MODEL = 'preview/Qwen3-VL-30B-A3B-Instruct';
+    await readEvents(await s.call(ask(question('この問題', { image: { mediaType: 'image/jpeg', data: 'aGVsbG8=' } }))));
+    await readEvents(await s.call(ask(question('続きを教えて'))));
+    assert.equal(s.state.received[0].body.model, 'preview/Qwen3-VL-30B-A3B-Instruct');
+    assert.equal(s.state.received[1].body.model, 'gpt-oss-120b', '文字だけの質問は gpt-oss のまま');
   } finally { s.close(); }
 });
 

@@ -110,6 +110,8 @@ function startFakeSupabase() {
       for (const row of [].concat(body)) {
         if (row.user_id && row.user_id !== uid) return send(403, { code: '42501', message: 'row-level security' });
         if (!row.title || !row.media_paths || !row.media_paths.length || !(row.duration >= 1 && row.duration <= 200)) return send(400, { code: '23514', message: 'check violation' });
+        // データベースの更新（grades の列を足す）の前のサーバーのふり
+        if (fake.noGradesColumn && 'grades' in row) return send(400, { code: 'PGRST204', message: "Could not find the 'grades' column of 'posts' in the schema cache" });
         fake.posts.push({ ...row, user_id: uid, created_at: new Date().toISOString() });
       }
       return send(201);
@@ -354,6 +356,30 @@ function startFakeSupabase() {
     const r = fake.posts.find(x => x.title === '映像を読めない動画');
     return r && fake.files.has(r.media_paths[0]) && fake.files.get(r.media_paths[0]).body.equals(audioOnly);
   }, 15000));
+  // まとめて投稿でも、大きい動画（軽くする必要がある動画）を続けて送れる。軽くする部品は1つだけ作って使い回す
+  //（iPhoneは、画面を触った直後に再生を始めた部品でないと、音付きで再生できないため）
+  await small.page.evaluate(() => {
+    window.__compressors = 0;
+    window.__compressed = 0;
+    const original = prepareCompressor;
+    prepareCompressor = (...args) => { window.__compressors++; return original(...args); };
+    const originalCompress = compressVideo;
+    compressVideo = async (...args) => { const blob = await originalCompress(...args); window.__compressed++; return blob; };
+  });
+  await nav(small.page, 'create');
+  await small.page.click('#bulk-open'); await small.page.waitForTimeout(200);
+  await small.page.setInputFiles('#bulk-file-input', [{ name: '大きい1.webm', mimeType: 'video/webm', buffer: sampleBytes }, { name: '大きい2.webm', mimeType: 'video/webm', buffer: sampleBytes }]);
+  await waitFor(async () => (await small.page.$$eval('#bulk-list .bulk-row.ready', rs => rs.length)) === 2);
+  const smallTitles = await small.page.$$('#bulk-list [data-title]');
+  await smallTitles[0].fill('軽くしてまとめて1');
+  await smallTitles[1].fill('軽くしてまとめて2');
+  await small.page.click('#bulk-all-grades [data-grade="high1"]');
+  await small.page.click('#bulk-submit'); await small.page.click('#confirm-ok');
+  const bigPosted = () => ['軽くしてまとめて1', '軽くしてまとめて2'].map(t => fake.posts.find(r => r.title === t));
+  // （テスト用の動画はとても小さいので、軽くすると逆に大きくなり、元のファイルが送られる。ここでは「軽くする処理が2本とも最後まで動いたか」を見る）
+  check('まとめて投稿でも、大きい動画を続けて軽くして送れる', await waitFor(async () => bigPosted().every(r => r && fake.files.has(r.media_paths[0])) && (await small.page.evaluate(() => window.__compressed)) === 2, 30000),
+    JSON.stringify(await small.page.$$eval('#bulk-list .bulk-row', rs => rs.map(r => r.className + ' ' + r.textContent.trim().slice(-40)))));
+  check('軽くする部品は1つだけ作って、使い回す', (await small.page.evaluate(() => window.__compressors)) === 1, String(await small.page.evaluate(() => window.__compressors)));
   check('エラーなし', !small.errors.length, small.errors.join(' / '));
   await small.context.close();
 
@@ -368,6 +394,20 @@ function startFakeSupabase() {
   check('写真2枚の投稿も保存される', await waitFor(() => fake.posts.some(r => r.title === '英単語まとめ'), 6000));
   const ppost = fake.posts.find(r => r.title === '英単語まとめ');
   check('写真は縮小してJPEGで送る', !!ppost && ppost.media_type === 'image' && ppost.media_paths.length === 2 && ppost.media_paths.every(x => x.endsWith('.jpg') && fake.files.get(x).type === 'image/jpeg'));
+  check('学年は、前の版のアプリ向けの1つ（grade）と、全部（grades）の両方を送る', !!ppost && ppost.grade === 'everyone' && JSON.stringify(ppost.grades) === '["everyone"]', ppost && JSON.stringify([ppost.grade, ppost.grades]));
+
+  // サーバーにまだ grades の列がない（データベースの更新前）ときも、学年1つで投稿できる
+  fake.noGradesColumn = true;
+  await nav(page, 'create');
+  await page.setInputFiles('#post-file-input', require('path').join(ASSETS, 'p2.png'));
+  await page.waitForTimeout(300);
+  await page.fill('#post-title', '学年いろいろ');
+  await page.click('#post-grade-chips .chip[data-id="junior3"]');
+  await page.click('#post-grade-chips .chip[data-id="high1"]');
+  await page.click('#post-next'); await page.waitForTimeout(300);
+  await page.click('#preview-post'); await page.click('#confirm-ok');
+  check('データベースの更新前でも、学年1つで投稿できる', await waitFor(() => fake.posts.some(r => r.title === '学年いろいろ' && r.grade === 'junior3' && !('grades' in r)), 6000));
+  fake.noGradesColumn = false;
 
   state.section = '送れなかったとき';
   fake.failUpload = true;
@@ -405,15 +445,17 @@ function startFakeSupabase() {
   await page.click('#bulk-submit');
   check('学年が選ばれていない動画があると伝える', (await toast(page)).includes('学年が選ばれていない動画があります（2本）'), await toast(page));
   // 全部まとめて変える → 2本目だけ個別に変える
-  await page.selectOption('#bulk-all-fields [data-all="grade"]', 'high1');
+  await page.click('#bulk-all-grades [data-grade="high1"]');
   await page.selectOption('#bulk-all-fields [data-all="subject"]', 'math');
   const rowSel = (n, field) => `#bulk-list .bulk-row:nth-child(${n}) [data-field="${field}"]`;
-  check('「全部まとめて変える」で、全部の動画に入る', (await page.$eval(rowSel(1, 'grade'), el => el.value)) === 'high1' && (await page.$eval(rowSel(2, 'subject'), el => el.value)) === 'math');
+  const rowGrades = n => page.$$eval(`#bulk-list .bulk-row:nth-child(${n}) .bulk-grades .chip.active`, cs => cs.map(c => c.dataset.grade).join(','));
+  check('「全部まとめて変える」で、全部の動画に入る', (await rowGrades(1)) === 'high1' && (await rowGrades(2)) === 'high1' && (await page.$eval(rowSel(2, 'subject'), el => el.value)) === 'math');
   await page.selectOption(rowSel(2, 'kind'), 'problem');
-  await page.selectOption(rowSel(2, 'grade'), 'junior3');
+  await page.click('#bulk-list .bulk-row:nth-child(2) .bulk-grades [data-grade="junior3"]');
+  check('学年は1本ずつ、いくつでも選べる', (await rowGrades(2)) === 'junior3,high1', await rowGrades(2));
   await page.selectOption(rowSel(1, 'kind'), 'other');
   check('「その他」を選ぶと、その動画に入力欄が出る', await page.isVisible('#bulk-list .bulk-row:nth-child(1) [data-other="kind"]'));
-  check('個別に変えても、ほかの動画は変わらない', (await page.$eval(rowSel(1, 'grade'), el => el.value)) === 'high1' && (await page.$eval(rowSel(2, 'grade'), el => el.value)) === 'junior3');
+  check('個別に変えても、ほかの動画は変わらない', (await rowGrades(1)) === 'high1');
   await page.fill('#bulk-tags', '#GPTチャンネル 数学');
   await page.click('#bulk-submit');
   check('「その他」が空なら伝える', (await toast(page)).includes('「その他」の内容が入っていない動画があります（1本）'), await toast(page));
@@ -427,9 +469,10 @@ function startFakeSupabase() {
     const a = posted('まとめて投稿その1'), b = posted('まとめて投稿その2');
     return a && b && a.user_id === uid && b.user_id === uid
       && a.kind === 'other' && a.kind_other === '体験談' && a.grade === 'high1' && a.subject === 'math'
-      && b.kind === 'problem' && b.grade === 'junior3' && b.subject === 'math'
+      && JSON.stringify(a.grades) === '["high1"]'
+      && b.kind === 'problem' && b.grade === 'junior3' && JSON.stringify(b.grades) === '["junior3","high1"]' && b.subject === 'math'
       && [a, b].every(r => JSON.stringify(r.hashtags) === '["GPTチャンネル","数学"]' && fake.files.has(r.media_paths[0]));
-  }, 15000), JSON.stringify(fake.posts.filter(x => x.title.startsWith('まとめて')).map(x => [x.title, x.kind, x.kind_other, x.grade, x.subject, x.hashtags])));
+  }, 15000), JSON.stringify(fake.posts.filter(x => x.title.startsWith('まとめて')).map(x => [x.title, x.kind, x.kind_other, x.grade, x.grades, x.subject, x.hashtags])));
   check('終わったら何本投稿したか伝える', await waitFor(async () => (await toast(page)).includes('2本を投稿しました')), await toast(page));
   check('投稿した動画は「投稿しました」になる', (await page.$$eval('#bulk-list .bulk-row.done', rs => rs.length)) === 2);
   check('まとめて投稿でも表紙を作る', await waitFor(() => fake.posts.filter(x => x.title.startsWith('まとめて投稿その')).every(x => fake.files.has(coverOf(x)))));
@@ -439,7 +482,7 @@ function startFakeSupabase() {
   await page.setInputFiles('#bulk-file-input', [vid('一括3.webm')]);
   await waitFor(async () => (await page.$$eval('#bulk-list .bulk-row.ready', rs => rs.length)) === 1);
   check('新しく選ぶと、投稿し終わった分は一覧から外れる', (await page.$$eval('#bulk-list .bulk-row', rs => rs.length)) === 2); // 一括3と、読めない動画
-  check('あとから選んだ動画にも、まとめて選んだ学年が入っている', (await page.$eval('#bulk-list .bulk-row.ready [data-field="grade"]', el => el.value)) === 'high1');
+  check('あとから選んだ動画にも、まとめて選んだ学年が入っている', (await page.$$eval('#bulk-list .bulk-row.ready .bulk-grades .chip.active', cs => cs.map(c => c.dataset.grade).join(','))) === 'high1');
   await page.fill('#bulk-list [data-title]', 'まとめて投稿その3');
   await page.click('#bulk-submit'); await page.click('#confirm-ok');
   check('送れなかった動画は「失敗」と理由を出す', await waitFor(async () => (await page.$$eval('#bulk-list .bulk-row.failed', rs => rs.length)) === 1), await page.textContent('#bulk-list'));
@@ -460,7 +503,7 @@ function startFakeSupabase() {
   await other.page.click('#onboarding-grade-chips .chip[data-id="high1"]');
   await other.page.click('#onboarding-submit');
   const op = other.page;
-  check('ほかの人にもみんなの投稿が届く', await waitFor(() => op.evaluate(() => VIDEOS.filter(v => v.cloud).length === 8))); // ふつうの投稿5（映像を読めない動画を含む）＋まとめて投稿3
+  check('ほかの人にもみんなの投稿が届く', await waitFor(() => op.evaluate(() => VIDEOS.filter(v => v.cloud).length === 11))); // ふつうの投稿6（映像を読めない動画・学年いろいろを含む）＋まとめて投稿5
   check('投稿は何回かに分けて、全部読む（上限で古い投稿が消えない）', await op.evaluate(n => VIDEOS.filter(v => v.cloud).length === n, fake.posts.length) && fake.postReads >= 4, `読んだ回数 ${fake.postReads}`);
   // 一覧の表紙は、開いている画面で映ったものだけ読み込む（開いていない検索画面の分は読まない）
   const thumbState = () => op.evaluate(() => {
@@ -587,7 +630,7 @@ function startFakeSupabase() {
 
   state.section = '自分の投稿を消す';
   await nav(page, 'profile');
-  check('プロフィールに自分の投稿（6件：ふつう3＋まとめて3）', (await page.textContent('#profile-posts-count')) === '6');
+  check('プロフィールに自分の投稿（7件：ふつう4＋まとめて3）', (await page.textContent('#profile-posts-count')) === '7');
   await page.click(`[data-delete-post="${vpost.id}"]`); await page.click('#confirm-ok');
   check('消すとサーバーの投稿もファイルも表紙も消える', await waitFor(() => !fake.posts.some(r => r.id === vpost.id) && !fake.files.has(vpost.media_paths[0]) && !fake.files.has(coverOf(vpost))));
 

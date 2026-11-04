@@ -115,6 +115,10 @@ check('自分の投稿も書き換えはできない（消して投稿し直す�
 check('タイトルは60文字まで', !as(A, `insert into posts (creator, title, grade, media_type, media_paths, duration) values ('あおい', '${'あ'.repeat(61)}', 'high1', 'video', array['${A}/p/0.mp4'], 60)`).ok);
 check('ファイルは10個まで', !as(A, postSql(Array.from({ length: 11 }, (_, i) => `${A}/p/${i}.jpg`))).ok);
 check('動画か写真だけ', !as(A, `insert into posts (creator, title, grade, media_type, media_paths, duration) values ('あおい', 't', 'high1', 'gif', array['${A}/p/0.gif'], 5)`).ok);
+const multi = as(A, `insert into posts (creator, title, grade, grades, media_type, media_paths, duration) values ('あおい', '学年いろいろ', 'junior3', array['junior3','high1'], 'video', array['${A}/m/0.mp4'], 30) returning array_to_string(grades, ',')`);
+check('ターゲット学年を複数入れられる', multi.ok && multi.out === 'junior3,high1', multi.out);
+check('学年を書かない（前の版のアプリ）ときは空の一覧', as(A, postSql([`${A}/o/0.mp4`]).replace('returning id', 'returning cardinality(grades)')).out === '0');
+check('学年は8個まで', !as(A, `insert into posts (creator, title, grade, grades, media_type, media_paths, duration) values ('あおい', 't', 'high1', array['a','b','c','d','e','f','g','h','i'], 'video', array['${A}/n/0.mp4'], 30)`).ok);
 check('ログインしていないと投稿は見えない', as(null, 'select count(*) from posts').out === '0');
 
 state.section = 'いいね・保存・コメント';

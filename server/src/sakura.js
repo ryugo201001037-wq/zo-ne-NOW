@@ -5,6 +5,15 @@
 
 export const SAKURA_BASE_URL = 'https://api.ai.sakura.ad.jp/v1';
 export const SAKURA_DEFAULT_MODEL = 'gpt-oss-120b';
+// 写真付きの質問に使う、画像を読めるモデル（さくらの案内：Chat Completions で image_url 形式の画像を送れる）。
+// 「preview」はお試し版で名前が変わることがあるので、設定 SAKURA_VISION_MODEL で変えられるようにしている
+export const SAKURA_DEFAULT_VISION_MODEL = 'preview/Kimi-K2.6';
+
+// 使うモデル：写真付きの質問は画像を読めるモデル、文字だけの質問は数学に強い gpt-oss。
+// 写真の質問の答えには「問題：」として問題文が書き写されるので、続けて文字で聞いても話がつながる
+export function sakuraModelFor(env, hasImage) {
+  return hasImage ? (env.SAKURA_VISION_MODEL || SAKURA_DEFAULT_VISION_MODEL) : (env.SAKURA_MODEL || SAKURA_DEFAULT_MODEL);
+}
 
 // parseAskBody が作った会話（Claudeの形）を、OpenAI の形に直す。写真は data URL で渡す
 export function toOpenAIMessages(system, turns) {
@@ -28,7 +37,7 @@ export async function startSakura({ env, system, turns, hasImage, maxTokens, sig
     res = await fetchImpl(`${env.SAKURA_BASE_URL || SAKURA_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${env.SAKURA_API_KEY}`, 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify({ model: env.SAKURA_MODEL || SAKURA_DEFAULT_MODEL, messages: toOpenAIMessages(system, turns), stream: true, max_tokens: maxTokens }),
+      body: JSON.stringify({ model: sakuraModelFor(env, hasImage), messages: toOpenAIMessages(system, turns), stream: true, max_tokens: maxTokens }),
       signal,
     });
   } catch (err) {

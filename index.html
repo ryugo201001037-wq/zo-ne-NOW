@@ -817,7 +817,10 @@
   .bulk-remove{ flex:0 0 auto; width:40px; height:40px; margin:-10px -8px -10px 0; color:rgba(255,255,255,.6); font-size:18px; }
   .bulk-all{ margin-bottom:12px; }
   .bulk-all .post-label{ margin-bottom:6px; }
-  .bulk-fields{ display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr); gap:6px; margin-top:8px; }
+  .bulk-fields{ display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:6px; margin-top:8px; }
+  .bulk-grades{ margin-top:8px; gap:6px; }
+  .bulk-grades .chip{ padding:7px 11px; font-size:12px; }
+  .bulk-grades.empty .chip{ border-color:rgba(255,90,54,.45); }
   .bulk-all .bulk-fields{ margin-top:0; }
   .bulk-select{
     width:100%; min-width:0; height:42px; padding:0 18px 0 8px; border-radius:10px;
@@ -1474,7 +1477,7 @@
       </div>
 
       <div class="post-field">
-        <label class="post-label">ターゲット学年</label>
+        <label class="post-label">ターゲット学年（いくつでも選べます）</label>
         <div class="chip-row" id="post-grade-chips"></div>
         <input type="text" class="post-input other-input" id="post-grade-chips-other" placeholder="対象を入力（例：浪人生）" />
       </div>
@@ -1528,6 +1531,7 @@
       <div class="bulk-all" id="bulk-all">
         <p class="post-label">全部まとめて変える（あとから1本ずつ変えられます）</p>
         <div class="bulk-fields" id="bulk-all-fields"></div>
+        <div id="bulk-all-grades"></div>
       </div>
       <div class="bulk-list" id="bulk-list"></div>
 
@@ -1866,9 +1870,28 @@ function subjectLabelOf(item){
   if(!item.subject) return '';
   return item.subject === 'other' && item.subjectOther ? item.subjectOther : labelOf(SUBJECTS, item.subject);
 }
-function gradeLabelOf(item){
-  return item.grade === 'other' && item.gradeOther ? item.gradeOther : labelOf(TARGETS, item.grade);
+// ターゲット学年は複数選べる（grades）。古い投稿や、前の版のアプリからの投稿は grade（1つ）だけを持つ
+function gradesOf(item){
+  if(Array.isArray(item.grades) && item.grades.length) return item.grades;
+  return item.grade ? [item.grade] : [];
 }
+// 1つなら「中学2年」、いくつかなら「中2・高1」のように短く。全学年を含むなら「全学年」
+function gradeLabelOf(item){
+  const ids = gradesOf(item);
+  if(ids.includes('everyone')) return labelOf(TARGETS, 'everyone');
+  const label = id=> id === 'other' && item.gradeOther ? item.gradeOther : labelOf(TARGETS, id);
+  if(ids.length <= 1) return ids.length ? label(ids[0]) : '';
+  return ids.map(id=> id === 'other' ? label(id) : label(id).replace('中学', '中').replace('高校', '高').replace(/年$/, '')).join('・');
+}
+// 学年を押したとき：全学年は単独（ほかの学年と一緒には選べない）。並びは選択肢の順にそろえる
+function toggleTargetId(ids, id){
+  const next = ids.includes(id) ? ids.filter(x=> x !== id)
+    : id === 'everyone' ? ['everyone']
+    : [...ids.filter(x=> x !== 'everyone'), id];
+  return TARGETS.map(t=> t.id).filter(x=> next.includes(x));
+}
+// 前の版のアプリ向けの grade（1つ）：全学年を含むなら全学年、それ以外は最初の学年
+function primaryGradeOf(ids){ return ids.includes('everyone') ? 'everyone' : ids[0]; }
 // 知らない種類（サーバーから来た想定外の値・新しい版で増えた種類）は「その他」として扱う。
 // 種類はクラス名にも使うので、ここで決まった値だけに絞っておく
 function kindOf(v){
@@ -2287,6 +2310,41 @@ function createChoice(wrapId, options, initial = {}, onChange){
   };
 }
 
+// 学年のように、いくつでも選べるチップ（「その他」を選ぶと入力欄を出す）
+function createTargetsChoice(wrapId, onChange){
+  const wrap = document.getElementById(wrapId);
+  const otherInput = document.getElementById(wrapId + '-other');
+  const state = { ids: [], other:'' };
+  function render(){
+    wrap.innerHTML = TARGETS.map(t=> `<button class="chip ${state.ids.includes(t.id) ? 'active' : ''}" data-id="${t.id}" aria-pressed="${state.ids.includes(t.id)}">${t.label}</button>`).join('');
+    wrap.querySelectorAll('.chip').forEach(c=> c.addEventListener('click', ()=>{
+      state.ids = toggleTargetId(state.ids, c.dataset.id);
+      render();
+      if(onChange) onChange();
+      if(c.dataset.id === 'other' && state.ids.includes('other') && otherInput) otherInput.focus();
+    }));
+    if(otherInput){
+      otherInput.style.display = state.ids.includes('other') ? 'block' : 'none';
+      if(otherInput.value !== state.other) otherInput.value = state.other;
+    }
+  }
+  if(otherInput){
+    otherInput.maxLength = OTHER_TEXT_MAX;
+    otherInput.addEventListener('input', ()=>{ state.other = otherInput.value; if(onChange) onChange(); });
+  }
+  render();
+  return {
+    get ids(){ return state.ids.slice(); },
+    get other(){ return state.ids.includes('other') ? state.other.trim() : ''; },
+    set(ids = [], other = ''){ state.ids = ids.slice(); state.other = other; render(); },
+    error(name){
+      if(!state.ids.length) return `${name}を選択してください`;
+      if(state.ids.includes('other') && !state.other.trim()) return `${name}の「その他」の内容を入力してください`;
+      return null;
+    },
+  };
+}
+
 /* ---- いいね・コメント・保存の数の表示（1000以上は 1.2K のように短く） ---- */
 function formatCount(n){
   if(n >= 1000) return (n/1000).toFixed(1).replace(/\.0$/,'') + 'K';
@@ -2387,8 +2445,9 @@ function hashtagListOf(v){
   const tags = (byKind[kindOf(v)] || [kindLabelOf(v)]).slice(); // その他・知らない種類は種類の名前
   const subject = subjectLabelOf(v);
   if(subject) tags.push(subject);
-  const level = schoolLevelOf(v.grade);
-  if(level) tags.push(level === 'junior' ? '中学生' : '高校生');
+  const levels = gradesOf(v).map(schoolLevelOf);
+  if(levels.includes('junior')) tags.push('中学生');
+  if(levels.includes('high')) tags.push('高校生');
   return tags;
 }
 
@@ -2662,10 +2721,11 @@ function feedWeight(v, userGrade){
 }
 function gradeWeight(v, userGrade){
   if(!userGrade) return 1;
-  if(v.grade === userGrade && userGrade !== 'other') return 3; // 自分の学年向け
-  if(v.grade === 'everyone') return 2;                            // 全学年向け（やる気・豆知識など）
+  const ids = gradesOf(v); // 学年がいくつかあるときは、いちばん合っている学年で決める
+  if(userGrade !== 'other' && ids.includes(userGrade)) return 3;  // 自分の学年向け
+  if(ids.includes('everyone')) return 2;                           // 全学年向け（やる気・豆知識など）
   const level = schoolLevelOf(userGrade);
-  if(level && schoolLevelOf(v.grade) === level) return 1.5;       // 同じ中学/高校の別学年
+  if(level && ids.some(id=> schoolLevelOf(id) === level)) return 1.5; // 同じ中学/高校の別学年
   return 1;
 }
 // 重み付きで重複なしに n 本選ぶ（Efraimidis–Spirakis法：乱数^(1/重み) が大きい順）
@@ -3434,7 +3494,7 @@ function filteredVideos(){
     !isHiddenVideo(v) &&
     (!terms.length || (text=> terms.every(t=> text.includes(t)))(searchTextOf(v))) &&
     (activeKind==='all' || kindOf(v)===activeKind) &&
-    (activeGrade==='all' || v.grade===activeGrade || v.grade==='everyone') &&
+    (activeGrade==='all' || gradesOf(v).includes(activeGrade) || gradesOf(v).includes('everyone')) &&
     (activeSubject==='all' || v.subject===activeSubject) &&
     (activeUnit==='all' || v.unit===activeUnit)
   );
@@ -4057,9 +4117,9 @@ let postSubmitting = false;
 const POST_SUBJECT_OPTIONS = [{ id:'', label:'なし' }, ...SUBJECTS];
 const postKind = createChoice('post-kind-chips', KINDS, { id:'lesson' });
 // 投稿の中身のうち、端末内に保存する項目（ファイルのURLは毎回作り直すので保存しない）
-const POST_META_FIELDS = ['id', 'kind', 'kindOther', 'subject', 'subjectOther', 'grade', 'gradeOther', 'unit',
+const POST_META_FIELDS = ['id', 'kind', 'kindOther', 'subject', 'subjectOther', 'grade', 'grades', 'gradeOther', 'unit',
   'hashtags', 'musicId', 'title', 'creator', 'duration', 'mediaType', 'createdAt'];
-const postTarget = createChoice('post-grade-chips', TARGETS);
+const postTarget = createTargetsChoice('post-grade-chips');
 const postSubject = createChoice('post-subject-chips', POST_SUBJECT_OPTIONS, { id:'' });
 
 const postFileInput = document.getElementById('post-file-input');
@@ -4233,7 +4293,7 @@ musicSheet.addEventListener('click', (e)=>{
 function resetPostForm(){
   clearPostMedia();
   postKind.set('lesson');
-  postTarget.set(null);
+  postTarget.set([]);
   postSubject.set('');
   postHashtags = [];
   renderPostTags();
@@ -4268,7 +4328,8 @@ document.getElementById('post-next').addEventListener('click', ()=>{
     kindOther: postKind.other,
     subject: postSubject.id,
     subjectOther: postSubject.other,
-    grade: postTarget.id,
+    grade: primaryGradeOf(postTarget.ids),
+    grades: postTarget.ids,
     gradeOther: postTarget.other,
     unit,           // ホームには出さず、検索の絞り込みに使う
     hashtags: [...postHashtags],
@@ -4419,14 +4480,21 @@ let bulkItems = [];     // { key, file, duration, title, status, note }
 let bulkRunning = false;
 let bulkKeySeq = 0;
 const bulkListEl = document.getElementById('bulk-list');
-// 動画ごとに選ぶ項目。学年だけは必ず選ぶ（ふつうの投稿と同じ）。「その他」を選んだら、その行に入力欄を出す
+// 動画ごとに選ぶ項目。種類・教科はプルダウン、学年はチップ（いくつでも選べる。必ず1つ以上）。
+// 「その他」を選んだら、その行に入力欄を出す
 const BULK_FIELDS = [
   { key:'kind', label:'種類', options:KINDS, otherPlaceholder:'種類を入力（例：体験談）' },
-  { key:'grade', label:'学年', options:TARGETS, otherPlaceholder:'対象を入力（例：浪人生）', required:true },
   { key:'subject', label:'教科', options:POST_SUBJECT_OPTIONS, otherPlaceholder:'教科名を入力（例：情報）' },
 ];
+const BULK_GRADE_OTHER_PLACEHOLDER = '対象を入力（例：浪人生）';
 // 新しく選んだ動画に最初から入れておく値（「全部まとめて変える」で変わる）
-const bulkDefaults = { kind:'lesson', grade:'', subject:'' };
+const bulkDefaults = { kind:'lesson', subject:'', grades:[] };
+// 学年のチップ（attrs は各チップに付ける data 属性。全部まとめて変えるときは「その他」を出さない）
+function bulkGradeChipsHtml(ids, attrs, { forAll = false, disabled = false } = {}){
+  const options = forAll ? TARGETS.filter(t=> t.id !== 'other') : TARGETS;
+  return `<div class="chip-row bulk-grades${!forAll && !ids.length ? ' empty' : ''}" role="group" aria-label="学年">${options.map(t=>
+    `<button class="chip ${ids.includes(t.id) ? 'active' : ''}" data-grade="${t.id}" ${attrs} aria-pressed="${ids.includes(t.id)}" ${disabled ? 'disabled' : ''}>${t.label}</button>`).join('')}</div>`;
+}
 
 function bulkSelectHtml(field, value, attrs, forAll){
   const options = forAll ? field.options.filter(o=> o.id !== 'other') : field.options; // 「その他」は内容を入れるので1本ずつ
@@ -4437,6 +4505,7 @@ function bulkSelectHtml(field, value, attrs, forAll){
 }
 function renderBulkAll(){
   document.getElementById('bulk-all-fields').innerHTML = BULK_FIELDS.map(f=> bulkSelectHtml(f, '', `data-all="${f.key}"`, true)).join('');
+  document.getElementById('bulk-all-grades').innerHTML = bulkGradeChipsHtml(bulkDefaults.grades, 'data-all-grade', { forAll:true });
 }
 renderBulkAll();
 
@@ -4485,8 +4554,10 @@ function bulkRowHtml(item){
       </div>
       ${item.status === 'invalid' ? '' : `<input type="text" class="post-input bulk-title" data-title="${item.key}" maxlength="60" placeholder="タイトルを入力" value="${escapeHtml(item.title)}" ${locked ? 'disabled' : ''} />
       <div class="bulk-fields">${BULK_FIELDS.map(f=> bulkSelectHtml(f, item[f.key], `data-field="${f.key}" data-key="${item.key}" ${locked ? 'disabled' : ''}`)).join('')}</div>
+      ${bulkGradeChipsHtml(item.grades, `data-key="${item.key}"`, { disabled:locked })}
       ${BULK_FIELDS.filter(f=> item[f.key] === 'other').map(f=>
-        `<input type="text" class="post-input bulk-other" data-other="${f.key}" data-key="${item.key}" maxlength="${OTHER_TEXT_MAX}" placeholder="${f.otherPlaceholder}" value="${escapeHtml(item[f.key + 'Other'])}" ${locked ? 'disabled' : ''} />`).join('')}`}
+        `<input type="text" class="post-input bulk-other" data-other="${f.key}" data-key="${item.key}" maxlength="${OTHER_TEXT_MAX}" placeholder="${f.otherPlaceholder}" value="${escapeHtml(item[f.key + 'Other'])}" ${locked ? 'disabled' : ''} />`).join('')}
+      ${item.grades.includes('other') ? `<input type="text" class="post-input bulk-other" data-other="grade" data-key="${item.key}" maxlength="${OTHER_TEXT_MAX}" placeholder="${BULK_GRADE_OTHER_PLACEHOLDER}" value="${escapeHtml(item.gradeOther)}" ${locked ? 'disabled' : ''} />` : ''}`}
       <p class="bulk-status">${escapeHtml(item.note || BULK_STATUS_TEXT[item.status] || '')}</p>
     </div>`;
 }
@@ -4521,7 +4592,7 @@ document.getElementById('bulk-file-input').addEventListener('change', async (e)=
   const room = BULK_MAX - bulkItems.length;
   if(videos.length > room) showToast(`一度に選べるのは${BULK_MAX}本までです（${Math.max(0, room)}本だけ追加しました）`);
   const added = videos.slice(0, Math.max(0, room)).map(file=> ({ key: String(++bulkKeySeq), file, duration:0, title:'', status:'checking', note:'',
-    kind:bulkDefaults.kind, kindOther:'', grade:bulkDefaults.grade, gradeOther:'', subject:bulkDefaults.subject, subjectOther:'' }));
+    kind:bulkDefaults.kind, kindOther:'', grades:bulkDefaults.grades.slice(), gradeOther:'', subject:bulkDefaults.subject, subjectOther:'' }));
   bulkItems.push(...added);
   renderBulkList();
   for(const item of added){
@@ -4566,7 +4637,27 @@ document.getElementById('bulk-all-fields').addEventListener('change', (e)=>{
   const label = (BULK_FIELDS.find(f=> f.key === field).options.find(o=> o.id === value) || {}).label;
   showToast(`全部の動画を「${label}」にしました`);
 });
+// 全部まとめて変える（学年）：押すたびに、投稿し終わっていない全部の動画の学年をそろえる
+document.getElementById('bulk-all-grades').addEventListener('click', (e)=>{
+  const chip = e.target.closest('[data-grade]');
+  if(!chip || bulkRunning) return;
+  bulkDefaults.grades = toggleTargetId(bulkDefaults.grades, chip.dataset.grade);
+  bulkItems.forEach(it=>{ if(it.status !== 'done'){ it.grades = bulkDefaults.grades.slice(); it.gradeOther = ''; } });
+  renderBulkAll();
+  renderBulkList();
+});
 bulkListEl.addEventListener('click', (e)=>{
+  // 1本ずつ学年を選ぶ（いくつでも）。「その他」を選んだら入力欄に移る
+  const chip = e.target.closest('[data-grade]');
+  const chipItem = chip && bulkItems.find(it=> it.key === chip.dataset.key);
+  if(chipItem && !bulkRunning){
+    chipItem.grades = toggleTargetId(chipItem.grades, chip.dataset.grade);
+    if(!chipItem.grades.includes('other')) chipItem.gradeOther = '';
+    renderBulkRow(chipItem);
+    const other = chip.dataset.grade === 'other' && bulkListEl.querySelector(`[data-other="grade"][data-key="${chipItem.key}"]`);
+    if(other) other.focus();
+    return;
+  }
   const btn = e.target.closest('[data-remove]');
   if(!btn || bulkRunning) return;
   bulkItems = bulkItems.filter(it=> it.key !== btn.dataset.remove);
@@ -4586,11 +4677,18 @@ document.getElementById('bulk-submit').addEventListener('click', async ()=>{
     if(input) input.focus();
     return;
   }
-  const noGrade = targets.filter(it=> !it.grade);
+  const noGrade = targets.filter(it=> !it.grades.length);
   if(noGrade.length){ showToast(`学年が選ばれていない動画があります（${noGrade.length}本）`); return; }
-  const noOther = targets.filter(it=> BULK_FIELDS.some(f=> it[f.key] === 'other' && !it[f.key + 'Other'].trim()));
+  const noOther = targets.filter(it=> BULK_FIELDS.some(f=> it[f.key] === 'other' && !it[f.key + 'Other'].trim())
+    || (it.grades.includes('other') && !it.gradeOther.trim()));
   if(noOther.length){ showToast(`「その他」の内容が入っていない動画があります（${noOther.length}本）`); return; }
-  if(!await confirmDialog(`${targets.length}本の動画を投稿しますか？`, '投稿する')) return;
+  // 軽くする必要がある動画があれば、押した瞬間に「軽くする部品」を1つだけ用意して、全部の動画で使い回す。
+  // iPhoneは、画面を触った直後でないと音付きの再生（＝軽くする処理）を始められない。
+  // 1本ごとに作ると2本目から断られるが、触った直後に再生を始めた部品なら、あとで動画を差し替えても再生できる
+  const needsSmall = it=> needsCompression(it.file, it.duration) && canCompressVideo();
+  const firstSmall = targets.find(needsSmall);
+  const sharedCompressor = firstSmall ? prepareCompressor(firstSmall.file) : null;
+  if(!await confirmDialog(`${targets.length}本の動画を投稿しますか？`, '投稿する')){ releaseCompressor(sharedCompressor); return; }
 
   bulkRunning = true;
   const shared = {
@@ -4609,10 +4707,10 @@ document.getElementById('bulk-submit').addEventListener('click', async ()=>{
     const post = {
       ...shared, files:[item.file], title:item.title.trim(), duration:Math.round(item.duration), createdAt:Date.now(),
       kind:item.kind, kindOther:item.kind === 'other' ? item.kindOther.trim() : '',
-      grade:item.grade, gradeOther:item.grade === 'other' ? item.gradeOther.trim() : '',
+      grade:primaryGradeOf(item.grades), grades:item.grades.slice(), gradeOther:item.grades.includes('other') ? item.gradeOther.trim() : '',
       subject:item.subject, subjectOther:item.subject === 'other' ? item.subjectOther.trim() : '',
     };
-    const compressor = needsCompression(item.file, item.duration) && canCompressVideo() ? prepareCompressor(item.file) : null;
+    const compressor = needsSmall(item) ? loadIntoCompressor(sharedCompressor, item.file) : null;
     try{
       const published = await publishCloudPost(post, compressor, (title, ratio)=>{
         item.note = `${title.replace('…', '')}（${Math.round(Math.max(0, Math.min(1, ratio)) * 100)}%）`;
@@ -4632,10 +4730,11 @@ document.getElementById('bulk-submit').addEventListener('click', async ()=>{
       else if(compressor && err && err.name === 'NotAllowedError') item.note = 'この動画は大きいので、ふつうの投稿で1本ずつ送ってね';
       else item.note = uploadErrorMessage(err);
     }finally{
-      releaseCompressor(compressor);
+      if(compressor) compressor.video.pause(); // 部品は次の動画でも使うので、ここでは止めるだけ
     }
     renderBulkRow(item);
   }
+  releaseCompressor(sharedCompressor);
   bulkRunning = false;
   renderBulkList();
   if(done){
@@ -4708,7 +4807,7 @@ function cloudPostToVideo(row, myId){
     id: row.id, cloud: true, userId: row.user_id, own: row.user_id === myId, mediaPaths: row.media_paths,
     createdAt: Date.parse(row.created_at) || Date.now(),
     kind: row.kind, kindOther: row.kind_other, subject: row.subject, subjectOther: row.subject_other,
-    grade: row.grade, gradeOther: row.grade_other, unit: row.unit, hashtags: row.hashtags || [],
+    grade: row.grade, grades: Array.isArray(row.grades) ? row.grades : [], gradeOther: row.grade_other, unit: row.unit, hashtags: row.hashtags || [],
     musicId: row.music_id || null, title: row.title, creator: row.creator, duration: row.duration,
     mediaType: row.media_type, short: urls[0], images: row.media_type === 'image' ? urls : undefined,
   };
@@ -4838,6 +4937,14 @@ function prepareCompressor(file){
   audio.createMediaElementSource(video).connect(dest); // 音はスピーカーに出さず、録るほうにだけ流す
   const prep = { audio, video, dest, started:false };
   video.play().then(()=>{ if(!prep.started) video.pause(); }).catch(()=>{});
+  return prep;
+}
+// まとめて投稿：用意しておいた「軽くする部品」に、次の動画を入れ直す（部品そのものは作り直さない）
+function loadIntoCompressor(prep, file){
+  prep.video.pause();
+  if(prep.video.src) URL.revokeObjectURL(prep.video.src);
+  prep.video.src = URL.createObjectURL(file);
+  prep.started = false;
   return prep;
 }
 function releaseCompressor(prep){
@@ -5126,12 +5233,19 @@ async function publishCloudPost(post, compressor, onProgress = showUploadProgres
     onProgress('仕上げています…', 1);
     if(cover){ try{ await uploadPostFile(coverPath, cover, ()=>{}); }catch(e){ /* 表紙が送れなくても投稿は続ける */ } }
     // 3) 投稿の内容を書く
-    const { error } = await client.from('posts').insert({
+    const row = {
       id: postId, creator: post.creator, title: post.title, kind: post.kind, kind_other: post.kindOther || '',
       subject: post.subject || '', subject_other: post.subjectOther || '', grade: post.grade, grade_other: post.gradeOther || '',
+      grades: gradesOf(post),
       unit: post.unit || '', hashtags: post.hashtags, music_id: post.musicId || '', media_type: post.mediaType,
       media_paths: paths, duration: Math.min(200, Math.max(1, Math.round(post.duration) || 1)),
-    });
+    };
+    let { error } = await client.from('posts').insert(row);
+    // サーバーにまだ grades の列がない（データベースの更新前）ときは、学年1つ（grade）だけで投稿する
+    if(error && error.code === 'PGRST204' && /grades/.test(error.message || '')){
+      delete row.grades;
+      ({ error } = await client.from('posts').insert(row));
+    }
     if(error) throw error;
   }catch(err){
     client.storage.from(POST_BUCKET).remove(cover ? [...paths, coverPath] : paths).catch(()=>{});
@@ -5200,7 +5314,7 @@ const AI_SERVER_URL = (window.ZONENOW_CONFIG && window.ZONENOW_CONFIG.aiServerUr
 const AI_DEVICE_KEY = 'zonenow_device_id'; // 1日の質問回数を数えるための端末ID
 const AI_CHAT_KEY = 'zonenow_ai_chat';
 const AI_HISTORY_MAX = 40;      // 端末に残す会話の数
-const AI_CONTEXT_TURNS = 12;    // AIに渡す直近の会話の数
+const AI_CONTEXT_TURNS = 20;    // AIに渡す直近の会話の数（会話の流れを覚えておくため。AIサーバーの上限と同じ）
 const AI_PHOTO_MAX = 1600;      // AIに送る写真の長い辺（px）。文字が読める大きさに縮小して送る
 const AI_THUMB_MAX = 320;       // 会話に残す写真の縮小版（px）。端末の保存容量対策
 // 下のチップ：最初は補助機能、AIが解説した直後は「解説の続き」を出す

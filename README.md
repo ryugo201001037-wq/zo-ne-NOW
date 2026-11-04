@@ -125,7 +125,7 @@ TestFlightに出す手順は [docs/TESTFLIGHT.md](docs/TESTFLIGHT.md)。
 ## AIサーバー（server/）
 
 AIコーチの「問題の解説」は、本番ではこのサーバー経由でAIに聞きます。使うAIは `wrangler.toml` の `AI_PROVIDER` で選びます。
-- `sakura`（今の設定）… [さくらのAI Engine](https://ai.sakura.ad.jp/sakura-ai/ai-engine/)（さくらインターネット）。データが国内で完結し、チャットは月3,000回まで無料。モデルは `SAKURA_MODEL`（`gpt-oss-120b`）
+- `sakura`（今の設定）… [さくらのAI Engine](https://ai.sakura.ad.jp/sakura-ai/ai-engine/)（さくらインターネット）。データが国内で完結し、チャットは月3,000回まで無料（超えても追加料金はなく、遅くなるだけ）。入力は保存されず、AIの学習にも使われない（同社の約款10条2項）。モデルは、文字だけの質問が `SAKURA_MODEL`（`gpt-oss-120b`）、写真付きの質問が画像を読める `SAKURA_VISION_MODEL`（`preview/Kimi-K2.6`。お試し版なので、名前が変わったら設定を直す）
 - `anthropic` … Claude（`MODEL`）
 
 claude.aiのプレビューで開いたときは、見ている人のClaudeの利用枠を使うので、サーバーは使いません。

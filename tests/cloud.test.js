@@ -340,6 +340,20 @@ function startFakeSupabase() {
   const sfile = spost && fake.files.get(spost.media_paths[0]);
   check('軽くした動画はブラウザで再生できる形式', !!sfile && /^video\/(webm|mp4)$/.test(sfile.type) && sfile.body.length > 0, sfile && sfile.type);
   check('軽くした動画は、自分のフォルダ', !!spost && spost.user_id === uid2 && spost.media_paths[0].startsWith(uid2 + '/'));
+  // 軽くした結果に映像がなかったら（この端末で映像を読めない形式のとき）、音だけの動画を送らず、元のファイルのまま送る
+  // （ここでは「音だけの動画」を、映像を読めない動画の代わりに使う）
+  const audioOnly = require('fs').readFileSync(require('path').join(ASSETS, 'audio-only.webm'));
+  await nav(small.page, 'create');
+  await small.page.setInputFiles('#post-file-input', { name: 'hevc.webm', mimeType: 'video/webm', buffer: audioOnly });
+  await small.page.waitForTimeout(500);
+  await small.page.fill('#post-title', '映像を読めない動画');
+  await small.page.click('#post-grade-chips .chip[data-id="high1"]');
+  await small.page.click('#post-next'); await small.page.waitForTimeout(300);
+  await small.page.click('#preview-post'); await small.page.click('#confirm-ok');
+  check('軽くして映像がなくなるときは、元のファイルのまま送る', await waitFor(() => {
+    const r = fake.posts.find(x => x.title === '映像を読めない動画');
+    return r && fake.files.has(r.media_paths[0]) && fake.files.get(r.media_paths[0]).body.equals(audioOnly);
+  }, 15000));
   check('エラーなし', !small.errors.length, small.errors.join(' / '));
   await small.context.close();
 
@@ -446,7 +460,7 @@ function startFakeSupabase() {
   await other.page.click('#onboarding-grade-chips .chip[data-id="high1"]');
   await other.page.click('#onboarding-submit');
   const op = other.page;
-  check('ほかの人にもみんなの投稿が届く', await waitFor(() => op.evaluate(() => VIDEOS.filter(v => v.cloud).length === 7))); // ふつうの投稿4＋まとめて投稿3
+  check('ほかの人にもみんなの投稿が届く', await waitFor(() => op.evaluate(() => VIDEOS.filter(v => v.cloud).length === 8))); // ふつうの投稿5（映像を読めない動画を含む）＋まとめて投稿3
   check('投稿は何回かに分けて、全部読む（上限で古い投稿が消えない）', await op.evaluate(n => VIDEOS.filter(v => v.cloud).length === n, fake.posts.length) && fake.postReads >= 4, `読んだ回数 ${fake.postReads}`);
   // 一覧の表紙は、開いている画面で映ったものだけ読み込む（開いていない検索画面の分は読まない）
   const thumbState = () => op.evaluate(() => {

@@ -222,6 +222,27 @@ const { check, state, report } = createChecker();
   check('横長の動画は、切らずに全体を見せる', fitResult.video, JSON.stringify(fitResult));
   check('横長の写真も、切らずに全体を見せる', fitResult.image, JSON.stringify(fitResult));
 
+  // 映像のない（音だけの）動画は、黒い画面のままにせず「映像を再生できません」と出す
+  const noPic = await evalq(async b64 => {
+    const base = VIDEOS.find(x => x.mediaType !== 'image');
+    const url = URL.createObjectURL(new Blob([Uint8Array.from(atob(b64), ch => ch.charCodeAt(0))], { type: 'video/webm' }));
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed; left:-9999px; width:390px; height:844px;';
+    document.body.appendChild(box);
+    const sl = createSlide({ ...base, id: 'audio-only', short: url, musicId: null });
+    box.appendChild(sl);
+    const v = sl.querySelector('video');
+    v.preload = 'metadata';
+    v.load();
+    await new Promise(r => { v.addEventListener('loadedmetadata', r, { once: true }); setTimeout(r, 4000); });
+    await new Promise(r => setTimeout(r, 50));
+    const result = { noPicture: sl.classList.contains('no-picture'), text: sl.querySelector('.video-status-text').textContent, shown: getComputedStyle(sl.querySelector('.video-status')).display, retry: getComputedStyle(sl.querySelector('.video-retry')).display };
+    box.remove();
+    return result;
+  }, fs.readFileSync(A + 'audio-only.webm').toString('base64'));
+  check('映像のない動画は「映像を再生できません」と出す（読み込み直しボタンは出さない）', noPic.noPicture && noPic.text.includes('映像を再生できません') && noPic.shown === 'flex' && noPic.retry === 'none', JSON.stringify(noPic));
+  check('ふつうの動画には出ない', await page.$eval(s0, el => !el.classList.contains('no-picture')));
+
   const creator = await page.$eval(`${s0} [data-role="follow"]`, b => b.dataset.followKey).catch(() => null);
   if (creator) {
     await page.click(`${s0} [data-role="follow"]`);

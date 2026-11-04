@@ -356,6 +356,30 @@ function startFakeSupabase() {
     const r = fake.posts.find(x => x.title === '映像を読めない動画');
     return r && fake.files.has(r.media_paths[0]) && fake.files.get(r.media_paths[0]).body.equals(audioOnly);
   }, 15000));
+  // まとめて投稿でも、大きい動画（軽くする必要がある動画）を続けて送れる。軽くする部品は1つだけ作って使い回す
+  //（iPhoneは、画面を触った直後に再生を始めた部品でないと、音付きで再生できないため）
+  await small.page.evaluate(() => {
+    window.__compressors = 0;
+    window.__compressed = 0;
+    const original = prepareCompressor;
+    prepareCompressor = (...args) => { window.__compressors++; return original(...args); };
+    const originalCompress = compressVideo;
+    compressVideo = async (...args) => { const blob = await originalCompress(...args); window.__compressed++; return blob; };
+  });
+  await nav(small.page, 'create');
+  await small.page.click('#bulk-open'); await small.page.waitForTimeout(200);
+  await small.page.setInputFiles('#bulk-file-input', [{ name: '大きい1.webm', mimeType: 'video/webm', buffer: sampleBytes }, { name: '大きい2.webm', mimeType: 'video/webm', buffer: sampleBytes }]);
+  await waitFor(async () => (await small.page.$$eval('#bulk-list .bulk-row.ready', rs => rs.length)) === 2);
+  const smallTitles = await small.page.$$('#bulk-list [data-title]');
+  await smallTitles[0].fill('軽くしてまとめて1');
+  await smallTitles[1].fill('軽くしてまとめて2');
+  await small.page.click('#bulk-all-grades [data-grade="high1"]');
+  await small.page.click('#bulk-submit'); await small.page.click('#confirm-ok');
+  const bigPosted = () => ['軽くしてまとめて1', '軽くしてまとめて2'].map(t => fake.posts.find(r => r.title === t));
+  // （テスト用の動画はとても小さいので、軽くすると逆に大きくなり、元のファイルが送られる。ここでは「軽くする処理が2本とも最後まで動いたか」を見る）
+  check('まとめて投稿でも、大きい動画を続けて軽くして送れる', await waitFor(async () => bigPosted().every(r => r && fake.files.has(r.media_paths[0])) && (await small.page.evaluate(() => window.__compressed)) === 2, 30000),
+    JSON.stringify(await small.page.$$eval('#bulk-list .bulk-row', rs => rs.map(r => r.className + ' ' + r.textContent.trim().slice(-40)))));
+  check('軽くする部品は1つだけ作って、使い回す', (await small.page.evaluate(() => window.__compressors)) === 1, String(await small.page.evaluate(() => window.__compressors)));
   check('エラーなし', !small.errors.length, small.errors.join(' / '));
   await small.context.close();
 
@@ -479,7 +503,7 @@ function startFakeSupabase() {
   await other.page.click('#onboarding-grade-chips .chip[data-id="high1"]');
   await other.page.click('#onboarding-submit');
   const op = other.page;
-  check('ほかの人にもみんなの投稿が届く', await waitFor(() => op.evaluate(() => VIDEOS.filter(v => v.cloud).length === 9))); // ふつうの投稿6（映像を読めない動画・学年いろいろを含む）＋まとめて投稿3
+  check('ほかの人にもみんなの投稿が届く', await waitFor(() => op.evaluate(() => VIDEOS.filter(v => v.cloud).length === 11))); // ふつうの投稿6（映像を読めない動画・学年いろいろを含む）＋まとめて投稿5
   check('投稿は何回かに分けて、全部読む（上限で古い投稿が消えない）', await op.evaluate(n => VIDEOS.filter(v => v.cloud).length === n, fake.posts.length) && fake.postReads >= 4, `読んだ回数 ${fake.postReads}`);
   // 一覧の表紙は、開いている画面で映ったものだけ読み込む（開いていない検索画面の分は読まない）
   const thumbState = () => op.evaluate(() => {

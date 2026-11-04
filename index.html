@@ -4682,7 +4682,13 @@ document.getElementById('bulk-submit').addEventListener('click', async ()=>{
   const noOther = targets.filter(it=> BULK_FIELDS.some(f=> it[f.key] === 'other' && !it[f.key + 'Other'].trim())
     || (it.grades.includes('other') && !it.gradeOther.trim()));
   if(noOther.length){ showToast(`「その他」の内容が入っていない動画があります（${noOther.length}本）`); return; }
-  if(!await confirmDialog(`${targets.length}本の動画を投稿しますか？`, '投稿する')) return;
+  // 軽くする必要がある動画があれば、押した瞬間に「軽くする部品」を1つだけ用意して、全部の動画で使い回す。
+  // iPhoneは、画面を触った直後でないと音付きの再生（＝軽くする処理）を始められない。
+  // 1本ごとに作ると2本目から断られるが、触った直後に再生を始めた部品なら、あとで動画を差し替えても再生できる
+  const needsSmall = it=> needsCompression(it.file, it.duration) && canCompressVideo();
+  const firstSmall = targets.find(needsSmall);
+  const sharedCompressor = firstSmall ? prepareCompressor(firstSmall.file) : null;
+  if(!await confirmDialog(`${targets.length}本の動画を投稿しますか？`, '投稿する')){ releaseCompressor(sharedCompressor); return; }
 
   bulkRunning = true;
   const shared = {
@@ -4704,7 +4710,7 @@ document.getElementById('bulk-submit').addEventListener('click', async ()=>{
       grade:primaryGradeOf(item.grades), grades:item.grades.slice(), gradeOther:item.grades.includes('other') ? item.gradeOther.trim() : '',
       subject:item.subject, subjectOther:item.subject === 'other' ? item.subjectOther.trim() : '',
     };
-    const compressor = needsCompression(item.file, item.duration) && canCompressVideo() ? prepareCompressor(item.file) : null;
+    const compressor = needsSmall(item) ? loadIntoCompressor(sharedCompressor, item.file) : null;
     try{
       const published = await publishCloudPost(post, compressor, (title, ratio)=>{
         item.note = `${title.replace('…', '')}（${Math.round(Math.max(0, Math.min(1, ratio)) * 100)}%）`;
@@ -4724,10 +4730,11 @@ document.getElementById('bulk-submit').addEventListener('click', async ()=>{
       else if(compressor && err && err.name === 'NotAllowedError') item.note = 'この動画は大きいので、ふつうの投稿で1本ずつ送ってね';
       else item.note = uploadErrorMessage(err);
     }finally{
-      releaseCompressor(compressor);
+      if(compressor) compressor.video.pause(); // 部品は次の動画でも使うので、ここでは止めるだけ
     }
     renderBulkRow(item);
   }
+  releaseCompressor(sharedCompressor);
   bulkRunning = false;
   renderBulkList();
   if(done){
@@ -4930,6 +4937,14 @@ function prepareCompressor(file){
   audio.createMediaElementSource(video).connect(dest); // 音はスピーカーに出さず、録るほうにだけ流す
   const prep = { audio, video, dest, started:false };
   video.play().then(()=>{ if(!prep.started) video.pause(); }).catch(()=>{});
+  return prep;
+}
+// まとめて投稿：用意しておいた「軽くする部品」に、次の動画を入れ直す（部品そのものは作り直さない）
+function loadIntoCompressor(prep, file){
+  prep.video.pause();
+  if(prep.video.src) URL.revokeObjectURL(prep.video.src);
+  prep.video.src = URL.createObjectURL(file);
+  prep.started = false;
   return prep;
 }
 function releaseCompressor(prep){

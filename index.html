@@ -970,6 +970,7 @@
   .short-slide.is-loading .video-status, .short-slide.is-error .video-status{ display:flex; }
   .spinner{ width:38px; height:38px; border-radius:50%; border:3px solid rgba(255,255,255,.2); border-top-color:#fff; animation:spin .9s linear infinite; }
   .short-slide.is-error .spinner{ display:none; }
+  .short-slide.is-error.no-picture .video-retry{ display:none; } /* 読み込み直しても変わらないので、ボタンは出さない */
   .video-status-text{ margin:0; line-height:1.6; }
   .video-retry{
     display:none; pointer-events:auto; min-height:44px; padding:0 22px; border-radius:99px; font-family:var(--font-ui); font-size:14px; font-weight:700;
@@ -2475,9 +2476,20 @@ function attachSlideEvents(slide, v){
   // 動画の読み込み中はくるくる、読み込めなかったら「もう一度読み込む」
   if(video){
     const statusText = slide.querySelector('.video-status-text');
-    const loaded = ()=> slide.classList.remove('is-loading', 'is-error');
+    // 映像がない（音だけ）ときは、黒いままにせず理由を出す（映像の大きさが0＝絵がない）
+    const noPicture = ()=> video.readyState >= 1 && !video.videoWidth;
+    const showNoPicture = ()=>{
+      slide.classList.remove('is-loading');
+      slide.classList.add('is-error', 'no-picture');
+      statusText.textContent = 'この動画の映像を再生できません';
+    };
+    const loaded = ()=>{
+      if(noPicture()){ showNoPicture(); return; }
+      slide.classList.remove('is-loading', 'is-error', 'no-picture');
+    };
     video.addEventListener('playing', loaded);
     video.addEventListener('canplay', loaded);
+    video.addEventListener('loadedmetadata', ()=>{ if(noPicture()) showNoPicture(); });
     video.addEventListener('error', ()=>{
       if(!video.getAttribute('src')) return; // 離れた動画の読み込みを手放したとき
       slide.classList.remove('is-loading');
@@ -4884,6 +4896,30 @@ function compressVideo(prep, onProgress){
   });
 }
 
+// 動画ファイルに映像が入っているか（音だけでないか）。この端末で映像を読み込めれば true
+function hasPicture(blob){
+  return new Promise(resolve=>{
+    const video = document.createElement('video');
+    const url = URL.createObjectURL(blob);
+    let settled = false;
+    const done = ok=>{
+      if(settled) return;
+      settled = true;
+      clearTimeout(timer);
+      video.removeAttribute('src');
+      video.load();
+      URL.revokeObjectURL(url);
+      resolve(ok);
+    };
+    const timer = setTimeout(()=> done(false), 10000);
+    video.muted = true;
+    video.preload = 'metadata';
+    video.onloadedmetadata = ()=> done(video.videoWidth > 0 && video.videoHeight > 0);
+    video.onerror = ()=> done(false);
+    video.src = url;
+  });
+}
+
 function resizePhotoForUpload(file){
   return loadImageFile(file)
     .then(img=> new Promise(res=> fitCanvas(img, UPLOAD_PHOTO_MAX_SIDE).toBlob(res, 'image/jpeg', 0.85)))
@@ -5058,8 +5094,14 @@ async function publishCloudPost(post, compressor, onProgress = showUploadProgres
       compressor.video.muted = false;
       if(overlay) media.appendChild(compressor.video); // 軽くしている動画をそのまま見せる（音は出ない）
       onProgress('動画を軽くしています…', 0);
-      const small = await compressVideo(compressor, r=> onProgress('動画を軽くしています…', r));
-      blobs = [small.size < file.size || file.size > MAX_UPLOAD_MB * MB ? small : file];
+      let small = await compressVideo(compressor, r=> onProgress('動画を軽くしています…', r));
+      // この端末で映像を読めない形式（iPhoneで撮ったHEVCなど）だと、軽くした結果が「音だけ」になってしまう。
+      // そのときは軽くした分を捨てて、元のファイルのまま送る（大きすぎて送れなければ、理由を伝えて止める）
+      if(!(await hasPicture(small))){
+        if(file.size > MAX_UPLOAD_MB * MB) throw Object.assign(new Error('cannot decode'), { code:'cannot_decode' });
+        small = null;
+      }
+      blobs = [small && (small.size < file.size || file.size > MAX_UPLOAD_MB * MB) ? small : file];
     }
     if(blobs[0].size > MAX_UPLOAD_MB * MB) throw Object.assign(new Error('too big'), { code:'too_big' });
   } else {
@@ -5099,6 +5141,7 @@ async function publishCloudPost(post, compressor, onProgress = showUploadProgres
 }
 function uploadErrorMessage(err){
   if(err && err.code === 'left') return '画面を離れたので、投稿を中止しました。もう一度「投稿する」を押してね';
+  if(err && err.code === 'cannot_decode') return `この端末では、この動画の映像を読めないので軽くできませんでした（${MAX_UPLOAD_MB}MBより大きいため、そのままでも送れません）。iPhoneから投稿するか、短くしてもう一度選んでね`;
   if(err && err.code === 'too_big') return `動画が大きすぎて送れません（${MAX_UPLOAD_MB}MBまで）。短くするか、画質を下げてもう一度選んでね`;
   if(err && err.status === 413) return `ファイルが大きすぎて送れませんでした（${MAX_UPLOAD_MB}MBまで）`;
   if(!navigator.onLine || (err && err.status === 0)) return 'アップロードできませんでした。電波の状態を確かめて、もう一度押してね';

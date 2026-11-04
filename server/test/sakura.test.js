@@ -13,7 +13,7 @@ function memoryKv() {
 }
 
 // にせのさくら：reply(req本文) が返す { status, chunks, finish, body } のとおりに答える。届いた内容を received に残す
-async function fakeSakura(reply) {
+async function fakeSakura(reply, handlerOptions = {}) {
   const state = { received: [], closedEarly: false };
   const server = http.createServer((req, res) => {
     let data = '';
@@ -40,7 +40,7 @@ async function fakeSakura(reply) {
     AI_PROVIDER: 'sakura', SAKURA_API_KEY: 'sakura-test-key', SAKURA_BASE_URL: `http://localhost:${server.address().port}/v1`,
   };
   const waits = [];
-  const handle = createHandler();
+  const handle = createHandler(handlerOptions);
   return { state, env, waits, close: () => server.close(), call: req => handle(req, env, { waitUntil: p => waits.push(p) }) };
 }
 
@@ -127,6 +127,54 @@ test('さくら：混んでいるときは busy、その他の失敗は upstream
     assert.deepEqual(await r2.json(), { error: 'upstream_error' });
     assert.equal(used(busy.env) + used(broken.env), 0);
   } finally { busy.close(); broken.close(); }
+});
+
+// にせのClaude（さくらが使えないときの代わり）：決めた文字を返す。呼ばれた内容を calls に残す
+function fakeClaude(chunks = ['Claudeが答えます']) {
+  const calls = [];
+  return {
+    calls,
+    messages: {
+      stream(params) {
+        calls.push(params);
+        const listeners = [];
+        const final = (async () => {
+          await new Promise(r => setTimeout(r, 5));
+          for (const c of chunks) listeners.forEach(fn => fn(c));
+          return { stop_reason: 'end_turn', content: [] };
+        })();
+        return { on(name, fn) { if (name === 'text') listeners.push(fn); return this; }, finalMessage: () => final, abort() {} };
+      },
+    },
+  };
+}
+
+test('さくら：使えないときは、Claudeのキーがあれば Claude で答える（回数は1回だけ数える）', async () => {
+  const claude = fakeClaude();
+  const s = await fakeSakura(() => ({ status: 429 }), { makeClient: () => claude });
+  try {
+    s.env.ANTHROPIC_API_KEY = 'sk-test';
+    const events = await quiet(async () => readEvents(await s.call(ask(question('この問題', { image: { mediaType: 'image/jpeg', data: 'aGVsbG8=' } })))));
+    assert.equal(events.filter(x => x.type === 'delta').map(x => x.text).join(''), 'Claudeが答えます');
+    assert.deepEqual(events.at(-1), { type: 'done', truncated: false });
+    assert.equal(claude.calls.length, 1);
+    assert.equal(claude.calls[0].messages.at(-1).content[0].type, 'image', '写真も Claude に渡す');
+    assert.equal(used(s.env), 1);
+  } finally { s.close(); }
+});
+
+test('さくら：アプリから直近20件までの会話を受け取れる（会話の流れを覚えておく）', async () => {
+  const s = await fakeSakura(() => ({ chunks: [{ content: 'OK' }] }));
+  try {
+    const body = question();
+    body.messages = Array.from({ length: 19 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: `会話${i}` }));
+    const res = await s.call(ask(body));
+    assert.equal(res.status, 200);
+    await readEvents(res);
+    assert.equal(s.state.received[0].body.messages.length, 20, 'システムの指示＋会話19件');
+    body.messages = Array.from({ length: 21 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: `会話${i}` }));
+    assert.equal((await s.call(ask(body))).status, 400, '21件以上は受け付けない');
+  } finally { s.close(); }
 });
 
 test('さくら：長くて途中で切れたら truncated、内容で止められたら refused', async () => {

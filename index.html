@@ -5314,7 +5314,7 @@ const AI_SERVER_URL = (window.ZONENOW_CONFIG && window.ZONENOW_CONFIG.aiServerUr
 const AI_DEVICE_KEY = 'zonenow_device_id'; // 1日の質問回数を数えるための端末ID
 const AI_CHAT_KEY = 'zonenow_ai_chat';
 const AI_HISTORY_MAX = 40;      // 端末に残す会話の数
-const AI_CONTEXT_TURNS = 12;    // AIに渡す直近の会話の数
+const AI_CONTEXT_TURNS = 20;    // AIに渡す直近の会話の数（会話の流れを覚えておくため。AIサーバーの上限と同じ）
 const AI_PHOTO_MAX = 1600;      // AIに送る写真の長い辺（px）。文字が読める大きさに縮小して送る
 const AI_THUMB_MAX = 320;       // 会話に残す写真の縮小版（px）。端末の保存容量対策
 // 下のチップ：最初は補助機能、AIが解説した直後は「解説の続き」を出す

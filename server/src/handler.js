@@ -11,7 +11,7 @@ const DEFAULT_MODEL = 'claude-haiku-5-5';
 const DEFAULT_DAILY_LIMIT = 20;
 const MAX_TOKENS = 8000;            // 考える分＋解説の分。解説そのものは400字程度を指示している
 const MAX_BODY_BYTES = 7 * 1024 * 1024;
-const MAX_TURNS = 12;               // アプリが送ってくる直近の会話の数
+const MAX_TURNS = 20;               // アプリが送ってくる直近の会話の数（会話の流れを覚えておくため）
 const MAX_TURN_CHARS = 4000;
 const MAX_IMAGE_BASE64 = 6 * 1024 * 1024; // 写真（base64）。アプリ側で1600pxのJPEGに縮小して送ってくる
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -99,7 +99,11 @@ export function createHandler({ makeClient = env => new Anthropic({ apiKey: env.
     const countUse = () => env.USAGE.put(countKey, String(used + 1), { expirationTtl: COUNT_TTL_SECONDS });
     const remaining = limit - used - 1;
 
-    if (env.AI_PROVIDER === 'sakura') return askSakura({ env, ask, cors, ctx, countUse, remaining, fetchImpl });
+    if (env.AI_PROVIDER === 'sakura') {
+      // さくらが混んでいる・止まっている・写真を読めないときは、Claude のキーがあれば Claude で答える（なければエラーを返す）
+      const viaSakura = await askSakura({ env, ask, cors, ctx, countUse, remaining, fetchImpl, canFallBack: !!env.ANTHROPIC_API_KEY });
+      if (viaSakura) return viaSakura;
+    }
     await countUse();
 
     // ---- AIに聞いて、できた分から返す（1行に1つのJSON） ----
@@ -147,12 +151,14 @@ function streamResponse(readable, cors, remaining) {
   });
 }
 
-// さくらのAI Engine で答える。返事が始まる前に失敗したら回数は数えず、エラーをそのまま返す
+// さくらのAI Engine で答える。返事が始まる前に失敗したら回数は数えず、
+// canFallBack なら null を返して Claude に任せる。そうでなければエラーをそのまま返す
 // （写真を読めないモデルなら images_unavailable：アプリは写真ボタンを隠して、文字で聞くよう案内する）
-async function askSakura({ env, ask, cors, ctx, countUse, remaining, fetchImpl }) {
+async function askSakura({ env, ask, cors, ctx, countUse, remaining, fetchImpl, canFallBack }) {
   const controller = new AbortController();
   const hasImage = Array.isArray(ask.turns.at(-1).content);
   const started = await startSakura({ env, system: buildSystemPrompt(ask), turns: ask.turns, hasImage, maxTokens: MAX_TOKENS, signal: controller.signal, fetchImpl });
+  if (started.error && canFallBack) { console.warn('sakura unavailable, falling back to Claude:', started.error); return null; }
   if (started.error) return json(started.error === 'busy' ? 503 : started.error === 'images_unavailable' ? 400 : 502, { error: started.error }, cors);
   await countUse();
 

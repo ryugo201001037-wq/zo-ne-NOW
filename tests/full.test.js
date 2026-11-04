@@ -360,6 +360,31 @@ const { check, state, report } = createChecker();
   await page.click('#post-next');
   check('ターゲット未選択はエラー', (await toast()).includes('ターゲット'));
   await page.click('#post-grade-chips .chip[data-id="junior2"]');
+  // ターゲット学年はいくつでも選べる。全学年は単独（ほかの学年と一緒には選べない）
+  const activeGrades = () => page.$$eval('#post-grade-chips .chip.active', cs => cs.map(c => c.dataset.id).join(','));
+  await page.click('#post-grade-chips .chip[data-id="high1"]');
+  await page.click('#post-grade-chips .chip[data-id="junior3"]');
+  check('ターゲット学年を複数選べる（選択肢の順に並ぶ）', (await activeGrades()) === 'junior2,junior3,high1', await activeGrades());
+  await page.click('#post-grade-chips .chip[data-id="junior3"]');
+  check('もう一度押すと外れる', (await activeGrades()) === 'junior2,high1', await activeGrades());
+  await page.click('#post-grade-chips .chip[data-id="everyone"]');
+  check('全学年を選ぶと、ほかの学年は外れる', (await activeGrades()) === 'everyone', await activeGrades());
+  await page.click('#post-grade-chips .chip[data-id="high1"]');
+  await page.click('#post-grade-chips .chip[data-id="everyone"]');
+  await page.click('#post-grade-chips .chip[data-id="junior2"]');
+  check('学年を選ぶと、全学年は外れる', (await activeGrades()) === 'junior2', await activeGrades());
+  const gradeLogic = await evalq(() => {
+    const multi = { grade: 'junior3', grades: ['junior3', 'high1'] };
+    return {
+      single: gradeLabelOf({ grade: 'junior2' }), multi: gradeLabelOf(multi), everyone: gradeLabelOf({ grade: 'everyone', grades: ['everyone'] }),
+      other: gradeLabelOf({ grades: ['junior3', 'other'], gradeOther: '浪人生' }),
+      tags: hashtagListOf({ ...multi, kind: 'lesson', subject: 'math' }).join(','),
+      weightHigh1: gradeWeight(multi, 'high1'), weightHigh2: gradeWeight(multi, 'high2'), weightJunior1: gradeWeight(multi, 'junior1'),
+    };
+  });
+  check('学年の表示：1つなら「中学2年」、いくつかなら「中3・高1」', gradeLogic.single === '中学2年' && gradeLogic.multi === '中3・高1' && gradeLogic.everyone === '全学年' && gradeLogic.other === '中3・浪人生', JSON.stringify(gradeLogic));
+  check('学年がいくつかある動画は、中学生・高校生の両方のタグ', gradeLogic.tags === '勉強,数学,中学生,高校生', gradeLogic.tags);
+  check('フィードでは、いちばん合っている学年で出やすさを決める', gradeLogic.weightHigh1 === 3 && gradeLogic.weightHigh2 === 1.5 && gradeLogic.weightJunior1 === 1.5, JSON.stringify(gradeLogic));
   const kindChips = await page.$$eval('#post-kind-chips .chip', cs => cs.map(c => c.textContent));
   check('種類に「その他」がある', kindChips.includes('その他'), kindChips);
   check('種類は解説・問題・やる気・豆知識・Vlog・その他', kindChips.join(',') === '解説,問題,やる気,豆知識,Vlog,その他', kindChips);

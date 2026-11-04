@@ -68,6 +68,9 @@ create table if not exists public.posts (
   created_at    timestamptz not null default now()
 );
 create index if not exists posts_created_at on public.posts (created_at desc);
+-- ターゲット学年は複数選べる（2026年11月から）。grade は前の版のアプリのために残す（代表の1つ：全学年を含むなら everyone、それ以外は最初の学年）
+-- すでに posts がある場合も、この1行だけ実行すれば列が増える（何度実行しても大丈夫）
+alter table public.posts add column if not exists grades text[] not null default '{}' check (cardinality(grades) <= 8);
 
 -- ---- 通報（フィードの「…」から。アプリからは読めない。運営は Table Editor で読み、必要なら投稿を消す） ----
 create table if not exists public.reports (

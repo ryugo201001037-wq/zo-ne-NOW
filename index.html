@@ -1932,8 +1932,9 @@ function loadProfile(){
 // アイコン画像は自分でリサイズしたdata URLだけを受け付ける
 function isSafeAvatar(src){ return typeof src === 'string' && src.startsWith('data:image/'); }
 
-// ---- 通知：この端末の中で起きたできごと（連続記録など） ----
-// サーバーがないので、他の人の行動（いいね・コメントなど）の通知はまだ届かない
+// ---- 通知 ----
+// ・この端末の中で起きたできごと（連続記録など）：端末に保存（下の NOTIFY_KEY）
+// ・ほかの人からのいいね・コメント・フォロー：サーバー（notifications）がDBのトリガーで作る。読むのは loadCloudNotifications
 const NOTIFY_KEY = 'zonenow_notifications';
 const NOTIFY_MAX = 50;
 function loadNotifications(){ return loadJSON(NOTIFY_KEY, []); }
@@ -1946,8 +1947,44 @@ function addNotification(type, text, key = null){
   updateNotifyBadges();
   return true;
 }
+// サーバーの通知：読んだ時刻（NOTIFY_SEEN_KEY）より新しいものを「未読」とする。最後に読んだ分は端末に控えておく
+const CLOUD_NOTIFY_KEY = 'zonenow_cloud_notifications';
+const NOTIFY_SEEN_KEY = 'zonenow_notify_seen_at';
+const CLOUD_NOTIFY_REFRESH_MS = 60 * 1000;
+let cloudNotifications = loadJSON(CLOUD_NOTIFY_KEY, []);
+let cloudNotifyLoadedAt = 0;
+function cloudNotifyAt(n){ return Date.parse(n.created_at) || 0; }
+function hasUnreadCloudNotifications(){
+  const seen = Number(loadJSON(NOTIFY_SEEN_KEY, 0)) || 0;
+  return cloudNotifications.some(n=> cloudNotifyAt(n) > seen);
+}
+async function loadCloudNotifications(){
+  if(!cloudEnabled()) return;
+  try{
+    const client = await getCloud();
+    if(!client || !(await cloudUserId())) return;
+    const { data, error } = await client.from('notifications')
+      .select('id, type, actor_name, post_title, body, created_at')
+      .order('created_at', { ascending:false }).limit(NOTIFY_MAX);
+    if(error || !Array.isArray(data)) return; // 表がまだない（SQLを実行する前）なども、何もしない
+    cloudNotifyLoadedAt = Date.now();
+    cloudNotifications = data;
+    saveJSON(CLOUD_NOTIFY_KEY, data);
+    updateNotifyBadges();
+    if(screens.notifications && screens.notifications.classList.contains('active')) renderNotificationsScreen();
+  }catch(e){
+    // 電波がないなど：前に読んだ分を出しておく
+  }
+}
+function cloudNotificationText(n){
+  const who = `${n.actor_name || 'だれか'}さん`;
+  if(n.type === 'like') return `${who}があなたの投稿「${n.post_title}」にいいねしました`;
+  if(n.type === 'comment') return `${who}があなたの投稿「${n.post_title}」にコメントしました：「${n.body}」`;
+  if(n.type === 'follow') return `${who}があなたをフォローしました`;
+  return '';
+}
 function updateNotifyBadges(){
-  const unread = loadNotifications().some(n=> !n.read);
+  const unread = loadNotifications().some(n=> !n.read) || hasUnreadCloudNotifications();
   document.getElementById('profile-bell').classList.toggle('has-unread', unread);
   document.querySelectorAll('.nav-btn[data-nav="profile"]').forEach(b=> b.classList.toggle('has-unread', unread));
 }
@@ -2030,7 +2067,7 @@ async function ensureAccount(){
 
 // ---- サーバーへ送る変更のキュー（端末に保存。送れたものから消す） ----
 // { type:'profile' } / { type:'log_upsert', ids? } / { type:'log_delete', id } / { type:'log_clear' } / { type:'feedback', message, version, platform }
-// { type:'report', postId, reason }
+// { type:'report', postId, reason } / { type:'usage', row } / { type:'follow', id, follow }
 function queueSync(op){
   if(!cloudEnabled()) return;
   const queue = loadJSON(SYNC_QUEUE_KEY, []);
@@ -2064,6 +2101,12 @@ async function runSyncOp(client, userId, op){
     res = await client.from('reports').insert({ post_id: op.postId, reason: op.reason });
   } else if(op.type === 'log_clear'){
     res = await client.from('study_logs').delete().eq('user_id', userId);
+  } else if(op.type === 'usage'){
+    res = await client.from('usage_logs').insert(op.row);
+  } else if(op.type === 'follow'){
+    res = op.follow
+      ? await client.from('follows').upsert({ follower_id: userId, followee_id: op.id }, { ignoreDuplicates:true })
+      : await client.from('follows').delete().eq('follower_id', userId).eq('followee_id', op.id);
   }
   if(res && res.error){
     // 中身がおかしくてサーバーに断られたもの（400番台）は、何度送っても通らないので捨てる（後ろの変更が止まらないように）
@@ -2101,6 +2144,78 @@ function flushSync(){
 }
 window.addEventListener('online', ()=> flushSync());
 
+// ---- 使い方の記録（運営が「どう使われているか」を知るため。前のプロトタイプと同じ形） ----
+// 「アプリを開いてから、閉じる（裏に回す）まで」の行動を時刻付きでためて、閉じたときに1行にまとめて送る。
+// 例：「20:15 起動 → 20:21 勉強の声かけ（動画15本目） → 20:21 「勉強を始める」 → 20:52 タイマー終了（数学・31分）」
+// ・送るのはサーバー（usage_logs）だけ。アプリからは読めない。運営は Supabase の Table Editor で読む
+// ・送り方は他の変更と同じキュー：電波がない・閉じるのが早すぎて送れなかったときは、次に開いたときに送る
+// ・検索した言葉・コメントの中身・AIへの質問の中身は書かない（何をしたかだけ）
+const USAGE_KEY = 'zonenow_usage_session';
+const USAGE_MAX_EVENTS = 300;
+const USAGE_MAX_QUEUED = 50; // 送れないまま溜まりすぎたら古い記録から捨てる
+let usageSession = loadJSON(USAGE_KEY, null);
+function clockHHMM(ts = Date.now()){
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+function saveUsage(){ saveJSON(USAGE_KEY, usageSession); }
+// 記録するのは、最初の設定（名前と学年）が終わってから
+function startUsage(label){
+  if(!loadProfile()){ usageSession = null; return; }
+  usageSession = { startedAt: Date.now(), lastAt: Date.now(), events: [], videos: 0, studySeconds: 0 };
+  usageEvent(label);
+}
+function ensureUsage(){
+  if(!usageSession) startUsage('再開');
+  return !!usageSession;
+}
+function usageEvent(text){
+  if(!ensureUsage()) return;
+  usageSession.lastAt = Date.now();
+  if(usageSession.events.length < USAGE_MAX_EVENTS) usageSession.events.push(`${clockHHMM()} ${text}`);
+  saveUsage();
+}
+function usageCountVideo(){
+  if(!ensureUsage()) return;
+  usageSession.videos++;
+  usageSession.lastAt = Date.now();
+  saveUsage();
+}
+function usageAddStudy(seconds){
+  if(!ensureUsage()) return;
+  usageSession.studySeconds += seconds;
+  saveUsage();
+}
+// endLabel が null のとき：前回、閉じたことに気づけないまま終わった分（最後の操作の時刻を終わりとする）
+function flushUsage(endLabel){
+  if(!usageSession) return;
+  if(!loadProfile()){ // 「すべて削除」のあとなど：送らずに捨てる
+    usageSession = null;
+    try{ localStorage.removeItem(USAGE_KEY); }catch(e){}
+    return;
+  }
+  if(endLabel) usageEvent(endLabel);
+  else usageSession.events.push('（ここで記録が途切れました）');
+  const profile = loadProfile();
+  const row = {
+    name: profile ? profile.name : '',
+    started_at: new Date(usageSession.startedAt).toISOString(),
+    ended_at: new Date(usageSession.lastAt).toISOString(),
+    narrative: usageSession.events.join(' → ').slice(0, 8000),
+    videos_watched: Math.min(usageSession.videos, 100000),
+    study_seconds: Math.min(usageSession.studySeconds, 86400),
+    app_version: APP_VERSION,
+    platform: IS_NATIVE_APP ? 'ios' : 'web',
+  };
+  usageSession = null;
+  try{ localStorage.removeItem(USAGE_KEY); }catch(e){}
+  if(!cloudEnabled()) return;
+  const queue = loadJSON(SYNC_QUEUE_KEY, []);
+  const usageOps = queue.filter(op=> op.type === 'usage');
+  if(usageOps.length >= USAGE_MAX_QUEUED) saveJSON(SYNC_QUEUE_KEY, queue.filter(op=> op !== usageOps[0]));
+  queueSync({ type:'usage', row });
+}
+
 // 電波がないときは上に帯を出す
 function updateOfflineBanner(){ document.getElementById('offline-banner').hidden = navigator.onLine; }
 window.addEventListener('online', updateOfflineBanner);
@@ -2136,6 +2251,18 @@ function setFollowing(key, follow, name){
   const list = loadFollowing().filter(e=> followKeyOfEntry(e) !== key);
   if(follow) list.push(ACCOUNT_ID_RE.test(key) ? { id:key, name } : key);
   saveJSON(FOLLOW_KEY, list);
+  // 本物の利用者のフォローはサーバーにも送る（フォローされた人に通知が届く）
+  if(ACCOUNT_ID_RE.test(key)) queueSync({ type:'follow', id:key, follow:!!follow });
+}
+// サーバーにフォローを送るようになる前からフォローしていた人を、一度だけまとめて送る
+const FOLLOW_SYNCED_KEY = 'zonenow_follows_synced';
+function syncExistingFollows(){
+  if(loadJSON(FOLLOW_SYNCED_KEY, false)) return;
+  for(const e of loadFollowing()){
+    const id = followKeyOfEntry(e);
+    if(ACCOUNT_ID_RE.test(id)) queueSync({ type:'follow', id, follow:true });
+  }
+  saveJSON(FOLLOW_SYNCED_KEY, true);
 }
 
 // 自分の投稿（サーバーにつながらないとき）：動画・写真のファイルごと IndexedDB（ブラウザ内の大きめの保存場所）に入れておき、
@@ -2382,7 +2509,7 @@ function showScreen(name){
   if(name === 'history') renderHistoryScreen();
   if(name === 'people') renderPeopleScreen();
   if(name === 'ai') renderAiScreen();
-  if(name === 'notifications') renderNotificationsScreen();
+  if(name === 'notifications'){ renderNotificationsScreen(); loadCloudNotifications(); usageEvent('通知を開いた'); }
   if(name === 'settings') renderSettingsScreen();
   const activeTab = NAV_PARENT[name] || name;
   document.querySelectorAll('[data-nav]').forEach(btn=>{
@@ -2844,6 +2971,7 @@ function enterSlide(slide){
     }
     countedSlides.add(slide);
     viewedCount++;
+    usageCountVideo();
   }
   activateSlide(slide);
   refreshCloudStatsOf(VIDEOS.find(v=> v.id === slide.dataset.id)); // みんなの投稿は、いいねなどの数を新しくする
@@ -3147,12 +3275,15 @@ function openStudyNudge(){
   document.getElementById('nudge-title').textContent = msg.title;
   document.getElementById('nudge-sub').textContent = msg.sub;
   studyNudgeEl.classList.add('show');
+  usageEvent(`勉強の声かけ（動画${viewedCount}本目）`);
 }
 document.getElementById('nudge-continue').addEventListener('click', ()=>{
+  usageEvent('「まだ見る」を選択');
   studyNudgeEl.classList.remove('show');
   resumeFeed();
 });
 document.getElementById('nudge-start').addEventListener('click', ()=>{
+  usageEvent('「勉強を始める」を選択');
   studyNudgeEl.classList.remove('show');
   if(!timerState.startedAt){
     timerState.startedAt = Date.now();
@@ -3836,7 +3967,9 @@ document.getElementById('timer-toggle').addEventListener('click', ()=>{
   if(timerState.startedAt){
     timerState.accumulatedMs += Date.now() - timerState.startedAt;
     timerState.startedAt = null;
+    usageEvent('タイマー一時停止');
   } else {
+    usageEvent(timerState.accumulatedMs ? 'タイマー再開' : `タイマー開始（${subjectLabelOf(timerState) || '教科未選択'}）`);
     timerState.startedAt = Date.now();
   }
   saveTimer();
@@ -3852,6 +3985,8 @@ document.getElementById('timer-finish').addEventListener('click', ()=>{
   const subjectError = timerSubject.error('教科');
   if(subjectError){ showToast(subjectError); return; }
   if(!addStudyEntry(timerSubject.id, timerSubject.other, seconds, localDateKey(), 'timer')) return;
+  usageEvent(`タイマー終了して記録（${subjectLabelOf({ subject: timerSubject.id, subjectOther: timerSubject.other })}・${formatStudyTime(seconds)}）`);
+  usageAddStudy(seconds);
   resetTimer();
   renderRecordScreen();
   showToast(`${formatStudyTime(seconds)}を記録しました`);
@@ -3859,6 +3994,7 @@ document.getElementById('timer-finish').addEventListener('click', ()=>{
 
 document.getElementById('timer-discard').addEventListener('click', async ()=>{
   if(!await confirmDialog('計測中のタイマーを記録せずに破棄します。よろしいですか？', '破棄する')) return;
+  usageEvent(`タイマー破棄（${formatStudyTime(Math.floor(timerElapsedMs() / 1000))}）`);
   resetTimer();
   renderTimer();
 });
@@ -3890,6 +4026,7 @@ document.getElementById('manual-add').addEventListener('click', ()=>{
     return;
   }
   if(!addStudyEntry(manualSubject.id, manualSubject.other, minutes * 60, date, 'manual')) return;
+  usageEvent(`手入力で記録（${subjectLabelOf({ subject: manualSubject.id, subjectOther: manualSubject.other })}・${formatStudyTime(minutes * 60)}${date === localDateKey() ? '' : `・${date}の分`}）`);
   manualMinutesInput.value = '';
   renderRecordScreen();
   showToast(`${formatStudyTime(minutes * 60)}を記録しました`);
@@ -4066,10 +4203,14 @@ document.getElementById('record-reset').addEventListener('click', async ()=>{
 });
 
 // ---- 通知画面：開いたら既読にする ----
-const NOTIFY_ICONS = { streak:'flame' };
+const NOTIFY_ICONS = { streak:'flame', like:'heart', comment:'comment', follow:'user' };
 document.getElementById('notify-empty-icon').innerHTML = icon('bell');
 function renderNotificationsScreen(){
-  const list = loadNotifications();
+  const local = loadNotifications();
+  const seen = Number(loadJSON(NOTIFY_SEEN_KEY, 0)) || 0;
+  const cloud = cloudNotifications.map(n=> ({ type:n.type, text:cloudNotificationText(n), at:cloudNotifyAt(n), read: cloudNotifyAt(n) <= seen }))
+    .filter(n=> n.text);
+  const list = [...local, ...cloud].sort((a, b)=> b.at - a.at).slice(0, NOTIFY_MAX * 2);
   document.getElementById('notify-list').innerHTML = list.map(n=>`
     <div class="notify-row ${n.read ? '' : 'unread'}">
       <div class="notify-icon">${icon(NOTIFY_ICONS[n.type] || 'bell')}</div>
@@ -4080,10 +4221,9 @@ function renderNotificationsScreen(){
     </div>
   `).join('');
   document.getElementById('notify-empty').style.display = list.length ? 'none' : 'block';
-  if(list.some(n=> !n.read)){
-    saveJSON(NOTIFY_KEY, list.map(n=> ({ ...n, read:true })));
-    updateNotifyBadges();
-  }
+  if(local.some(n=> !n.read)) saveJSON(NOTIFY_KEY, local.map(n=> ({ ...n, read:true })));
+  if(cloud.some(n=> !n.read)) saveJSON(NOTIFY_SEEN_KEY, Math.max(...cloud.map(n=> n.at)));
+  updateNotifyBadges();
 }
 
 // ---- 投稿画面 ----
@@ -4213,10 +4353,8 @@ document.getElementById('post-tag-open').addEventListener('click', ()=>{
 });
 // 「#英語 #単語」のようにまとめて入力しても1つずつ追加する
 function addPostTags(text){
-  const words = text.split(/[\s,、#＃]+/).map(w=> w.trim()).filter(Boolean);
-  for(const word of words){
+  for(const tag of hashtagWords(text)){
     if(postHashtags.length >= MAX_HASHTAGS){ showToast(`ハッシュタグは${MAX_HASHTAGS}個までです`); break; }
-    const tag = word.slice(0, HASHTAG_MAX_LENGTH);
     if(!postHashtags.includes(tag)) postHashtags.push(tag);
   }
   postTagInput.value = '';
@@ -4396,6 +4534,7 @@ document.getElementById('preview-post').addEventListener('click', async ()=>{
     renderResults();
     resetPostForm();
     showScreen('home');
+    usageEvent(`投稿（${published.mediaType === 'image' ? '写真' : '動画'}）`);
     showToast('投稿しました！みんなのフィードに流れます');
     return;
   }
@@ -4509,14 +4648,18 @@ function renderBulkAll(){
 }
 renderBulkAll();
 
-// 「#英語 #単語」「英語、単語」などから、ハッシュタグの配列にする（最大 MAX_HASHTAGS 個）
+// 「#英語 #単語」「英語、単語」などを、タグの言葉に分ける。
+// 「#️⃣勉強垢」のような絵文字の # で区切ったときに残る、見えない文字（絵文字の一部）は先頭から取り除く
+const TAG_INVISIBLE_HEAD = /^[\uFE0E\uFE0F\u20E3\u200B-\u200D\u2060\uFEFF]+/;
+const TAG_INVISIBLE_TAIL = /[\u200B\u2060\uFEFF]+$/;
+function hashtagWords(text){
+  return String(text).split(/[\s,、#＃]+/)
+    .map(w=> w.trim().replace(TAG_INVISIBLE_HEAD, '').replace(TAG_INVISIBLE_TAIL, '').slice(0, HASHTAG_MAX_LENGTH))
+    .filter(Boolean);
+}
+// ハッシュタグの配列にする（重なりは1つにまとめる・最大 MAX_HASHTAGS 個）
 function parseHashtagText(text){
-  const tags = [];
-  for(const word of text.split(/[\s,、#＃]+/).map(w=> w.trim()).filter(Boolean)){
-    const tag = word.slice(0, HASHTAG_MAX_LENGTH);
-    if(!tags.includes(tag)) tags.push(tag);
-  }
-  return tags.slice(0, MAX_HASHTAGS);
+  return [...new Set(hashtagWords(text))].slice(0, MAX_HASHTAGS);
 }
 // 動画の長さ（秒）。読めなければ NaN
 function probeVideoDuration(file){
@@ -4743,6 +4886,7 @@ document.getElementById('bulk-submit').addEventListener('click', async ()=>{
     renderResults();
     tapFeedback('MEDIUM');
   }
+  if(done) usageEvent(`まとめて投稿（${done}本）`);
   showToast(failed ? `${done}本を投稿しました。送れなかった動画が${failed}本あります（もう一度押すと送り直します）` : `${done}本を投稿しました！`);
 });
 
@@ -5574,6 +5718,7 @@ async function sendToAiCoach(text, photo = null){
   if(aiController || (!text && !photo)) return;
   if(photo && !text) text = 'この問題がわからない。解説して';
   const intent = photo ? 'chat' : detectIntent(text);
+  usageEvent(photo ? 'AIコーチに写真で質問' : intent === 'plan' ? 'AIコーチで計画' : intent === 'review' ? 'AIコーチで振り返り' : 'AIコーチに質問');
   aiHistory.push(photo ? { role:'user', text, image: photo.thumb } : { role:'user', text });
 
   if(intent === 'plan'){ aiHistory.push(planMessage(60)); }
@@ -5714,6 +5859,7 @@ function startStudyTimerFromCoach(subject){
   }
   timerState.startedAt = Date.now();
   saveTimer();
+  usageEvent(`AIコーチからタイマー開始（${subject ? labelOf(SUBJECTS, subject) : '教科未選択'}）`);
   showScreen('record');
   showToast(subject ? `${labelOf(SUBJECTS, subject)}のタイマーをスタートしました` : 'タイマーをスタート！教科も選んでおこう');
 }
@@ -5870,6 +6016,7 @@ document.getElementById('onboarding-submit').addEventListener('click', async ()=
     renderFeed(SHARED_VIDEO || undefined); // 学年に合わせたおすすめで作り直す（共有リンクの動画は先頭のまま）
     showScreen('home');
     showToast(`ようこそ、${name}さん`);
+    startUsage('はじめての設定');
     loadCloudPosts();
   }
 });
@@ -6229,7 +6376,22 @@ async function startCloud(){
     return;
   }
   loadCloudPosts();
+  syncExistingFollows();
+  loadCloudNotifications();
 }
+// アプリに戻ってきたときは、通知を読み直す（1分に1回まで）
+document.addEventListener('visibilitychange', ()=>{
+  if(!document.hidden && cloudNotifyLoadedAt && Date.now() - cloudNotifyLoadedAt > CLOUD_NOTIFY_REFRESH_MS) loadCloudNotifications();
+});
+// 使い方の記録：前回の分が残っていれば（閉じたことに気づけなかった）先に送ってから、今回の記録を始める
+if(usageSession) flushUsage(null);
+startUsage('起動');
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden) flushUsage('終了');
+  else startUsage('再開');
+});
+window.addEventListener('pagehide', ()=>{ if(usageSession) flushUsage('終了'); });
+
 if(cloudEnabled() && loadProfile()) startCloud();
 
 

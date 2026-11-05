@@ -47,14 +47,23 @@ async function open(browser, native) {
   check('バージョンに「iPhoneアプリ」', (await p.textContent('#settings-version')).includes('（iPhoneアプリ）'));
 
   state.section = '勉強リマインド';
-  check('設定に勉強リマインド（最初はオフ・20:00）', await p.isVisible('#settings-reminder-section') && (await p.textContent('#reminder-toggle')) === 'オンにする' && (await p.inputValue('#reminder-time')) === '20:00');
-  await p.fill('#reminder-time', '19:30');
+  check('設定に勉強リマインド（最初はオフ・時刻は選ばない）', await p.isVisible('#settings-reminder-section') && (await p.textContent('#reminder-toggle')) === 'オンにする' && !(await p.$('#settings-reminder-section input')));
   await p.click('#reminder-toggle'); await p.waitForTimeout(200);
-  const scheduled = await p.evaluate(() => window.__ln.scheduled);
-  check('オンにすると、通知を許可してもらってから毎日19:30に予約', scheduled.length === 1 && scheduled[0].schedule.on.hour === 19 && scheduled[0].schedule.on.minute === 30 && await p.evaluate(() => window.__ln.asked === 1), JSON.stringify(scheduled));
-  check('ボタンは「オフにする」に変わる', (await p.textContent('#reminder-toggle')) === 'オフにする' && (await p.textContent('#reminder-status')).includes('毎日 19:30'));
-  await p.fill('#reminder-time', '21:00'); await p.dispatchEvent('#reminder-time', 'change'); await p.waitForTimeout(200);
-  check('時刻を変えると、予約も入れ直す', await p.evaluate(() => window.__ln.scheduled.length === 1 && window.__ln.scheduled[0].schedule.on.hour === 21));
+  const plan = await p.evaluate(() => window.__ln.scheduled.map(n => ({ id: n.id, at: new Date(n.schedule.at).getTime() })));
+  const inWindow = t => { const d = new Date(t); const m = d.getHours() * 60 + d.getMinutes(); return m >= 17 * 60 && m < 21 * 60; };
+  const days = new Set(plan.map(n => new Date(n.at).toDateString()));
+  check('オンにすると、通知を許可してもらってから、この先30日分を1日1回ずつ予約', await p.evaluate(() => window.__ln.asked === 1) && plan.length >= 29 && plan.length <= 30 && days.size === plan.length && new Set(plan.map(n => n.id)).size === plan.length, JSON.stringify(plan.slice(0, 3)));
+  check('時刻はどれも17〜21時の間', plan.every(n => inWindow(n.at)));
+  check('時刻は日によってばらばら', new Set(plan.map(n => { const d = new Date(n.at); return d.getHours() * 60 + d.getMinutes(); })).size > 5);
+  check('もう過ぎた時刻は予約しない', plan.every(n => n.at > Date.now()));
+  check('ボタンは「オフにする」に変わる', (await p.textContent('#reminder-toggle')) === 'オフにする' && (await p.textContent('#reminder-status')).includes('17〜21時'));
+  await p.evaluate(() => applyReminder({ silent: true }));
+  const again = await p.evaluate(() => window.__ln.scheduled.map(n => new Date(n.schedule.at).getTime()));
+  check('アプリを開き直しても、決めた時刻は変わらない（同じ日に2回は来ない）', JSON.stringify(again) === JSON.stringify(plan.map(n => n.at)));
+  // 今日の分を送ったあと（今日の時刻が過ぎた）に開いたとき：今日の分を別の時刻で予約し直さない
+  await p.evaluate(() => { const r = JSON.parse(localStorage.getItem('zonenow_reminder')); r.plan[localDateKey()] = Date.now() - 60000; localStorage.setItem('zonenow_reminder', JSON.stringify(r)); });
+  await p.evaluate(() => applyReminder({ silent: true }));
+  check('今日の分が過ぎていたら、今日はもう予約しない', await p.evaluate(() => !window.__ln.scheduled.some(n => new Date(n.schedule.at).toDateString() === new Date().toDateString())));
   await p.click('#reminder-toggle'); await p.waitForTimeout(200);
   check('オフにすると予約を消す', await p.evaluate(() => window.__ln.scheduled.length === 0) && (await p.textContent('#reminder-toggle')) === 'オンにする');
   await p.evaluate(() => { window.__ln.permission = 'denied'; });

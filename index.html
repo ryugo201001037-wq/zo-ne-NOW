@@ -934,7 +934,6 @@
   .profile-gear{ position:absolute; top:0; left:0; }
   .settings-section{ margin-bottom:26px; }
   .settings-row{ display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,.07); font-family:var(--font-ui); font-size:14px; }
-  .settings-row .reminder-time{ width:auto; flex:none; padding:8px 10px; }
   .settings-row > span{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .settings-text{ font-family:var(--font-ui); font-size:12.5px; color:rgba(255,255,255,.6); line-height:1.75; margin:0; }
   .policy-note{ font-family:var(--font-ui); font-size:12px; color:rgba(255,255,255,.6); line-height:1.7; margin:12px 0 0; text-align:center; }
@@ -1389,10 +1388,9 @@
 
       <div class="settings-section" id="settings-reminder-section" hidden>
         <div class="record-section-title">勉強リマインド</div>
-        <p class="settings-text">毎日決まった時刻に「勉強の時間です」とお知らせします（ロック画面に出ます）。</p>
+        <p class="settings-text">毎日17〜21時のどこかで1回、「勉強の時間です」とお知らせします（ロック画面に出ます）。</p>
         <div class="settings-row">
-          <span>時刻</span>
-          <input type="time" class="post-input reminder-time" id="reminder-time" value="20:00" step="300" />
+          <span>リマインド</span>
           <button class="people-action" id="reminder-toggle">オンにする</button>
         </div>
         <p class="settings-text" id="reminder-status"></p>
@@ -6242,47 +6240,78 @@ document.getElementById('feedback-send').addEventListener('click', ()=>{
 });
 if(IS_NATIVE_APP) document.getElementById('settings-install-section').style.display = 'none';
 
-// ---- 勉強リマインド（iPhoneアプリだけ）：毎日決まった時刻に、端末の中で予約した通知を出す（サーバーは使わない） ----
+// ---- 勉強リマインド（iPhoneアプリだけ）：毎日17〜21時のどこかで1回、端末の中で予約した通知を出す（サーバーは使わない） ----
+// iPhoneの通知の予約は「毎日◯時」か「◯月◯日◯時に1回」しかないので、この先30日分を1日1回ずつ、ランダムな時刻で予約する。
+// アプリを開くたびに30日先まで足す（すでに決めた日の時刻は変えない＝同じ日に2回は来ない）。30日以上開かないと止まる
 const REMINDER_KEY = 'zonenow_reminder';
-const REMINDER_ID = 1001;
-const REMINDER_DEFAULT = { on:false, time:'20:00' };
+const REMINDER_ID_BASE = 1001;
+const REMINDER_DAYS = 30;                   // iPhoneは1つのアプリにつき64件まで予約できる
+const REMINDER_FROM_MIN = 17 * 60;          // 17:00から
+const REMINDER_TO_MIN = 21 * 60;            // 21:00まで
+const REMINDER_MESSAGES = [
+  '勉強の時間です。まずは5分だけ、タイマーをスタートしよう',
+  'スマホを置いて、今日の勉強を始めよう',
+  '今日の勉強、もう始めた？ 5分だけでもOK',
+  'ここからが自分の時間。タイマーをスタートしよう',
+];
 function reminderPlugin(){ return IS_NATIVE_APP && window.Capacitor.Plugins ? window.Capacitor.Plugins.LocalNotifications || null : null; }
 function loadReminder(){
-  const r = { ...REMINDER_DEFAULT, ...loadJSON(REMINDER_KEY, {}) };
-  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(r.time)) r.time = REMINDER_DEFAULT.time;
-  return r;
+  const r = loadJSON(REMINDER_KEY, {}) || {};
+  return { on: !!r.on, plan: r.plan && typeof r.plan === 'object' ? r.plan : {} };
+}
+// 今日から30日分の「日付→お知らせする時刻」。前に決めた時刻はそのまま使い、ない日だけランダムに決める
+function planReminderTimes(plan, now = Date.now()){
+  const next = {};
+  for(let i = 0; i < REMINDER_DAYS; i++){
+    const day = new Date(now);
+    day.setHours(0, 0, 0, 0);
+    day.setDate(day.getDate() + i);
+    const key = localDateKey(day);
+    const kept = Number(plan[key]);
+    if(kept){ next[key] = kept; continue; }
+    const minute = REMINDER_FROM_MIN + Math.floor(Math.random() * (REMINDER_TO_MIN - REMINDER_FROM_MIN));
+    day.setHours(Math.floor(minute / 60), minute % 60);
+    next[key] = day.getTime();
+  }
+  return next;
 }
 function renderReminder(){
   const r = loadReminder();
-  document.getElementById('reminder-time').value = r.time;
   document.getElementById('reminder-toggle').textContent = r.on ? 'オフにする' : 'オンにする';
-  document.getElementById('reminder-toggle').classList.toggle('following', r.on);
-  document.getElementById('reminder-status').textContent = r.on ? `毎日 ${r.time} にお知らせします。` : 'いまはオフです。';
+  document.getElementById('reminder-status').textContent = r.on ? 'オンです。毎日17〜21時のどこかでお知らせします。' : 'いまはオフです。';
 }
-// 保存した設定どおりに、予約を入れ直す。通知が許可されなければオフに戻す
-async function applyReminder(){
+async function cancelReminders(ln){
+  try{ await ln.cancel({ notifications: Array.from({ length: REMINDER_DAYS }, (_, i)=> ({ id: REMINDER_ID_BASE + i })) }); }catch(e){}
+}
+// 保存した設定どおりに、予約を入れ直す。通知が許可されなければオフに戻す（silent：アプリを開いたときは、理由を表示しない）
+async function applyReminder({ silent = false } = {}){
   const ln = reminderPlugin();
   if(!ln) return;
   const r = loadReminder();
-  try{ await ln.cancel({ notifications:[{ id: REMINDER_ID }] }); }catch(e){}
+  await cancelReminders(ln);
   if(!r.on) return;
   try{
     let perm = await ln.checkPermissions();
-    if(perm.display !== 'granted') perm = await ln.requestPermissions();
+    if(perm.display !== 'granted' && !silent) perm = await ln.requestPermissions();
     if(perm.display !== 'granted'){
-      saveJSON(REMINDER_KEY, { ...r, on:false });
+      saveJSON(REMINDER_KEY, { on:false, plan:{} });
       renderReminder();
-      showToast('通知が許可されていません。iPhoneの「設定」→「ゾーンNOW」→「通知」からオンにしてね');
+      if(!silent) showToast('通知が許可されていません。iPhoneの「設定」→「ゾーンNOW」→「通知」からオンにしてね');
       return;
     }
-    const [hour, minute] = r.time.split(':').map(Number);
-    await ln.schedule({ notifications:[{
-      id: REMINDER_ID, title:'ゾーンNOW', body:'勉強の時間です。まずは5分だけ、タイマーをスタートしよう',
-      schedule:{ on:{ hour, minute }, allowWhileIdle:true },
-    }] });
+    const plan = planReminderTimes(r.plan);
+    saveJSON(REMINDER_KEY, { on:true, plan });
+    const now = Date.now();
+    const notifications = Object.values(plan).sort((a, b)=> a - b).map((at, i)=> ({
+      id: REMINDER_ID_BASE + i, title:'ゾーンNOW',
+      body: REMINDER_MESSAGES[Math.floor(Math.random() * REMINDER_MESSAGES.length)],
+      schedule:{ at: new Date(at), allowWhileIdle:true },
+      at,
+    })).filter(n=> n.at > now + 60 * 1000).map(({ at, ...n })=> n); // もう過ぎた時刻（今日の分を送ったあと）は予約しない
+    if(notifications.length) await ln.schedule({ notifications });
   }catch(e){
     console.warn('reminder failed', e);
-    showToast('リマインドを設定できませんでした');
+    if(!silent) showToast('リマインドを設定できませんでした');
   }
 }
 if(reminderPlugin()){
@@ -6290,21 +6319,16 @@ if(reminderPlugin()){
   renderReminder();
   document.getElementById('reminder-toggle').addEventListener('click', async ()=>{
     const r = loadReminder();
-    const next = { on: !r.on, time: document.getElementById('reminder-time').value || r.time };
-    saveJSON(REMINDER_KEY, next);
+    saveJSON(REMINDER_KEY, { on: !r.on, plan: r.on ? {} : r.plan });
     renderReminder();
     await applyReminder();
     const now = loadReminder();
-    usageEvent(now.on ? `勉強リマインドをオン（${now.time}）` : '勉強リマインドをオフ');
-    if(now.on) showToast(`毎日 ${now.time} にお知らせします`);
+    usageEvent(now.on ? '勉強リマインドをオン' : '勉強リマインドをオフ');
+    if(now.on) showToast('毎日17〜21時のどこかでお知らせします');
   });
-  document.getElementById('reminder-time').addEventListener('change', async e=>{
-    const r = loadReminder();
-    if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(e.target.value)) return;
-    saveJSON(REMINDER_KEY, { ...r, time: e.target.value });
-    renderReminder();
-    if(r.on){ await applyReminder(); showToast(`毎日 ${e.target.value} にお知らせします`); }
-  });
+  // アプリを開いた・戻ってきたときに、30日先まで予約を足す
+  applyReminder({ silent:true });
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) applyReminder({ silent:true }); });
   // 通知を押してアプリを開いたら、記録（タイマー）の画面へ
   reminderPlugin().addListener('localNotificationActionPerformed', ()=>{
     usageEvent('勉強リマインドから開いた');

@@ -136,7 +136,14 @@ claude.aiのプレビューで開いたときは、見ている人のClaudeの�
 - 写真：さくらで写真を付けて断られたら、アプリには `images_unavailable` を返す。アプリは写真ボタンを隠して、文字で聞くよう案内する
 - 注意：端末IDはブラウザのデータを消すとリセットできる。ログイン機能ができたらアカウント単位に変える。最終的な歯止めとして、AIの会社の管理画面で利用額の上限を必ず設定する（さくらは「無償プラン」なら無料枠を超えても請求されず、遅くなるだけ）
 
-### 公開する手順
+### 公開する手順（GitHub Actions でまとめて公開：おすすめ）
+
+1. [Cloudflare](https://dash.cloudflare.com/sign-up) のアカウントを作り、「Workers & Pages」を一度開く（workers.dev のサブドメインができる）
+2. Cloudflare で API トークンを作る（テンプレート「Edit Cloudflare Workers」）。アカウントIDも控える
+3. GitHub の Settings → Secrets and variables → Actions に `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID`・`SAKURA_API_KEY`（予備の Claude を使うなら `ANTHROPIC_API_KEY` も）を入れる
+4. Actions →「AIサーバーを公開」→ Run workflow。KV は自動で作られる。最後に表示されるURLを `index.html` の `AI_SERVER_URL_DEFAULT` に書く
+
+### 公開する手順（手元のパソコンから）
 
 1. [Cloudflare](https://dash.cloudflare.com/sign-up) のアカウントを作る（無料プランで可）
 2. `cd server && npm install`

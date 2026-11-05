@@ -1,0 +1,112 @@
+# AIサーバー（server/ フォルダ・Cloudflare Workers）を公開する
+# 使い方：GitHub の「Actions」→「AIサーバーを公開」→「Run workflow」
+# 先に GitHub の Settings → Secrets and variables → Actions に、次の Secrets を入れておく（値はチャットに貼らない）
+#   CLOUDFLARE_API_TOKEN  … Cloudflare の API トークン（テンプレート「Edit Cloudflare Workers」で作る）
+#   CLOUDFLARE_ACCOUNT_ID … Cloudflare のアカウントID
+#   SAKURA_API_KEY        … さくらのAI Engine の API キー
+#   ANTHROPIC_API_KEY     … （なくてもよい）さくらが使えないときの予備の Claude
+# 1日の回数を数える保存場所（KV）は、なければ自動で作る
+name: AIサーバーを公開
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 必要な Secrets があるか確かめる
+        env:
+          SAKURA_API_KEY: ${{ secrets.SAKURA_API_KEY }}
+        run: |
+          missing=""
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || missing="$missing CLOUDFLARE_API_TOKEN"
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || missing="$missing CLOUDFLARE_ACCOUNT_ID"
+          [ -n "$SAKURA_API_KEY" ] || missing="$missing SAKURA_API_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::GitHub の Secrets がありません：$missing"
+            exit 1
+          fi
+
+      - name: 準備
+        run: npm ci
+
+      - name: テスト
+        run: npm test
+
+      - name: 回数を数える保存場所（KV）を用意する
+        run: |
+          TITLE=zonenow-ai-usage
+          find_id() {
+            npx wrangler kv namespace list 2>/dev/null | node -e '
+              let s = ""; process.stdin.on("data", d => s += d).on("end", () => {
+                const json = s.slice(s.indexOf("["));
+                const hit = JSON.parse(json).find(n => n.title === process.argv[1] || n.title.endsWith("-" + process.argv[1]));
+                if (hit) process.stdout.write(hit.id);
+              });' "$TITLE"
+          }
+          ID=$(find_id)
+          if [ -z "$ID" ]; then
+            npx wrangler kv namespace create "$TITLE"
+            ID=$(find_id)
+          fi
+          if ! echo "$ID" | grep -Eq '^[0-9a-f]{32}$'; then
+            echo "::error::KV を用意できませんでした"
+            exit 1
+          fi
+          sed -i "s/REPLACE_WITH_KV_NAMESPACE_ID/$ID/" wrangler.toml
+          echo "KV: $ID"
+
+      - name: 公開する
+        id: deploy
+        run: |
+          npx wrangler deploy 2>&1 | tee deploy.log
+          URL=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: APIキーをサーバーの秘密の設定に入れる
+        env:
+          SAKURA_API_KEY: ${{ secrets.SAKURA_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          printf '%s' "$SAKURA_API_KEY" | npx wrangler secret put SAKURA_API_KEY
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            printf '%s' "$ANTHROPIC_API_KEY" | npx wrangler secret put ANTHROPIC_API_KEY
+          fi
+
+      - name: 動いているか確かめる
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          if [ -z "$URL" ]; then
+            echo "::warning::公開したURLが分かりませんでした。Cloudflare の画面で zonenow-ai のURLを確かめてください（workers.dev のサブドメインを最初に作る必要があるかもしれません）"
+            exit 0
+          fi
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X OPTIONS -H 'Origin: https://ryugo201001037-wq.github.io' -H 'Access-Control-Request-Method: POST' "$URL/api/ask")
+          echo "確認の結果：HTTP $code"
+          {
+            echo "## AIサーバーを公開しました"
+            echo ""
+            echo "URL：$URL"
+            echo ""
+            echo "このURLを、アプリの AI_SERVER_URL_DEFAULT に入れると AIコーチが使えるようになります。"
+          } >> "$GITHUB_STEP_SUMMARY"

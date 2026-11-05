@@ -934,6 +934,7 @@
   .profile-gear{ position:absolute; top:0; left:0; }
   .settings-section{ margin-bottom:26px; }
   .settings-row{ display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,.07); font-family:var(--font-ui); font-size:14px; }
+  .settings-row .reminder-time{ width:auto; flex:none; padding:8px 10px; }
   .settings-row > span{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .settings-text{ font-family:var(--font-ui); font-size:12.5px; color:rgba(255,255,255,.6); line-height:1.75; margin:0; }
   .policy-note{ font-family:var(--font-ui); font-size:12px; color:rgba(255,255,255,.6); line-height:1.7; margin:12px 0 0; text-align:center; }
@@ -1384,6 +1385,17 @@
       <div class="post-form-header">
         <button class="back-btn" id="settings-back">←</button>
         <h1 class="post-form-title">設定</h1>
+      </div>
+
+      <div class="settings-section" id="settings-reminder-section" hidden>
+        <div class="record-section-title">勉強リマインド</div>
+        <p class="settings-text">毎日決まった時刻に「勉強の時間です」とお知らせします（ロック画面に出ます）。</p>
+        <div class="settings-row">
+          <span>時刻</span>
+          <input type="time" class="post-input reminder-time" id="reminder-time" value="20:00" step="300" />
+          <button class="people-action" id="reminder-toggle">オンにする</button>
+        </div>
+        <p class="settings-text" id="reminder-status"></p>
       </div>
 
       <div class="settings-section">
@@ -6229,6 +6241,76 @@ document.getElementById('feedback-send').addEventListener('click', ()=>{
   showToast('送りました。ありがとうございます！');
 });
 if(IS_NATIVE_APP) document.getElementById('settings-install-section').style.display = 'none';
+
+// ---- 勉強リマインド（iPhoneアプリだけ）：毎日決まった時刻に、端末の中で予約した通知を出す（サーバーは使わない） ----
+const REMINDER_KEY = 'zonenow_reminder';
+const REMINDER_ID = 1001;
+const REMINDER_DEFAULT = { on:false, time:'20:00' };
+function reminderPlugin(){ return IS_NATIVE_APP && window.Capacitor.Plugins ? window.Capacitor.Plugins.LocalNotifications || null : null; }
+function loadReminder(){
+  const r = { ...REMINDER_DEFAULT, ...loadJSON(REMINDER_KEY, {}) };
+  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(r.time)) r.time = REMINDER_DEFAULT.time;
+  return r;
+}
+function renderReminder(){
+  const r = loadReminder();
+  document.getElementById('reminder-time').value = r.time;
+  document.getElementById('reminder-toggle').textContent = r.on ? 'オフにする' : 'オンにする';
+  document.getElementById('reminder-toggle').classList.toggle('following', r.on);
+  document.getElementById('reminder-status').textContent = r.on ? `毎日 ${r.time} にお知らせします。` : 'いまはオフです。';
+}
+// 保存した設定どおりに、予約を入れ直す。通知が許可されなければオフに戻す
+async function applyReminder(){
+  const ln = reminderPlugin();
+  if(!ln) return;
+  const r = loadReminder();
+  try{ await ln.cancel({ notifications:[{ id: REMINDER_ID }] }); }catch(e){}
+  if(!r.on) return;
+  try{
+    let perm = await ln.checkPermissions();
+    if(perm.display !== 'granted') perm = await ln.requestPermissions();
+    if(perm.display !== 'granted'){
+      saveJSON(REMINDER_KEY, { ...r, on:false });
+      renderReminder();
+      showToast('通知が許可されていません。iPhoneの「設定」→「ゾーンNOW」→「通知」からオンにしてね');
+      return;
+    }
+    const [hour, minute] = r.time.split(':').map(Number);
+    await ln.schedule({ notifications:[{
+      id: REMINDER_ID, title:'ゾーンNOW', body:'勉強の時間です。まずは5分だけ、タイマーをスタートしよう',
+      schedule:{ on:{ hour, minute }, allowWhileIdle:true },
+    }] });
+  }catch(e){
+    console.warn('reminder failed', e);
+    showToast('リマインドを設定できませんでした');
+  }
+}
+if(reminderPlugin()){
+  document.getElementById('settings-reminder-section').hidden = false;
+  renderReminder();
+  document.getElementById('reminder-toggle').addEventListener('click', async ()=>{
+    const r = loadReminder();
+    const next = { on: !r.on, time: document.getElementById('reminder-time').value || r.time };
+    saveJSON(REMINDER_KEY, next);
+    renderReminder();
+    await applyReminder();
+    const now = loadReminder();
+    usageEvent(now.on ? `勉強リマインドをオン（${now.time}）` : '勉強リマインドをオフ');
+    if(now.on) showToast(`毎日 ${now.time} にお知らせします`);
+  });
+  document.getElementById('reminder-time').addEventListener('change', async e=>{
+    const r = loadReminder();
+    if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(e.target.value)) return;
+    saveJSON(REMINDER_KEY, { ...r, time: e.target.value });
+    renderReminder();
+    if(r.on){ await applyReminder(); showToast(`毎日 ${e.target.value} にお知らせします`); }
+  });
+  // 通知を押してアプリを開いたら、記録（タイマー）の画面へ
+  reminderPlugin().addListener('localNotificationActionPerformed', ()=>{
+    usageEvent('勉強リマインドから開いた');
+    if(loadProfile()) showScreen('record');
+  });
+}
 document.getElementById('bulk-open').hidden = !cloudEnabled();
 async function renderAccountStatus(){
   const el = document.getElementById('settings-account');

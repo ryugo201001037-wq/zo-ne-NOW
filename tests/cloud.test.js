@@ -8,7 +8,8 @@ const { check, state, report } = createChecker();
 // ---- にせSupabase（ログイン：GoTrue、データ：PostgREST の必要なところだけ） ----
 function startFakeSupabase() {
   const fake = { users: new Map(), profiles: new Map(), logs: new Map(), feedback: [], signups: 0, offline: false, rejectNextLog: false, rpcCalls: 0,
-    posts: [], files: new Map(), reports: [], failUpload: false, likes: [], saves: [], comments: [], warmed: [] };
+    posts: [], files: new Map(), reports: [], failUpload: false, likes: [], saves: [], comments: [], warmed: [],
+    usage: [], follows: [], notifications: [] };
   const userOf = req => {
     const m = /^Bearer tok-(.+)$/.exec(req.headers.authorization || '');
     return m && fake.users.has(m[1]) ? m[1] : null;
@@ -142,6 +143,29 @@ function startFakeSupabase() {
     // ---- いいね・保存・コメント ----
     const eqOf = name => (url.searchParams.get(name) || '').replace(/^eq\./, '');
     const wantsObject = (req.headers.accept || '').includes('vnd.pgrst.object');
+    // ---- 使い方の記録・フォロー・通知 ----
+    if (p === '/rest/v1/usage_logs' && req.method === 'POST') {
+      for (const row of [].concat(body)) {
+        if (row.user_id && row.user_id !== uid) return send(403, { code: '42501', message: 'row-level security' });
+        if (!row.narrative || row.narrative.length > 8000) return send(400, { code: '23514', message: 'check violation' });
+        fake.usage.push({ ...row, user_id: uid });
+      }
+      return send(201);
+    }
+    if (p === '/rest/v1/follows' && req.method === 'POST') {
+      for (const row of [].concat(body)) {
+        if (row.follower_id !== uid || row.followee_id === uid) return send(403, { code: '42501', message: 'row-level security' });
+        if (!fake.follows.some(f => f.follower_id === uid && f.followee_id === row.followee_id)) fake.follows.push({ follower_id: uid, followee_id: row.followee_id });
+      }
+      return send(201);
+    }
+    if (p === '/rest/v1/follows' && req.method === 'DELETE') {
+      if (eqOf('follower_id') === uid) fake.follows = fake.follows.filter(f => !(f.follower_id === uid && f.followee_id === eqOf('followee_id')));
+      return send(204);
+    }
+    if (p === '/rest/v1/notifications' && req.method === 'GET') {
+      return send(200, fake.notifications.filter(n => n.user_id === uid).sort((a, b) => b.created_at.localeCompare(a.created_at)));
+    }
     if ((p === '/rest/v1/likes' || p === '/rest/v1/saves') && req.method === 'POST') {
       const list = p.endsWith('likes') ? fake.likes : fake.saves;
       for (const row of [].concat(body)) {
@@ -285,6 +309,39 @@ function startFakeSupabase() {
   check('ご意見がサーバーに届く（誰からか・バージョン・ウェブ）', await waitFor(() => fake.feedback.length === 1 && fake.feedback[0].user_id === uid && fake.feedback[0].message.includes('押しにくい') && fake.feedback[0].platform === 'web' && fake.feedback[0].app_version === '1.0.0'), JSON.stringify(fake.feedback));
   check('送ったら入力欄は空に', (await page.inputValue('#feedback-input')) === '');
   await page.click('#settings-back'); await page.waitForTimeout(150);
+
+  state.section = '使い方の記録';
+  await nav(page, 'record');
+  await page.click('#timer-subject-chips .chip[data-id="math"]');
+  await page.click('#timer-toggle');
+  await page.click('#timer-toggle');
+  await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+  check('閉じると、開いてから閉じるまでの行動が1行でサーバーに届く', await waitFor(() => fake.usage.some(u => /\d\d:\d\d 起動 → .*タイマー開始（数学） → .*タイマー一時停止 → \d\d:\d\d 終了$/.test(u.narrative))), JSON.stringify(fake.usage));
+  const usageRow = fake.usage.find(u => u.narrative.includes('タイマー開始（数学）'));
+  check('だれが・いつ・ウェブ・バージョンも入る', usageRow && usageRow.user_id === uid && usageRow.name === 'みなと' && usageRow.platform === 'web' && usageRow.app_version === '1.0.0'
+    && Date.parse(usageRow.ended_at) >= Date.parse(usageRow.started_at), JSON.stringify(usageRow));
+  await page.evaluate(() => usageEvent('テストの操作'));
+  check('そのあとの操作は、新しい回（再開）として記録する', await page.evaluate(() => usageSession.events[0].endsWith('再開') && usageSession.events[1].endsWith('テストの操作')));
+  await page.evaluate(() => { resetTimer(); renderTimer(); });
+
+  state.section = '通知（ほかの人から）';
+  fake.notifications.push(
+    { id: 1, user_id: uid, type: 'like', actor_name: 'ゆい', post_title: '二次関数', body: '', created_at: new Date(Date.now() - 60000).toISOString() },
+    { id: 2, user_id: uid, type: 'comment', actor_name: 'ゆい', post_title: '二次関数', body: 'わかりやすい！', created_at: new Date().toISOString() },
+    { id: 3, user_id: 'someone-else', type: 'follow', actor_name: 'べつのひと', post_title: '', body: '', created_at: new Date().toISOString() });
+  await page.evaluate(() => loadCloudNotifications());
+  check('ほかの人から通知が届くと、ベルに未読の印', await waitFor(() => page.$eval('#profile-bell', el => el.classList.contains('has-unread'))));
+  await nav(page, 'profile'); await page.click('#profile-bell'); await page.waitForTimeout(200);
+  const notifyTexts = await page.$$eval('#notify-list .notify-text', els => els.map(e => e.textContent));
+  const commentAt = notifyTexts.findIndex(t => t === 'ゆいさんがあなたの投稿「二次関数」にコメントしました：「わかりやすい！」');
+  const likeAt = notifyTexts.findIndex(t => t === 'ゆいさんがあなたの投稿「二次関数」にいいねしました');
+  check('通知画面に、コメントといいね（新しい順）', commentAt >= 0 && likeAt > commentAt, JSON.stringify(notifyTexts));
+  check('ほかの人あての通知は出ない', !notifyTexts.some(t => t.includes('べつのひと')));
+  await page.click('#notifications-back'); await page.waitForTimeout(150);
+  check('開いたら未読の印が消える', !(await page.$eval('#profile-bell', el => el.classList.contains('has-unread'))));
+  await page.evaluate(() => loadCloudNotifications());
+  await page.waitForTimeout(300);
+  check('読み直しても、読んだ通知は未読に戻らない', !(await page.$eval('#profile-bell', el => el.classList.contains('has-unread'))));
 
   state.section = '断られた変更';
   fake.rejectNextLog = true;
@@ -615,6 +672,7 @@ function startFakeSupabase() {
   await op.click('.screen.active [data-nav="profile"]'); await op.waitForTimeout(200);
   await op.click('[data-people-tab="following"]'); await op.waitForTimeout(200);
   check('フォロー中の一覧に出る', (await op.textContent('#people-list')).includes('みなと'));
+  check('フォローはサーバーにも届く（外してまたフォロー→1件）', await waitFor(() => fake.follows.length === 1 && fake.follows[0].follower_id === otherUid() && fake.follows[0].followee_id === uid), JSON.stringify(fake.follows));
   await op.click('#people-list .people-row.is-user .people-name');
   check('フォロー中の一覧から、その人の投稿一覧へ', await waitFor(async () => (await op.$eval('.screen.active', el => el.id)) === 'user-screen'));
   await op.click('#user-back'); await op.waitForTimeout(200);

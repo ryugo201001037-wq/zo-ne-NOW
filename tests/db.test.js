@@ -178,6 +178,50 @@ check('ログインしていないと検索できない', !as(null, `select * fr
 check('プロフィールの表は、今まで通り本人しか読めない', as(A, 'select count(*) from profiles').out === '1');
 psql(`delete from auth.users where id in ('${C}', '${D}'); delete from profiles where id in ('${C}', '${D}');`);
 
+state.section = '通知・フォロー';
+const p2 = as(A, postSql([`${A}/nt/0.mp4`])).out.split('\n')[0];
+as(B, `insert into likes (post_id) values ('${p2}')`);
+as(B, `delete from likes where post_id = '${p2}'`);
+as(B, `insert into likes (post_id) values ('${p2}')`);
+check('他の人がいいねすると、投稿した人に通知が届く（押し直しても1回）', as(A, `select count(*) from notifications where type = 'like' and post_id = '${p2}'`).out === '1');
+check('通知には相手の名前と投稿のタイトルが入る', as(A, `select actor_name || '|' || post_title from notifications where type = 'like' and post_id = '${p2}'`).out === 'ひかる|二次関数');
+as(A, `insert into likes (post_id) values ('${p2}')`);
+check('自分の投稿に自分でいいねしても通知しない', psql(`select count(*) from notifications where post_id = '${p2}' and actor_id = '${A}'`) === '0');
+as(B, `insert into comments (post_id, author, body) values ('${p2}', 'ひかる', 'わかりやすい！')`);
+check('コメントも通知される（中身つき）', as(A, `select body from notifications where type = 'comment' and post_id = '${p2}'`).out === 'わかりやすい！');
+check('他人あての通知は見えない', as(B, 'select count(*) from notifications').out === '0');
+check('通知はアプリからは作れない', !as(B, `insert into notifications (user_id, type) values ('${A}', 'like')`).ok);
+check('通知はアプリからは書き換えられない', as(A, `update notifications set body = 'x' returning id`).out === '');
+check('フォローできる', as(B, `insert into follows (followee_id) values ('${A}')`).ok);
+check('もう一度フォローしても大丈夫（何も起きない）', as(B, `insert into follows (followee_id) values ('${A}') on conflict do nothing`).ok);
+check('フォローされると通知が届く', as(A, `select actor_name from notifications where type = 'follow'`).out === 'ひかる');
+check('自分はフォローできない', !as(A, `insert into follows (followee_id) values ('${A}')`).ok);
+check('他人の名前ではフォローできない', !as(A, `insert into follows (follower_id, followee_id) values ('${B}', '${A}')`).ok);
+check('フォローを外せる', as(B, `delete from follows where followee_id = '${A}' returning followee_id`).out === A);
+as(B, `insert into follows (followee_id) values ('${A}')`);
+check('外してまたフォローしても、通知は1回だけ', as(A, `select count(*) from notifications where type = 'follow'`).out === '1');
+check('だれにフォローされているかの一覧は見えない', as(A, 'select count(*) from follows').out === '0');
+
+state.section = '使い方の記録';
+const usageRow = `(name, started_at, ended_at, narrative, videos_watched) values ('ひかる', now() - interval '5 minutes', now(), '20:15 起動 → 20:20 終了', 12)`;
+check('使い方の記録を送れる', as(B, `insert into usage_logs ${usageRow}`).ok);
+check('送った記録はアプリからは読めない（本人も）', as(B, 'select count(*) from usage_logs').out === '0' && psql('select count(*) from usage_logs') === '1');
+check('他人の名前では送れない', !as(B, `insert into usage_logs (user_id, started_at, ended_at, narrative) values ('${A}', now(), now(), 'x')`).ok);
+check('ログインしていないと送れない', !as(null, `insert into usage_logs ${usageRow}`).ok);
+check('長すぎる記録は送れない', !as(B, `insert into usage_logs (started_at, ended_at, narrative) values (now(), now(), '${'あ'.repeat(8001)}')`).ok);
+
+state.section = 'タグの直し';
+psql(`insert into posts (user_id, creator, title, grade, media_type, media_paths, duration, hashtags) values
+  ('${B}', 'ひかる', 'tag1', 'high1', 'video', array['${B}/t1/0.mp4'], 10, array['One','Card','English']),
+  ('${B}', 'ひかる', 'tag2', 'high1', 'video', array['${B}/t2/0.mp4'], 10, array['受験生', chr(65039) || chr(8419) || '勉強垢']),
+  ('${B}', 'ひかる', 'tag3', 'high1', 'video', array['${B}/t3/0.mp4'], 10, array['すのーまん。TOEICチャレンジ✏️'])`);
+let fixed = true;
+try { psql(SCHEMA); } catch (e) { fixed = false; console.log(e.stderr || e.message); }
+check('schema.sql をもう一度実行できる', fixed);
+check('「One」「Card」「English」は OneCardEnglish にまとまる', psql(`select array_to_string(hashtags, ',') from posts where title = 'tag1'`) === 'OneCardEnglish');
+check('タグの先頭の見えない文字（絵文字の残り）は消える（順番はそのまま）', psql(`select array_to_string(hashtags, ',') from posts where title = 'tag2'`) === '受験生,勉強垢');
+check('タグの中の絵文字はそのまま', psql(`select hashtags[1] from posts where title = 'tag3'`) === 'すのーまん。TOEICチャレンジ✏️');
+
 state.section = '未ログイン';
 check('ログインしていないと何も見えない', as(null, 'select count(*) from profiles').out === '0' && as(null, 'select count(*) from study_logs').out === '0');
 check('ログインしていないと書き込めない', !as(null, `insert into study_logs (user_id, id, subject, seconds, date) values ('${A}', 'anon1', 'math', 60, '2026-10-19')`).ok);

@@ -249,3 +249,118 @@ language sql security definer set search_path = '' as $$
 $$;
 revoke all on function public.delete_my_account() from public, anon;
 grant execute on function public.delete_my_account() to authenticated;
+
+-- ---- 使い方の記録（運営が「どう使われているか」を知るため。アプリを開いてから閉じるまでを1行） ----
+-- アプリからは送るだけで、読めない（自分の分も）。運営は Supabase の Table Editor で読む（CSVにも書き出せる）
+-- name は送った時点の名前（あとで名前を変えても、そのまま）。退会するとその人の記録も消える
+create table if not exists public.usage_logs (
+  id             bigint generated always as identity primary key,
+  user_id        uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  name           text not null default '' check (char_length(name) <= 20),
+  started_at     timestamptz not null,
+  ended_at       timestamptz not null,
+  narrative      text not null check (char_length(narrative) <= 8000),
+  videos_watched integer not null default 0 check (videos_watched between 0 and 100000),
+  study_seconds  integer not null default 0 check (study_seconds between 0 and 86400),
+  app_version    text not null default '' check (char_length(app_version) <= 20),
+  platform       text not null default '' check (char_length(platform) <= 20),
+  created_at     timestamptz not null default now()
+);
+create index if not exists usage_logs_started on public.usage_logs (started_at desc);
+alter table public.usage_logs enable row level security;
+
+-- ---- フォロー（だれがだれをフォローしているか。通知を送るために使う） ----
+-- 自分のフォローだけ読み書きできる（だれにフォローされているかは、通知でだけ分かる）
+create table if not exists public.follows (
+  follower_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  followee_id uuid not null references auth.users(id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  primary key (follower_id, followee_id),
+  check (follower_id <> followee_id)
+);
+alter table public.follows enable row level security;
+
+-- ---- 通知（ほかの人からのいいね・コメント・フォロー。DBが自動で作る） ----
+-- アプリから作ることはできない（下のトリガーだけが作る）。読めるのは受け取った本人だけ
+-- いいね・フォローは、同じ人から同じものに何度押されても1回だけ通知する
+create table if not exists public.notifications (
+  id         bigint generated always as identity primary key,
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  actor_id   uuid references auth.users(id) on delete cascade,
+  actor_name text not null default '',
+  type       text not null check (type in ('like', 'comment', 'follow')),
+  post_id    uuid references public.posts(id) on delete cascade,
+  post_title text not null default '',
+  body       text not null default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists notifications_user on public.notifications (user_id, created_at desc);
+create unique index if not exists notifications_like_once on public.notifications (user_id, actor_id, post_id) where type = 'like';
+create unique index if not exists notifications_follow_once on public.notifications (user_id, actor_id) where type = 'follow';
+alter table public.notifications enable row level security;
+
+do $$ begin
+  if not exists (select from pg_policies where schemaname = 'public' and tablename = 'usage_logs' and policyname = 'usage_logs: 自分の名前で送るだけ') then
+    create policy "usage_logs: 自分の名前で送るだけ" on public.usage_logs for insert to authenticated with check (user_id = auth.uid());
+  end if;
+  if not exists (select from pg_policies where schemaname = 'public' and tablename = 'follows' and policyname = 'follows: 自分の分だけ') then
+    create policy "follows: 自分の分だけ" on public.follows for all to authenticated using (follower_id = auth.uid()) with check (follower_id = auth.uid());
+  end if;
+  if not exists (select from pg_policies where schemaname = 'public' and tablename = 'notifications' and policyname = 'notifications: 自分あてだけ読む') then
+    create policy "notifications: 自分あてだけ読む" on public.notifications for select to authenticated using (user_id = auth.uid());
+  end if;
+end $$;
+
+-- 通知を作るトリガー（自分で自分の投稿にいいね・コメントしたときは作らない）
+create or replace function public.notify_like() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare owner uuid; title text;
+begin
+  select p.user_id, p.title into owner, title from public.posts p where p.id = new.post_id;
+  if owner is not null and owner <> new.user_id then
+    insert into public.notifications (user_id, actor_id, actor_name, type, post_id, post_title)
+    values (owner, new.user_id, coalesce((select pr.name from public.profiles pr where pr.id = new.user_id), ''), 'like', new.post_id, title)
+    on conflict do nothing;
+  end if;
+  return new;
+end $$;
+create or replace trigger likes_notify after insert on public.likes
+  for each row execute function public.notify_like();
+
+create or replace function public.notify_comment() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare owner uuid; title text;
+begin
+  select p.user_id, p.title into owner, title from public.posts p where p.id = new.post_id;
+  if owner is not null and owner <> new.user_id then
+    insert into public.notifications (user_id, actor_id, actor_name, type, post_id, post_title, body)
+    values (owner, new.user_id, new.author, 'comment', new.post_id, title, left(new.body, 60));
+  end if;
+  return new;
+end $$;
+create or replace trigger comments_notify after insert on public.comments
+  for each row execute function public.notify_comment();
+
+create or replace function public.notify_follow() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  insert into public.notifications (user_id, actor_id, actor_name, type)
+  values (new.followee_id, new.follower_id, coalesce((select pr.name from public.profiles pr where pr.id = new.follower_id), ''), 'follow')
+  on conflict do nothing;
+  return new;
+end $$;
+create or replace trigger follows_notify after insert on public.follows
+  for each row execute function public.notify_follow();
+
+revoke all on function public.notify_like() from public, anon, authenticated;
+revoke all on function public.notify_comment() from public, anon, authenticated;
+revoke all on function public.notify_follow() from public, anon, authenticated;
+
+-- ---- タグの直し（2026年11月）：名前の空白で分かれてしまったタグ・絵文字の残りが付いたタグ ----
+-- 何度実行しても同じ結果になる（直すものがなければ何もしない）
+update public.posts set hashtags = array['OneCardEnglish'] where hashtags = array['One', 'Card', 'English'];
+update public.posts
+  set hashtags = array(
+    select regexp_replace(t, '^[' || chr(65038) || chr(65039) || chr(8419) || chr(8203) || chr(8204) || chr(8205) || chr(8288) || chr(65279) || ']+', '')
+    from unnest(hashtags) with ordinality as u(t, i) order by i)
+  where exists (select 1 from unnest(hashtags) t where t ~ ('^[' || chr(65038) || chr(65039) || chr(8419) || chr(8203) || chr(8204) || chr(8205) || chr(8288) || chr(65279) || ']'));

@@ -445,6 +445,7 @@
   .gacha-result-name{ font-family:var(--font-ui); font-size:17px; font-weight:700; }
   .gacha-result-new{ font-family:var(--font-ui); font-size:12px; font-weight:700; color:var(--mint); }
   .gacha-spins{ text-align:center; font-family:var(--font-ui); font-size:14px; font-weight:700; color:var(--mint); margin:0; }
+  #gacha-screen .study-btn[hidden], .gacha-result[hidden], .gacha-capsule[hidden]{ display:none; }
   #gacha-screen .gacha-rule{ text-align:center; margin:14px 0 20px; }
   .gacha-book-summary{ font-family:var(--font-ui); font-size:13px; color:rgba(255,255,255,.7); margin:-6px 0 12px; }
   .gacha-grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
@@ -1323,6 +1324,7 @@
       </div>
       <p class="gacha-spins" id="gacha-spins"></p>
       <button class="study-btn primary full" id="gacha-spin">ガチャを回す</button>
+      <button class="study-btn primary full" id="gacha-ok" hidden>OK</button>
       <p class="settings-text gacha-rule">タイマーで5分勉強するごとに1回分もらえます（1日3回分まで）。もらった回数は、次の日になっても消えません。</p>
 
       <div class="study-card gacha-book">
@@ -4213,16 +4215,20 @@ function renderGachaBook(){
   }).join('');
 }
 let gachaSpinning = false;
+// 画面を最初の状態（カプセルと「ガチャを回す」）に戻す。結果を見て「OK」を押したとき・画面を開き直したとき
 function renderGachaScreen(){
   if(!gachaSpinning){
     document.getElementById('gacha-result').hidden = true;
     const capsule = document.getElementById('gacha-capsule');
     capsule.hidden = false;
     capsule.classList.remove('shaking', 'opened');
+    document.getElementById('gacha-spin').hidden = false;
+    document.getElementById('gacha-ok').hidden = true;
   }
   renderGachaSpins();
   renderGachaBook();
 }
+document.getElementById('gacha-ok').addEventListener('click', renderGachaScreen);
 document.getElementById('gacha-open').addEventListener('click', ()=> showScreen('gacha'));
 document.getElementById('gacha-back').addEventListener('click', ()=> showScreen('record'));
 document.getElementById('gacha-spin').addEventListener('click', async ()=>{
@@ -4257,6 +4263,9 @@ document.getElementById('gacha-spin').addEventListener('click', async ()=>{
   document.getElementById('gacha-result-name').textContent = c.name;
   document.getElementById('gacha-result-new').hidden = !isNew;
   result.hidden = false;
+  // 結果を見たら「OK」で最初の状態に戻してから、次のガチャを回す
+  document.getElementById('gacha-spin').hidden = true;
+  document.getElementById('gacha-ok').hidden = false;
   if(c.rarity >= 7) tapFeedback('HEAVY');
   gachaSpinning = false;
   renderGachaSpins();

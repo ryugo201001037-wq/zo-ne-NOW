@@ -186,12 +186,18 @@ const entry = (id, subject, minutes, daysAgo) => ({ id, subject, subjectOther: '
     check('図鑑に入り、残りが1回減る', (await gp.textContent('#gacha-book-summary')).includes('1 / 10') && (await gp.textContent('#gacha-spins')).includes('3')
       && (await gp.textContent('#gacha-grid [data-gacha-id="sparrow"]')).includes('ちょこちょこスズメ'));
     check('まだの動物は「？？？」', (await gp.textContent('#gacha-grid [data-gacha-id="phoenix"]')).includes('？？？'));
+    check('結果が出ている間は「ガチャを回す」を出さず「OK」だけ', !(await gp.isVisible('#gacha-spin')) && await gp.isVisible('#gacha-ok'));
+    await gp.click('#gacha-ok'); await gp.waitForTimeout(150);
+    check('OKを押すと最初の画面に戻る（前の結果は消える）', !(await gp.isVisible('#gacha-result')) && await gp.isVisible('#gacha-capsule') && await gp.isVisible('#gacha-spin') && !(await gp.isVisible('#gacha-ok')));
     await gp.click('#gacha-spin'); await gp.waitForTimeout(1400);
     check('2回目の同じ動物は「はじめて」を出さず、図鑑に×2', !(await gp.isVisible('#gacha-result-new')) && (await gp.textContent('#gacha-grid [data-gacha-id="sparrow"]')).includes('×2'));
     await gp.evaluate(() => { Math.random = window.__realRandom; });
     await gp.screenshot({ path: OUT + 'gacha.png' });
     await gp.click('#gacha-back'); await gp.waitForTimeout(150);
     check('戻ると記録画面', (await active(gp)) === 'record-screen');
+    await gp.click('#gacha-open'); await gp.waitForTimeout(150);
+    check('開き直すと、前の結果は残っていない', !(await gp.isVisible('#gacha-result')) && await gp.isVisible('#gacha-spin'));
+    await gp.click('#gacha-back'); await gp.waitForTimeout(150);
     check('ガチャもバックアップに入る', await gp.evaluate(() => BACKUP_KEYS.includes('zonenow_gacha')));
     check('エラーなし（ガチャ）', !g.errors.length, g.errors.join(' / '));
     await g.context.close();

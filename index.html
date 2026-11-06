@@ -409,6 +409,62 @@
   .study-btn:disabled{ opacity:.35; }
   .other-input{ display:none; margin-top:10px; }
 
+  /* ---- 勉強ガチャ ---- */
+  .gacha-entry{
+    display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+    background:linear-gradient(135deg, rgba(255,90,54,.16), rgba(51,214,166,.12));
+    border:1px solid rgba(255,255,255,.12); border-radius:16px; padding:14px 16px; margin-bottom:14px; color:#fff;
+  }
+  .gacha-entry-icon{ width:40px; height:40px; border-radius:12px; background:rgba(255,255,255,.1); display:grid; place-items:center; flex-shrink:0; }
+  .gacha-entry-icon svg{ width:22px; height:22px; color:var(--ember-soft); }
+  .gacha-entry-text{ flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; }
+  .gacha-entry-title{ font-family:var(--font-ui); font-size:15px; font-weight:700; }
+  .gacha-entry-sub{ font-family:var(--font-ui); font-size:12px; color:rgba(255,255,255,.65); }
+  .gacha-entry-badge{ font-family:var(--font-ui); font-size:12px; font-weight:700; background:var(--ember); border-radius:99px; padding:4px 10px; flex-shrink:0; }
+  .gacha-stage{ height:200px; display:grid; place-items:center; margin:8px 0 4px; }
+  /* 縦長のカプセル（上：すけた水色、下：オレンジ） */
+  .gacha-capsule{ grid-area:1/1; width:92px; height:132px; position:relative; filter:drop-shadow(0 12px 26px rgba(0,0,0,.45)); }
+  .gacha-capsule-top, .gacha-capsule-bottom{ position:absolute; left:0; right:0; height:50%; }
+  .gacha-capsule-top{
+    top:0; border-radius:46px 46px 10px 10px;
+    background:linear-gradient(160deg, rgba(160,240,220,.85), rgba(51,214,166,.55));
+    box-shadow:inset 10px 8px 0 -4px rgba(255,255,255,.35);
+  }
+  .gacha-capsule-bottom{ bottom:0; border-radius:10px 10px 46px 46px; background:linear-gradient(160deg, var(--ember-soft), var(--ember)); }
+  .gacha-capsule.shaking{ animation:gacha-shake .9s ease-in-out; }
+  .gacha-capsule.opened .gacha-capsule-top{ transform:translateY(-36px) rotate(-18deg); opacity:0; transition:transform .35s ease, opacity .35s ease; }
+  .gacha-capsule.opened .gacha-capsule-bottom{ transform:translateY(36px); opacity:0; transition:transform .35s ease, opacity .35s ease; }
+  @keyframes gacha-shake{
+    0%,100%{ transform:rotate(0); } 15%{ transform:rotate(-14deg); } 30%{ transform:rotate(12deg); }
+    45%{ transform:rotate(-10deg); } 60%{ transform:rotate(8deg); } 75%{ transform:rotate(-4deg); }
+  }
+  .gacha-result{ grid-area:1/1; display:flex; flex-direction:column; align-items:center; gap:6px; animation:gacha-pop .4s ease-out; }
+  @keyframes gacha-pop{ from{ transform:scale(.6); opacity:0; } to{ transform:scale(1); opacity:1; } }
+  .gacha-result-emoji{ font-size:72px; line-height:1; }
+  .gacha-result-stars{ color:var(--ember-soft); font-size:14px; letter-spacing:2px; }
+  .gacha-result-name{ font-family:var(--font-ui); font-size:17px; font-weight:700; }
+  .gacha-result-new{ font-family:var(--font-ui); font-size:12px; font-weight:700; color:var(--mint); }
+  .gacha-spins{ text-align:center; font-family:var(--font-ui); font-size:14px; font-weight:700; color:var(--mint); margin:0; }
+  #gacha-screen .gacha-rule{ text-align:center; margin:14px 0 20px; }
+  .gacha-book-summary{ font-family:var(--font-ui); font-size:13px; color:rgba(255,255,255,.7); margin:-6px 0 12px; }
+  .gacha-grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+  .gacha-item{
+    position:relative; min-width:0; text-align:center; padding:14px 4px 10px; border-radius:14px;
+    background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08); font-family:var(--font-ui);
+  }
+  .gacha-item-emoji{ font-size:32px; line-height:1.2; }
+  .gacha-item-stars{ font-size:10px; color:var(--ember-soft); margin-top:4px; }
+  .gacha-item-name{ font-size:11px; color:rgba(255,255,255,.7); margin-top:2px; line-height:1.3; word-break:break-word; }
+  .gacha-item-count{ position:absolute; top:6px; right:6px; font-size:10px; font-weight:700; background:rgba(0,0,0,.45); border-radius:8px; padding:1px 6px; }
+  .gacha-item.is-unowned{ opacity:.4; }
+  /* レア度が上がるほど、枠が豪華になる（前のプロトタイプと同じ4段階） */
+  .gacha-item.tier-rare{ border-color:rgba(110,198,255,.5); background:rgba(110,198,255,.08); }
+  .gacha-item.tier-epic{ border-color:rgba(199,125,255,.6); background:rgba(199,125,255,.1); }
+  .gacha-item.tier-legendary{ border-color:rgba(255,215,0,.7); background:linear-gradient(160deg, rgba(255,215,0,.16), rgba(255,90,54,.1)); box-shadow:0 4px 14px rgba(255,180,60,.25); }
+  @media (prefers-reduced-motion: reduce){
+    .gacha-capsule.shaking, .gacha-result{ animation:none; }
+  }
+
   /* ---- 楽曲を選ぶ（下から出るシート） ---- */
   .sheet-overlay{
     position:absolute; inset:0; z-index:55; display:none; align-items:flex-end;
@@ -720,6 +776,7 @@
     padding:7px 14px; border-radius:99px; border:1px solid rgba(255,255,255,.25); color:#fff;
     font-family:var(--font-ui); font-size:12px; font-weight:700; flex-shrink:0;
   }
+  .people-action.primary{ background:var(--ember, #ff5a36); border-color:transparent; }
   .people-empty{ text-align:center; padding:48px 12px 0; }
 
   /* ============================================================
@@ -1211,6 +1268,16 @@
         <button class="text-link" id="timer-discard">タイマーを破棄</button>
       </div>
 
+      <!-- 勉強ガチャの入口 -->
+      <button class="gacha-entry" id="gacha-open">
+        <span class="gacha-entry-icon" id="gacha-entry-icon"></span>
+        <span class="gacha-entry-text">
+          <span class="gacha-entry-title">勉強ガチャ</span>
+          <span class="gacha-entry-sub" id="gacha-entry-sub"></span>
+        </span>
+        <span class="gacha-entry-badge" id="gacha-entry-badge" hidden></span>
+      </button>
+
       <!-- 手入力 -->
       <div class="study-card">
         <div class="record-section-title">手入力で追加</div>
@@ -1237,6 +1304,35 @@
   </section>
 
   <!-- ============ これまでの記録（カレンダー） ============ -->
+  <!-- ============ 勉強ガチャ・図鑑（記録画面から開く） ============ -->
+  <section id="gacha-screen" class="screen dark-screen">
+    <div class="record-wrap">
+      <div class="post-form-header">
+        <button class="back-btn" id="gacha-back">←</button>
+        <h1 class="post-form-title">勉強ガチャ</h1>
+      </div>
+
+      <div class="gacha-stage">
+        <div class="gacha-capsule" id="gacha-capsule" aria-hidden="true"><span class="gacha-capsule-top"></span><span class="gacha-capsule-bottom"></span></div>
+        <div class="gacha-result" id="gacha-result" hidden>
+          <div class="gacha-result-emoji" id="gacha-result-emoji"></div>
+          <div class="gacha-result-stars" id="gacha-result-stars"></div>
+          <div class="gacha-result-name" id="gacha-result-name"></div>
+          <div class="gacha-result-new" id="gacha-result-new" hidden>はじめて手に入れた！</div>
+        </div>
+      </div>
+      <p class="gacha-spins" id="gacha-spins"></p>
+      <button class="study-btn primary full" id="gacha-spin">ガチャを回す</button>
+      <p class="settings-text gacha-rule">タイマーで5分勉強するごとに1回分もらえます（1日3回分まで）。もらった回数は、次の日になっても消えません。</p>
+
+      <div class="study-card gacha-book">
+        <div class="record-section-title">図鑑</div>
+        <p class="gacha-book-summary" id="gacha-book-summary"></p>
+        <div class="gacha-grid" id="gacha-grid"></div>
+      </div>
+    </div>
+  </section>
+
   <section id="history-screen" class="screen dark-screen">
     <div class="record-wrap">
       <div class="post-form-header">
@@ -2357,6 +2453,7 @@ const ICON_PATHS = {
   link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7.1-7.1l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7.1 7.1l1.7-1.7"/>',
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
   camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+  gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
   flame: '<path d="M12 2c1 3.5 5 6 5 11a5 5 0 0 1-10 0c0-2.5 1.2-4 2.5-5.5C10 9.5 11 11 12 11c0-3-1-5.5 0-9z"/>',
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-5.6 6.5-5.6s6.5 2 6.5 5.6"/><circle cx="17" cy="9" r="2.8"/><path d="M16.2 14.5c3 0 5.3 1.8 5.3 5"/>',
@@ -2508,16 +2605,18 @@ const screens = {
   settings: document.getElementById('settings-screen'),
   user: document.getElementById('user-screen'),
   bulk: document.getElementById('bulk-screen'),
+  gacha: document.getElementById('gacha-screen'),
 };
 // ボトムナビに無い画面は、どのタブの中の画面かを決めておく（そのタブを点灯させる）
-const NAV_PARENT = { search:'home', notifications:'profile', history:'record', people:'profile', preview:'create', settings:'profile', user:'home', bulk:'create' };
+const NAV_PARENT = { search:'home', notifications:'profile', history:'record', people:'profile', preview:'create', settings:'profile', user:'home', bulk:'create', gacha:'record' };
 function showScreen(name){
   Object.values(screens).forEach(s=>s.classList.remove('active'));
   screens[name].classList.add('active');
   if(name === 'record') renderRecordScreen();
+  if(name === 'gacha') renderGachaScreen();
   if(name === 'profile') renderProfileScreen();
   if(name === 'history') renderHistoryScreen();
-  if(name === 'people') renderPeopleScreen();
+  if(name === 'people'){ renderPeopleScreen(); if(peopleTab === 'followers') loadCloudFollowers(); }
   if(name === 'ai') renderAiScreen();
   if(name === 'notifications'){ renderNotificationsScreen(); loadCloudNotifications(); usageEvent('通知を開いた'); }
   if(name === 'settings') renderSettingsScreen();
@@ -3997,9 +4096,10 @@ document.getElementById('timer-finish').addEventListener('click', ()=>{
   if(!addStudyEntry(timerSubject.id, timerSubject.other, seconds, localDateKey(), 'timer')) return;
   usageEvent(`タイマー終了して記録（${subjectLabelOf({ subject: timerSubject.id, subjectOther: timerSubject.other })}・${formatStudyTime(seconds)}）`);
   usageAddStudy(seconds);
+  const spinsEarned = awardGachaSpins(seconds);
   resetTimer();
   renderRecordScreen();
-  showToast(`${formatStudyTime(seconds)}を記録しました`);
+  showToast(spinsEarned ? `${formatStudyTime(seconds)}を記録しました。ガチャ${spinsEarned}回分ゲット！` : `${formatStudyTime(seconds)}を記録しました`);
 });
 
 document.getElementById('timer-discard').addEventListener('click', async ()=>{
@@ -4010,6 +4110,158 @@ document.getElementById('timer-discard').addEventListener('click', async ()=>{
 });
 
 setInterval(()=>{ if(timerState.startedAt) renderTimerDisplay(); }, 1000);
+
+// ---- 勉強ガチャ・図鑑（前のプロトタイプと同じ仕組み） ----
+// ・タイマーで勉強して「終了して記録」すると、5分ごとに1回分もらえる（10分なら2回分）。1日にもらえるのは3回分まで
+//   （タイマーを細切れにして回数を稼げないように）。手入力の記録ではもらえない
+// ・もらった回数は、次の日になっても消えずにたまる
+// ・動物は10種類。レア度が高いほど出にくい（出る確率＝weight。合計100）
+// ・この端末の中にだけ保存する（バックアップには含める）
+const GACHA_KEY = 'zonenow_gacha';
+const GACHA_MIN_SECONDS = 5 * 60;
+const GACHA_DAILY_LIMIT = 3;
+const GACHA_CHARACTERS = [
+  { id:'sparrow',   rarity:1,  emoji:'🐦',    name:'ちょこちょこスズメ', weight:30 },
+  { id:'cat',       rarity:2,  emoji:'🐱',    name:'のんびりネコ',       weight:22 },
+  { id:'dog',       rarity:3,  emoji:'🐶',    name:'がんばりイヌ',       weight:16 },
+  { id:'rabbit',    rarity:4,  emoji:'🐰',    name:'はやとびウサギ',     weight:12 },
+  { id:'owl',       rarity:5,  emoji:'🦉',    name:'ものしりフクロウ',   weight:9 },
+  { id:'fox',       rarity:6,  emoji:'🦊',    name:'ちえのキツネ',       weight:6 },
+  { id:'tiger',     rarity:7,  emoji:'🐯',    name:'しゅうちゅうトラ',   weight:3 },
+  { id:'polarbear', rarity:8,  emoji:'🐻‍❄️', name:'こんじょうシロクマ', weight:1.5 },
+  { id:'dragon',    rarity:9,  emoji:'🐉',    name:'ごうかくリュウ',     weight:0.4 },
+  { id:'phoenix',   rarity:10, emoji:'🔥',    name:'きせきのホウオウ',   weight:0.1 },
+];
+// 前のプロトタイプ（同じサイトのいちばん上）で集めた分は、ウェブ版では最初に一度だけ引き継ぐ（プロトタイプ側は消さない）
+const PROTO_GACHA_KEYS = { spins:'zonenow_mvp_gacha_spins_available', collection:'zonenow_mvp_gacha_collection' };
+function loadGacha(){
+  const saved = loadJSON(GACHA_KEY, null);
+  if(saved && typeof saved === 'object'){
+    return {
+      spins: Math.max(0, Math.floor(Number(saved.spins) || 0)),
+      daily: saved.daily && typeof saved.daily === 'object' ? saved.daily : { date:'', count:0 },
+      collection: saved.collection && typeof saved.collection === 'object' ? saved.collection : {},
+    };
+  }
+  const fresh = { spins:0, daily:{ date:'', count:0 }, collection:{} };
+  try{
+    const protoSpins = parseInt(localStorage.getItem(PROTO_GACHA_KEYS.spins) || '0', 10) || 0;
+    const protoCollection = JSON.parse(localStorage.getItem(PROTO_GACHA_KEYS.collection) || 'null');
+    if(protoSpins > 0) fresh.spins = protoSpins;
+    if(protoCollection && typeof protoCollection === 'object'){
+      for(const c of GACHA_CHARACTERS) if(Number(protoCollection[c.id]) > 0) fresh.collection[c.id] = Math.floor(Number(protoCollection[c.id]));
+    }
+  }catch(e){}
+  return fresh;
+}
+function saveGacha(g){ saveJSON(GACHA_KEY, g); }
+// タイマーの記録が終わったときに呼ぶ。もらえた回数を返す
+function awardGachaSpins(seconds){
+  if(seconds < GACHA_MIN_SECONDS) return 0;
+  const g = loadGacha();
+  const today = localDateKey();
+  const earnedToday = g.daily.date === today ? Number(g.daily.count) || 0 : 0;
+  const award = Math.min(Math.floor(seconds / GACHA_MIN_SECONDS), GACHA_DAILY_LIMIT - earnedToday);
+  if(award <= 0) return 0;
+  g.daily = { date: today, count: earnedToday + award };
+  g.spins += award;
+  saveGacha(g);
+  return award;
+}
+// 重み付きの抽選で1体選ぶ（rand は 0以上1未満。テストで決めた値を渡せる）
+function pickGachaCharacter(rand = Math.random()){
+  const total = GACHA_CHARACTERS.reduce((sum, c)=> sum + c.weight, 0);
+  let r = rand * total;
+  for(const c of GACHA_CHARACTERS){
+    r -= c.weight;
+    if(r < 0) return c;
+  }
+  return GACHA_CHARACTERS[GACHA_CHARACTERS.length - 1];
+}
+function gachaTier(rarity){
+  return rarity >= 9 ? 'tier-legendary' : rarity >= 7 ? 'tier-epic' : rarity >= 4 ? 'tier-rare' : 'tier-common';
+}
+function renderGachaEntry(){
+  const g = loadGacha();
+  document.getElementById('gacha-entry-icon').innerHTML = icon('gift');
+  const owned = GACHA_CHARACTERS.filter(c=> g.collection[c.id]).length;
+  document.getElementById('gacha-entry-sub').textContent = g.spins > 0
+    ? `${g.spins}回分たまっています・図鑑 ${owned}/${GACHA_CHARACTERS.length}`
+    : `タイマーで5分勉強すると1回回せるよ・図鑑 ${owned}/${GACHA_CHARACTERS.length}`;
+  const badge = document.getElementById('gacha-entry-badge');
+  badge.hidden = g.spins <= 0;
+  badge.textContent = `${g.spins}回`;
+}
+function renderGachaSpins(){
+  const g = loadGacha();
+  document.getElementById('gacha-spins').textContent = g.spins > 0 ? `残り ${g.spins}回` : 'いまは回せません';
+  document.getElementById('gacha-spin').disabled = g.spins <= 0 || gachaSpinning;
+}
+function renderGachaBook(){
+  const g = loadGacha();
+  const owned = GACHA_CHARACTERS.filter(c=> g.collection[c.id]).length;
+  document.getElementById('gacha-book-summary').textContent = `${owned} / ${GACHA_CHARACTERS.length} 体 集めました`;
+  document.getElementById('gacha-grid').innerHTML = GACHA_CHARACTERS.map(c=>{
+    const count = Number(g.collection[c.id]) || 0;
+    return `
+    <div class="gacha-item ${gachaTier(c.rarity)} ${count ? '' : 'is-unowned'}" data-gacha-id="${c.id}">
+      ${count > 1 ? `<span class="gacha-item-count">×${count}</span>` : ''}
+      <div class="gacha-item-emoji">${count ? c.emoji : '？'}</div>
+      <div class="gacha-item-stars">★${c.rarity}</div>
+      <div class="gacha-item-name">${count ? escapeHtml(c.name) : '？？？'}</div>
+    </div>`;
+  }).join('');
+}
+let gachaSpinning = false;
+function renderGachaScreen(){
+  if(!gachaSpinning){
+    document.getElementById('gacha-result').hidden = true;
+    const capsule = document.getElementById('gacha-capsule');
+    capsule.hidden = false;
+    capsule.classList.remove('shaking', 'opened');
+  }
+  renderGachaSpins();
+  renderGachaBook();
+}
+document.getElementById('gacha-open').addEventListener('click', ()=> showScreen('gacha'));
+document.getElementById('gacha-back').addEventListener('click', ()=> showScreen('record'));
+document.getElementById('gacha-spin').addEventListener('click', async ()=>{
+  const g = loadGacha();
+  if(g.spins <= 0 || gachaSpinning) return;
+  gachaSpinning = true;
+  // 先に結果を決めて保存する（演出の途中でアプリを閉じても、回した分はなくならない）
+  const c = pickGachaCharacter();
+  const isNew = !g.collection[c.id];
+  g.spins -= 1;
+  g.collection[c.id] = (Number(g.collection[c.id]) || 0) + 1;
+  saveGacha(g);
+  usageEvent(`ガチャ結果：${c.name}（★${c.rarity}）`);
+  renderGachaSpins();
+
+  const capsule = document.getElementById('gacha-capsule');
+  const result = document.getElementById('gacha-result');
+  result.hidden = true;
+  capsule.hidden = false;
+  capsule.classList.remove('opened');
+  void capsule.offsetWidth; // アニメーションを最初から
+  capsule.classList.add('shaking');
+  tapFeedback('MEDIUM');
+  const reduced = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  await new Promise(r=> setTimeout(r, reduced ? 0 : 900));
+  capsule.classList.remove('shaking');
+  capsule.classList.add('opened');
+  await new Promise(r=> setTimeout(r, reduced ? 0 : 300));
+  capsule.hidden = true;
+  document.getElementById('gacha-result-emoji').textContent = c.emoji;
+  document.getElementById('gacha-result-stars').textContent = '★'.repeat(c.rarity);
+  document.getElementById('gacha-result-name').textContent = c.name;
+  document.getElementById('gacha-result-new').hidden = !isNew;
+  result.hidden = false;
+  if(c.rarity >= 7) tapFeedback('HEAVY');
+  gachaSpinning = false;
+  renderGachaSpins();
+  renderGachaBook();
+});
 
 // ---- 手入力 ----
 const manualSubject = createChoice('manual-subject-chips', SUBJECTS);
@@ -4106,6 +4358,7 @@ function renderRecordScreen(){
   document.getElementById('study-week').textContent = formatStudyTime(totals.week);
   document.getElementById('study-total').textContent = formatStudyTime(totals.total);
   renderStreak();
+  renderGachaEntry();
 
   // 記録画面の下には「今日」の分だけ出す。過去の分はカレンダーで見る
   const todayEntries = log.filter(e=> e.date === localDateKey());
@@ -6057,7 +6310,8 @@ function renderProfileScreen(){
   document.getElementById('profile-grade').textContent = gradeLabelOf(p);
 
   document.getElementById('profile-following-count').textContent = loadFollowing().length;
-  document.getElementById('profile-followers-count').textContent = 0; // サーバー機能ができるまでは常に0
+  document.getElementById('profile-followers-count').textContent = loadJSON(FOLLOWERS_KEY, []).length;
+  loadCloudFollowers();
   document.getElementById('profile-friends-count').textContent = 0;
   updateNotifyBadges();
 
@@ -6119,7 +6373,30 @@ document.getElementById('profile-grid').addEventListener('click', async (e)=>{
 });
 
 // ---- フォロー中・フォロワー・友達の一覧 ----
-// フォロワーと友達は、サーバー機能（アカウント同士のつながり）ができるまで空のまま
+// フォロワーはサーバー（my_followers）から読む。最後に読んだ分は端末に控えておき、電波がなくても数を出す
+// 友達は、サーバー機能ができるまで空のまま
+const FOLLOWERS_KEY = 'zonenow_followers';
+let followersLoading = null;
+function loadCloudFollowers(){
+  if(!cloudEnabled()) return Promise.resolve();
+  if(followersLoading) return followersLoading;
+  followersLoading = (async ()=>{
+    try{
+      const client = await getCloud();
+      if(!client || !(await cloudUserId())) return;
+      const { data, error } = await client.rpc('my_followers');
+      if(error || !Array.isArray(data)) return; // 関数がまだない（SQLを実行する前）なども、前の分のまま
+      saveJSON(FOLLOWERS_KEY, data.map(r=> ({ id: r.id, name: r.name || 'だれか' })));
+      document.getElementById('profile-followers-count').textContent = data.length;
+      if(screens.people.classList.contains('active') && peopleTab === 'followers') renderPeopleScreen();
+    }catch(e){
+      // 電波がないなど：前に読んだ分を出しておく
+    }finally{
+      followersLoading = null;
+    }
+  })();
+  return followersLoading;
+}
 const PEOPLE_TABS = {
   following: { label:'フォロー中', emptyIcon:'user', emptyTitle:'まだ誰もフォローしていません', emptySub:'動画のアイコンの「＋」から、気になるクリエイターをフォローできます。' },
   followers: { label:'フォロワー', emptyIcon:'users', emptyTitle:'まだフォロワーはいません', emptySub:'動画を投稿して、あなたを見つけてもらおう。' },
@@ -6142,6 +6419,23 @@ function renderPeopleScreen(){
     btn.setAttribute('aria-selected', active);
   });
 
+  if(peopleTab === 'followers'){
+    const followers = loadJSON(FOLLOWERS_KEY, []);
+    document.getElementById('people-list').innerHTML = followers.map(f=>{
+      const back = isFollowing(f.id);
+      return `
+      <div class="people-row is-user" data-open-user="${escapeHtml(f.id)}" data-name="${escapeHtml(f.name)}">
+        <div class="avatar">${escapeHtml(f.name.charAt(0))}</div>
+        <div class="people-name">${escapeHtml(f.name)}</div>
+        <button class="people-action ${back ? '' : 'primary'}" data-follow-back="${escapeHtml(f.id)}" data-name="${escapeHtml(f.name)}">${back ? 'フォロー中' : 'フォローする'}</button>
+      </div>`;
+    }).join('');
+    document.getElementById('people-empty').style.display = followers.length ? 'none' : 'block';
+    document.getElementById('people-empty-icon').innerHTML = icon(tab.emptyIcon);
+    document.getElementById('people-empty-title').textContent = tab.emptyTitle;
+    document.getElementById('people-empty-sub').textContent = tab.emptySub;
+    return;
+  }
   const people = peopleTab === 'following' ? loadFollowing() : [];
   document.getElementById('people-list').innerHTML = people.map(e=>{
     const key = followKeyOfEntry(e), name = followNameOfEntry(e);
@@ -6163,10 +6457,25 @@ document.querySelectorAll('[data-people-tab]').forEach(btn=>{
   btn.addEventListener('click', ()=> openPeople(btn.dataset.peopleTab));
 });
 document.querySelectorAll('.people-tab').forEach(btn=>{
-  btn.addEventListener('click', ()=>{ peopleTab = btn.dataset.tab; renderPeopleScreen(); });
+  btn.addEventListener('click', ()=>{
+    peopleTab = btn.dataset.tab;
+    renderPeopleScreen();
+    if(peopleTab === 'followers') loadCloudFollowers();
+  });
 });
 document.getElementById('people-back').addEventListener('click', ()=> showScreen('profile'));
 document.getElementById('people-list').addEventListener('click', async (e)=>{
+  // フォロワーの一覧：フォローを返す・外す
+  const back = e.target.closest('[data-follow-back]');
+  if(back){
+    const key = back.dataset.followBack, name = back.dataset.name;
+    const follow = !isFollowing(key);
+    setFollowing(key, follow, name);
+    syncFollowButtons(key, follow);
+    renderPeopleScreen();
+    showToast(follow ? `${name}をフォローしました` : `${name}のフォローを外しました`);
+    return;
+  }
   const btn = e.target.closest('[data-unfollow]');
   if(!btn){
     const row = e.target.closest('[data-open-user]');
@@ -6379,7 +6688,7 @@ document.getElementById('settings-hidden-reset').addEventListener('click', ()=>{
 
 // バックアップ：記録や設定をファイルに書き出す／読み込む（投稿した動画・写真は大きいので含めない）
 const BACKUP_KEYS = [PROFILE_KEY, STUDY_LOG_KEY, FOLLOW_KEY, LIKES_KEY, SAVES_KEY,
-  COMMENTS_KEY, HIDDEN_VIDEOS_KEY, BLOCKED_CREATORS_KEY, NOTIFY_KEY, AI_CHAT_KEY];
+  COMMENTS_KEY, HIDDEN_VIDEOS_KEY, BLOCKED_CREATORS_KEY, NOTIFY_KEY, AI_CHAT_KEY, GACHA_KEY];
 document.getElementById('backup-export').addEventListener('click', async ()=>{
   const data = {};
   BACKUP_KEYS.forEach(k=>{ const v = loadJSON(k, null); if(v !== null) data[k] = v; });

@@ -200,7 +200,10 @@ check('他人の名前ではフォローできない', !as(A, `insert into follo
 check('フォローを外せる', as(B, `delete from follows where followee_id = '${A}' returning followee_id`).out === A);
 as(B, `insert into follows (followee_id) values ('${A}')`);
 check('外してまたフォローしても、通知は1回だけ', as(A, `select count(*) from notifications where type = 'follow'`).out === '1');
-check('だれにフォローされているかの一覧は見えない', as(A, 'select count(*) from follows').out === '0');
+check('フォローの表からは、だれにフォローされているかは見えない', as(A, 'select count(*) from follows').out === '0');
+check('自分のフォロワーは my_followers で分かる（IDと名前だけ）', as(A, 'select * from public.my_followers()').out === `${B}|ひかる`);
+check('他人のフォロワーは分からない', as(B, 'select count(*) from public.my_followers()').out === '0');
+check('ログインしていないとフォロワーは分からない', !as(null, 'select * from public.my_followers()').ok);
 
 state.section = '使い方の記録';
 const usageRow = `(name, started_at, ended_at, narrative, videos_watched) values ('ひかる', now() - interval '5 minutes', now(), '20:15 起動 → 20:20 終了', 12)`;

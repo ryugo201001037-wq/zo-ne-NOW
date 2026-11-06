@@ -212,6 +212,9 @@ function startFakeSupabase() {
       rows.sort((x, y) => (y.name === q) - (x.name === q) || x.name.length - y.name.length);
       return send(200, rows.slice(0, 20));
     }
+    if (p === '/rest/v1/rpc/my_followers' && req.method === 'POST') {
+      return send(200, fake.follows.filter(f => f.followee_id === uid).map(f => ({ id: f.follower_id, name: (fake.profiles.get(f.follower_id) || {}).name || '' })));
+    }
     if (p === '/rest/v1/rpc/delete_my_account' && req.method === 'POST') {
       fake.rpcCalls++;
       fake.users.delete(uid); fake.profiles.delete(uid);
@@ -673,6 +676,15 @@ function startFakeSupabase() {
   await op.click('[data-people-tab="following"]'); await op.waitForTimeout(200);
   check('フォロー中の一覧に出る', (await op.textContent('#people-list')).includes('みなと'));
   check('フォローはサーバーにも届く（外してまたフォロー→1件）', await waitFor(() => fake.follows.length === 1 && fake.follows[0].follower_id === otherUid() && fake.follows[0].followee_id === uid), JSON.stringify(fake.follows));
+  // フォローされた側（みなと）：プロフィールのフォロワーが1になり、一覧にゆいが出る
+  await page.evaluate(() => showScreen('profile'));
+  check('フォローされた人のプロフィールで、フォロワーが数えられる', await waitFor(async () => (await page.textContent('#profile-followers-count')) === '1'), await page.textContent('#profile-followers-count'));
+  await page.click('[data-people-tab="followers"]'); await page.waitForTimeout(200);
+  check('フォロワーの一覧に、フォローしてくれた人が出る', await waitFor(async () => (await page.textContent('#people-list')).includes('ゆい') && (await page.textContent('#people-list [data-follow-back]')) === 'フォローする'));
+  await page.click('#people-list [data-follow-back]'); await page.waitForTimeout(200);
+  check('フォロワーの一覧からフォローを返せる', (await page.textContent('#people-list [data-follow-back]')) === 'フォロー中'
+    && await waitFor(() => fake.follows.some(f => f.follower_id === uid && f.followee_id === otherUid())));
+  await page.evaluate(() => showScreen('home'));
   await op.click('#people-list .people-row.is-user .people-name');
   check('フォロー中の一覧から、その人の投稿一覧へ', await waitFor(async () => (await op.$eval('.screen.active', el => el.id)) === 'user-screen'));
   await op.click('#user-back'); await op.waitForTimeout(200);

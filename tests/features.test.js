@@ -145,6 +145,69 @@ const entry = (id, subject, minutes, daysAgo) => ({ id, subject, subjectOther: '
   check('エラーなし（検索・連続記録・設定）', !c.errors.length, c.errors.join(' / '));
   await c.context.close();
 
+  // ========== 勉強ガチャ（前のプロトタイプと同じ仕組み） ==========
+  state.section = '勉強ガチャ';
+  {
+    const g = await openApp(browser, { name: 'ガチャ' });
+    const gp = g.page;
+    const studyFor = async minutes => {
+      await gp.evaluate(m => { timerState.startedAt = Date.now() - m * 60 * 1000; saveTimer(); renderTimer(); }, minutes);
+      await gp.click('#timer-finish'); await gp.waitForTimeout(150);
+    };
+    await nav(gp, 'record');
+    check('記録画面にガチャの入口（まだ回せない・5分で1回と案内）', (await gp.textContent('#gacha-entry-sub')).includes('5分') && await gp.$eval('#gacha-entry-badge', el => el.hidden));
+    await gp.click('#timer-subject-chips .chip[data-id="math"]');
+    await studyFor(4);
+    check('5分未満ではもらえない', !(await toast(gp)).includes('ガチャ') && await gp.evaluate(() => loadGacha().spins === 0));
+    await studyFor(11);
+    check('11分勉強すると2回分（5分ごとに1回）', (await toast(gp)).includes('ガチャ2回分ゲット') && await gp.evaluate(() => loadGacha().spins === 2));
+    check('入口に「2回」', !(await gp.$eval('#gacha-entry-badge', el => el.hidden)) && (await gp.textContent('#gacha-entry-badge')) === '2回');
+    await studyFor(30);
+    check('1日にもらえるのは3回分まで', (await toast(gp)).includes('ガチャ1回分ゲット') && await gp.evaluate(() => loadGacha().spins === 3));
+    await studyFor(30);
+    check('上限のあとはもらえない（記録はできる）', (await toast(gp)).includes('を記録しました') && !(await toast(gp)).includes('ガチャ') && await gp.evaluate(() => loadGacha().spins === 3));
+    await gp.evaluate(() => { const x = loadGacha(); x.daily.date = '2000-01-01'; saveGacha(x); });
+    await studyFor(6);
+    check('次の日になると、またもらえる（たまった分は消えない）', await gp.evaluate(() => loadGacha().spins === 4));
+
+    check('出る確率はプロトタイプと同じ（10種・合計100・スズメ30〜ホウオウ0.1）', await gp.evaluate(() => GACHA_CHARACTERS.length === 10
+      && GACHA_CHARACTERS.reduce((s, c) => s + c.weight, 0) === 100 && GACHA_CHARACTERS[0].weight === 30 && GACHA_CHARACTERS[9].weight === 0.1));
+    check('抽選は重みどおり（端はスズメ・ホウオウ）', await gp.evaluate(() => pickGachaCharacter(0).id === 'sparrow' && pickGachaCharacter(0.2999).id === 'sparrow'
+      && pickGachaCharacter(0.3).id === 'cat' && pickGachaCharacter(0.9995).id === 'phoenix' && pickGachaCharacter(0.99899).id === 'dragon'));
+
+    await gp.click('#gacha-open'); await gp.waitForTimeout(200);
+    check('ガチャの画面（残り4回・図鑑は0/10）', (await active(gp)) === 'gacha-screen' && (await gp.textContent('#gacha-spins')).includes('4') && (await gp.textContent('#gacha-book-summary')).includes('0 / 10'));
+    await gp.evaluate(() => { window.__realRandom = Math.random; Math.random = () => 0.1; });
+    await gp.click('#gacha-spin');
+    check('回している間はもう押せない', await gp.$eval('#gacha-spin', b => b.disabled));
+    await gp.waitForTimeout(1400);
+    check('結果が出る（スズメ・★1・はじめて）', (await gp.textContent('#gacha-result-name')) === 'ちょこちょこスズメ' && (await gp.textContent('#gacha-result-stars')) === '★'
+      && await gp.isVisible('#gacha-result-new'));
+    check('図鑑に入り、残りが1回減る', (await gp.textContent('#gacha-book-summary')).includes('1 / 10') && (await gp.textContent('#gacha-spins')).includes('3')
+      && (await gp.textContent('#gacha-grid [data-gacha-id="sparrow"]')).includes('ちょこちょこスズメ'));
+    check('まだの動物は「？？？」', (await gp.textContent('#gacha-grid [data-gacha-id="phoenix"]')).includes('？？？'));
+    await gp.click('#gacha-spin'); await gp.waitForTimeout(1400);
+    check('2回目の同じ動物は「はじめて」を出さず、図鑑に×2', !(await gp.isVisible('#gacha-result-new')) && (await gp.textContent('#gacha-grid [data-gacha-id="sparrow"]')).includes('×2'));
+    await gp.evaluate(() => { Math.random = window.__realRandom; });
+    await gp.screenshot({ path: OUT + 'gacha.png' });
+    await gp.click('#gacha-back'); await gp.waitForTimeout(150);
+    check('戻ると記録画面', (await active(gp)) === 'record-screen');
+    check('ガチャもバックアップに入る', await gp.evaluate(() => BACKUP_KEYS.includes('zonenow_gacha')));
+    check('エラーなし（ガチャ）', !g.errors.length, g.errors.join(' / '));
+    await g.context.close();
+
+    // 前のプロトタイプで集めた分を引き継ぐ（同じサイトなので、ウェブ版では同じ保存場所を読める）
+    const h = await openApp(browser, { name: 'ヒキツギ' });
+    await h.page.evaluate(() => {
+      localStorage.removeItem('zonenow_gacha');
+      localStorage.setItem('zonenow_mvp_gacha_spins_available', '2');
+      localStorage.setItem('zonenow_mvp_gacha_collection', JSON.stringify({ cat: 3, dragon: 1, unknown: 5 }));
+    });
+    check('前のプロトタイプのガチャ回数と図鑑を引き継ぐ', await h.page.evaluate(() => { const x = loadGacha(); return x.spins === 2 && x.collection.cat === 3 && x.collection.dragon === 1 && !('unknown' in x.collection); }));
+    check('プロトタイプ側のデータは消さない', await h.page.evaluate(() => localStorage.getItem('zonenow_mvp_gacha_spins_available') === '2'));
+    await h.context.close();
+  }
+
   // ========== 読み込み中・読み込めないとき・オフライン ==========
   state.section = '読み込み表示';
   {

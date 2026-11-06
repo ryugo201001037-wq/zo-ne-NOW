@@ -356,6 +356,20 @@ revoke all on function public.notify_like() from public, anon, authenticated;
 revoke all on function public.notify_comment() from public, anon, authenticated;
 revoke all on function public.notify_follow() from public, anon, authenticated;
 
+-- ---- 自分のフォロワー（自分をフォローしている人のアカウントIDと名前。新しい順に500人まで） ----
+-- follows の表は自分のフォローしか読めないので、この関数だけが「自分をフォローしている人」を返す
+create or replace function public.my_followers() returns table (id uuid, name text)
+language sql stable security definer set search_path = '' as $$
+  select f.follower_id, coalesce(p.name, '')
+  from public.follows f
+  left join public.profiles p on p.id = f.follower_id
+  where auth.uid() is not null and f.followee_id = auth.uid()
+  order by f.created_at desc
+  limit 500;
+$$;
+revoke all on function public.my_followers() from public, anon;
+grant execute on function public.my_followers() to authenticated;
+
 -- ---- タグの直し（2026年11月）：名前の空白で分かれてしまったタグ・絵文字の残りが付いたタグ ----
 -- 何度実行しても同じ結果になる（直すものがなければ何もしない）
 update public.posts set hashtags = array['OneCardEnglish'] where hashtags = array['One', 'Card', 'English'];

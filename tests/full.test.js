@@ -632,6 +632,29 @@ const { check, state, report } = createChecker();
   await page.waitForTimeout(400);
   check('共有リンクから開くとその動画が先頭', (await page.$eval('#feed .short-slide', s => s.dataset.id)) === 'tr2');
 
+  // まとめて投稿と同じく、1つの「軽くする部品」で2本続けて軽くしても、2本とも音が残る
+  state.section = '動画を軽くする（音）';
+  {
+    const audioVideo = require('fs').readFileSync(A + 'with-audio.webm').toString('base64');
+    const outs = await page.evaluate(async b64 => {
+      const bytes = Uint8Array.from(atob(b64), ch => ch.charCodeAt(0));
+      const file = new File([bytes], 'a.webm', { type: 'video/webm' });
+      const toB64 = async blob => { const buf = new Uint8Array(await blob.arrayBuffer()); let s = ''; for (const x of buf) s += String.fromCharCode(x); return btoa(s); };
+      const prep = prepareCompressor(file);
+      const first = await compressVideo(prep, () => {});
+      const liveAfterFirst = prep.dest.stream.getAudioTracks().every(t => t.readyState === 'live');
+      loadIntoCompressor(prep, file);
+      const second = await compressVideo(prep, () => {});
+      releaseCompressor(prep);
+      return { liveAfterFirst, first: await toB64(first), second: await toB64(second) };
+    }, audioVideo);
+    const fs = require('fs'), { execFileSync } = require('child_process');
+    const streamsOf = b64 => { const f = OUT + 'compressed-audio-check.webm'; fs.writeFileSync(f, Buffer.from(b64, 'base64')); return execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', f], { encoding: 'utf8' }).trim().split('\n'); };
+    check('1本目を軽くしたあとも、音を拾う部分は止めない', outs.liveAfterFirst);
+    check('1本目：音が残る', streamsOf(outs.first).includes('audio'), streamsOf(outs.first).join(','));
+    check('2本目（同じ部品を使い回す）：音が残る', streamsOf(outs.second).includes('audio'), streamsOf(outs.second).join(','));
+  }
+
   state.section = 'エラー';
   check('JavaScriptのエラーが出ていない', errors.length === 0, errors.join(' / '));
 

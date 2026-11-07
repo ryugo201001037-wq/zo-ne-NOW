@@ -5403,7 +5403,10 @@ function compressVideo(prep, onProgress){
       const onHidden = ()=>{ if(document.hidden) finish(Object.assign(new Error('left'), { code:'left' })); };
       recorder.ondataavailable = e=>{ if(e.data && e.data.size) chunks.push(e.data); };
       recorder.onstop = ()=>{
-        stream.getTracks().forEach(t=> t.stop());
+        // 止めるのは、この回のために作った映像（canvas）のトラックだけ。
+        // 音のトラック（dest）は「軽くする部品」のもので、まとめて投稿では次の動画でも使うので止めない
+        // （前は音まで止めていて、まとめて投稿の2本目以降が音なしになっていた）
+        stream.getVideoTracks().forEach(t=> t.stop());
         if(failure) reject(failure);
         else resolve(new Blob(chunks, { type:(recorder.mimeType || type).split(';')[0] }));
       };

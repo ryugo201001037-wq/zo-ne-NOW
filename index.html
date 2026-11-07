@@ -4118,18 +4118,17 @@ setInterval(()=>{ if(timerState.startedAt) renderTimerDisplay(); }, 1000);
 //   （タイマーを細切れにして回数を稼げないように）。手入力の記録ではもらえない
 // ・もらった回数は、次の日になっても消えずにたまる
 // ・動物は10種類。レア度が高いほど出にくい（出る確率＝weight。合計100）
-//   ★1〜6は、同じ動物ばかり出ないよう差を小さくした（プロトタイプは 30/22/16/12/9/6）。★7〜10はプロトタイプと同じ
 // ・この端末の中にだけ保存する（バックアップには含める）
 const GACHA_KEY = 'zonenow_gacha';
 const GACHA_MIN_SECONDS = 5 * 60;
 const GACHA_DAILY_LIMIT = 3;
 const GACHA_CHARACTERS = [
-  { id:'sparrow',   rarity:1,  emoji:'🐦',    name:'ちょこちょこスズメ', weight:19 },
-  { id:'cat',       rarity:2,  emoji:'🐱',    name:'のんびりネコ',       weight:18 },
-  { id:'dog',       rarity:3,  emoji:'🐶',    name:'がんばりイヌ',       weight:17 },
-  { id:'rabbit',    rarity:4,  emoji:'🐰',    name:'はやとびウサギ',     weight:15 },
-  { id:'owl',       rarity:5,  emoji:'🦉',    name:'ものしりフクロウ',   weight:14 },
-  { id:'fox',       rarity:6,  emoji:'🦊',    name:'ちえのキツネ',       weight:12 },
+  { id:'sparrow',   rarity:1,  emoji:'🐦',    name:'ちょこちょこスズメ', weight:30 },
+  { id:'cat',       rarity:2,  emoji:'🐱',    name:'のんびりネコ',       weight:22 },
+  { id:'dog',       rarity:3,  emoji:'🐶',    name:'がんばりイヌ',       weight:16 },
+  { id:'rabbit',    rarity:4,  emoji:'🐰',    name:'はやとびウサギ',     weight:12 },
+  { id:'owl',       rarity:5,  emoji:'🦉',    name:'ものしりフクロウ',   weight:9 },
+  { id:'fox',       rarity:6,  emoji:'🦊',    name:'ちえのキツネ',       weight:6 },
   { id:'tiger',     rarity:7,  emoji:'🐯',    name:'しゅうちゅうトラ',   weight:3 },
   { id:'polarbear', rarity:8,  emoji:'🐻‍❄️', name:'こんじょうシロクマ', weight:1.5 },
   { id:'dragon',    rarity:9,  emoji:'🐉',    name:'ごうかくリュウ',     weight:0.4 },

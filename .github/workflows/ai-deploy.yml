@@ -103,10 +103,21 @@ jobs:
           fi
           code=$(curl -s -o /dev/null -w '%{http_code}' -X OPTIONS -H 'Origin: https://ryugo201001037-wq.github.io' -H 'Access-Control-Request-Method: POST' "$URL/api/ask")
           echo "確認の結果：HTTP $code"
+          # 本当にAIが答えるか、文字の質問と写真付きの質問を1回ずつ試す（さくらの無料枠を2回使う）
+          ask() {
+            curl -s -m 90 -o answer.txt -w '%{http_code}' -X POST "$URL/api/ask" \
+              -H 'Origin: https://ryugo201001037-wq.github.io' -H 'Content-Type: application/json' \
+              -H "X-Device-Id: deploy-check-$GITHUB_RUN_ID" -d "$1"
+          }
+          text_code=$(ask '{"messages":[{"role":"user","content":"2x+3=11 を解いて"}],"gradeLabel":"中学1年","studySummary":""}')
+          echo "文字の質問：HTTP $text_code"; head -c 600 answer.txt; echo
+          png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+          image_code=$(ask "{\"messages\":[{\"role\":\"user\",\"content\":\"この画像に何が写っている？\"}],\"gradeLabel\":\"中学1年\",\"studySummary\":\"\",\"image\":{\"mediaType\":\"image/png\",\"data\":\"$png\"}}")
+          echo "写真付きの質問：HTTP $image_code"; head -c 600 answer.txt; echo
           {
             echo "## AIサーバーを公開しました"
             echo ""
             echo "URL：$URL"
             echo ""
-            echo "このURLを、アプリの AI_SERVER_URL_DEFAULT に入れると AIコーチが使えるようになります。"
+            echo "文字の質問：HTTP $text_code ／ 写真付きの質問：HTTP $image_code"
           } >> "$GITHUB_STEP_SUMMARY"

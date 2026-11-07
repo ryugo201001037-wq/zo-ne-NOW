@@ -5725,8 +5725,11 @@ reportSheet.addEventListener('click', e=>{
 // ・「今日の勉強プラン」「1週間の振り返り」は、端末内の記録から計算するのでいつでも使える
 // AIサーバーのURL（例：'https://zonenow-ai.xxxx.workers.dev'）。サーバーを公開したら AI_SERVER_URL_DEFAULT に書く
 // （テストでは window.ZONENOW_CONFIG で差し替える）
-const AI_SERVER_URL_DEFAULT = '';
-const AI_SERVER_URL = (window.ZONENOW_CONFIG && window.ZONENOW_CONFIG.aiServerUrl) || AI_SERVER_URL_DEFAULT;
+const AI_SERVER_URL_DEFAULT = 'https://zonenow-ai.now-ea0.workers.dev'; // GitHub Actions「AIサーバーを公開」で公開したもの
+// window.ZONENOW_CONFIG.aiServerUrl があればそちらを使う（'' ならAIはオフ。テストや、サーバーを止めたいとき用）
+// claude.ai のプレビューの中では、本物のサーバーにはつながない（Supabase と同じ）
+const AI_SERVER_URL = IN_CLAUDE_PREVIEW ? ''
+  : window.ZONENOW_CONFIG && 'aiServerUrl' in window.ZONENOW_CONFIG ? window.ZONENOW_CONFIG.aiServerUrl : AI_SERVER_URL_DEFAULT;
 const AI_DEVICE_KEY = 'zonenow_device_id'; // 1日の質問回数を数えるための端末ID
 const AI_CHAT_KEY = 'zonenow_ai_chat';
 const AI_HISTORY_MAX = 40;      // 端末に残す会話の数

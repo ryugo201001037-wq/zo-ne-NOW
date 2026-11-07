@@ -243,7 +243,7 @@ function startFakeSupabase() {
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(([url, init, config]) => {
       window.confirm = () => false;
-      window.ZONENOW_CONFIG = { supabaseUrl: url, supabaseAnonKey: 'test-anon-key', ...config };
+      window.ZONENOW_CONFIG = { supabaseUrl: url, supabaseAnonKey: 'test-anon-key', aiServerUrl: '', ...config };
       if (!sessionStorage.getItem('seeded')) {
         sessionStorage.setItem('seeded', '1');
         Object.entries(init).forEach(([k, v]) => localStorage.setItem(k, JSON.stringify(v)));
@@ -826,6 +826,7 @@ function startFakeSupabase() {
   const ctx3 = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const realRequests = [];
   await ctx3.route('**/*.supabase.co/**', route => { realRequests.push(route.request().url()); route.abort(); });
+  await ctx3.route('**/*.workers.dev/**', route => { realRequests.push(route.request().url()); route.abort(); });
   const p3 = await ctx3.newPage();
   // テスト用の「つながない」設定を外し、アプリ本来の設定（本物のSupabase）のまま、プレビューの中として開く
   await p3.addInitScript(() => { delete window.ZONENOW_CONFIG; window.claude = { use: async () => null }; });
@@ -834,6 +835,7 @@ function startFakeSupabase() {
   await p3.fill('#onboarding-name', 'プレビュー'); await p3.click('#onboarding-grade-chips .chip[data-id="junior1"]'); await p3.click('#onboarding-submit');
   await p3.waitForTimeout(300);
   check('プレビューの中ではサーバーにつながず、そのまま使える', (await active(p3)) === 'home-screen' && realRequests.length === 0, realRequests.join(', '));
+  check('アプリには本物のAIサーバーが設定されているが、プレビューの中では使わない', await p3.evaluate(() => AI_SERVER_URL_DEFAULT.endsWith('.workers.dev') && AI_SERVER_URL === ''));
   await ctx3.close();
 
   report();

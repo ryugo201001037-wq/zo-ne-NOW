@@ -170,10 +170,12 @@ const entry = (id, subject, minutes, daysAgo) => ({ id, subject, subjectOther: '
     await studyFor(6);
     check('次の日になると、またもらえる（たまった分は消えない）', await gp.evaluate(() => loadGacha().spins === 4));
 
-    check('出る確率はプロトタイプと同じ（10種・合計100・スズメ30〜ホウオウ0.1）', await gp.evaluate(() => GACHA_CHARACTERS.length === 10
-      && GACHA_CHARACTERS.reduce((s, c) => s + c.weight, 0) === 100 && GACHA_CHARACTERS[0].weight === 30 && GACHA_CHARACTERS[9].weight === 0.1));
-    check('抽選は重みどおり（端はスズメ・ホウオウ）', await gp.evaluate(() => pickGachaCharacter(0).id === 'sparrow' && pickGachaCharacter(0.2999).id === 'sparrow'
-      && pickGachaCharacter(0.3).id === 'cat' && pickGachaCharacter(0.9995).id === 'phoenix' && pickGachaCharacter(0.99899).id === 'dragon'));
+    check('出る確率：10種・合計100・★1〜6は19/18/17/15/14/12、★7〜10はプロトタイプと同じ3/1.5/0.4/0.1', await gp.evaluate(() => GACHA_CHARACTERS.length === 10
+      && Math.abs(GACHA_CHARACTERS.reduce((s, c) => s + c.weight, 0) - 100) < 1e-9
+      && GACHA_CHARACTERS.map(c => c.weight).join(',') === '19,18,17,15,14,12,3,1.5,0.4,0.1'));
+    check('レア度が高いほど出にくい', await gp.evaluate(() => GACHA_CHARACTERS.every((c, i, a) => i === 0 || a[i - 1].weight > c.weight)));
+    check('抽選は重みどおり（端はスズメ・ホウオウ）', await gp.evaluate(() => pickGachaCharacter(0).id === 'sparrow' && pickGachaCharacter(0.1899).id === 'sparrow'
+      && pickGachaCharacter(0.19).id === 'cat' && pickGachaCharacter(0.9995).id === 'phoenix' && pickGachaCharacter(0.99899).id === 'dragon'));
 
     await gp.click('#gacha-open'); await gp.waitForTimeout(200);
     check('ガチャの画面（残り4回・図鑑は0/10）', (await active(gp)) === 'gacha-screen' && (await gp.textContent('#gacha-spins')).includes('4') && (await gp.textContent('#gacha-book-summary')).includes('0 / 10'));

@@ -31,9 +31,10 @@ function startServer() {
   });
 }
 
-// テストのページは、本物のSupabaseにつながない（つなぐと、テストのたびに本番にアカウントができてしまう）
+// テストのページは、本物のSupabase・本物のAIサーバーにつながない
+// （つなぐと、テストのたびに本番にアカウントができたり、さくらの無料枠を使ったりしてしまう）
 // サーバーを使うテストは、ページ側で window.ZONENOW_CONFIG を上書きする
-const NO_CLOUD = () => { window.ZONENOW_CONFIG = Object.assign({ supabaseUrl: '', supabaseAnonKey: '' }, window.ZONENOW_CONFIG); };
+const NO_CLOUD = () => { window.ZONENOW_CONFIG = Object.assign({ supabaseUrl: '', supabaseAnonKey: '', aiServerUrl: '' }, window.ZONENOW_CONFIG); };
 
 // CHROMIUM_PATH を指定すると、そのブラウザで動かす（Playwright付属のものが無い環境向け）
 async function launchBrowser(extraArgs = []) {

@@ -5,12 +5,12 @@ const { check, state, report } = createChecker();
 
 const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
 
-async function open(browser, native) {
+async function open(browser, native, { reminderAsked = true } = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: IPHONE_UA });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
-  await page.addInitScript(native => {
+  await page.addInitScript(({ native, reminderAsked }) => {
     window.confirm = () => false;
     if (native) {
       window.__haptics = [];
@@ -26,7 +26,9 @@ async function open(browser, native) {
       window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'ios', Plugins: { Haptics: { impact: async o => { window.__haptics.push(o.style); } }, LocalNotifications } };
     }
     localStorage.setItem('zonenow_profile', JSON.stringify({ name: 'テスト', grade: 'junior2', createdAt: 1 }));
-  }, native);
+    // 勉強リマインドのおすすめ（開いたときに一度だけ出る）は、別のところで確かめる
+    if (reminderAsked && !sessionStorage.getItem('reminderSeeded')) { sessionStorage.setItem('reminderSeeded', '1'); localStorage.setItem('zonenow_reminder_asked', 'true'); }
+  }, { native, reminderAsked });
   await page.goto(APP_URL);
   await page.waitForTimeout(700);
   return { context, page, errors };
@@ -87,10 +89,31 @@ async function open(browser, native) {
   check('エラーなし', !app.errors.length, app.errors.join(' / '));
   await app.context.close();
 
+  state.section = '勉強リマインドのおすすめ';
+  {
+    const s1 = await open(browser, true, { reminderAsked: false });
+    await s1.page.waitForTimeout(1000);
+    check('はじめて開いたとき、勉強リマインドを一度だけすすめる', await s1.page.$eval('#confirm-dialog', el => el.classList.contains('show'))
+      && (await s1.page.textContent('#confirm-message')).includes('17〜21時') && (await s1.page.textContent('#confirm-ok')) === '受け取る' && (await s1.page.textContent('#confirm-cancel')) === 'あとで');
+    await s1.page.click('#confirm-ok'); await s1.page.waitForTimeout(300);
+    check('「受け取る」で、通知を許可してもらってからリマインドをオンにする', await s1.page.evaluate(() => window.__ln.asked === 1 && window.__ln.scheduled.length >= 29 && loadReminder().on));
+    await s1.page.reload(); await s1.page.waitForTimeout(1800);
+    check('一度聞いたら、次に開いたときはもう聞かない', !(await s1.page.$eval('#confirm-dialog', el => el.classList.contains('show'))));
+    check('エラーなし（おすすめ）', !s1.errors.length, s1.errors.join(' / '));
+    await s1.context.close();
+    const s2 = await open(browser, true, { reminderAsked: false });
+    await s2.page.waitForTimeout(1000);
+    await s2.page.click('#confirm-cancel'); await s2.page.waitForTimeout(200);
+    check('「あとで」ならオフのまま（通知の許可も聞かない）', await s2.page.evaluate(() => !loadReminder().on && window.__ln.asked === 0));
+    await s2.context.close();
+  }
+
   state.section = 'ウェブ（今まで通り）';
-  const web = await open(browser, false);
+  const web = await open(browser, false, { reminderAsked: false });
   check('ウェブではアプリの中ではない', await web.page.evaluate(() => IS_NATIVE_APP === false));
   check('ウェブでは勉強リマインドを出さない（端末の通知が使えない）', !(await web.page.isVisible('#settings-reminder-section')));
+  await web.page.waitForTimeout(1200);
+  check('ウェブでは勉強リマインドをすすめない', !(await web.page.$eval('#confirm-dialog', el => el.classList.contains('show'))));
   check('iPhoneのSafariでは「ホーム画面に追加」を案内する', await web.page.$eval('#install-banner', el => el.classList.contains('show')));
   check('共有リンクは今のページのURL', await web.page.evaluate(() => shareUrlOf(VIDEOS[0]).startsWith(location.origin) && shareUrlOf(VIDEOS[0]).includes('?v=')));
   check('エラーなし', !web.errors.length, web.errors.join(' / '));

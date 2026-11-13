@@ -267,6 +267,12 @@ create table if not exists public.usage_logs (
   created_at     timestamptz not null default now()
 );
 create index if not exists usage_logs_started on public.usage_logs (started_at desc);
+-- client_id：アプリが記録ごとに決める番号。送り直しで同じ記録が2回入らないようにする（前からある記録は空のまま）
+alter table public.usage_logs add column if not exists client_id text check (client_id is null or char_length(client_id) <= 64);
+create unique index if not exists usage_logs_client_once on public.usage_logs (user_id, client_id);
+-- 前に2回入ってしまった同じ記録（だれ・始まり・終わり・中身がすべて同じ）は、古いほうを1つだけ残す
+delete from public.usage_logs a using public.usage_logs b
+  where a.id > b.id and a.user_id = b.user_id and a.started_at = b.started_at and a.ended_at = b.ended_at and a.narrative = b.narrative;
 alter table public.usage_logs enable row level security;
 
 -- ---- フォロー（だれがだれをフォローしているか。通知を送るために使う） ----

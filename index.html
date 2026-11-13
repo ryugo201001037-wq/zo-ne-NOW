@@ -169,6 +169,8 @@
   .nudge-icon svg{ width:30px; height:30px; }
   .nudge-title{ font-size:22px; font-weight:900; line-height:1.45; margin:0 0 10px; text-wrap:balance; }
   .nudge-sub{ font-family:var(--font-ui); font-size:13.5px; color:rgba(255,255,255,.7); line-height:1.7; margin:0 0 26px; }
+  .nudge-perk{ font-family:var(--font-ui); font-size:13px; font-weight:700; color:var(--mint); margin:-14px 0 16px; }
+  .nudge-perk[hidden]{ display:none; }
 
   /* ---- 右側アクションレール：アバター・いいね・コメント・保存・シェア・ミュート ---- */
   .action-rail{
@@ -1125,6 +1127,7 @@
         <div class="nudge-icon" id="nudge-icon"></div>
         <h2 class="nudge-title" id="nudge-title"></h2>
         <p class="nudge-sub" id="nudge-sub"></p>
+        <p class="nudge-perk" id="nudge-perk" hidden></p>
         <button class="study-btn primary full" id="nudge-start">タイマーをスタートして勉強する</button>
         <button class="text-link" id="nudge-continue">あと少しだけ見る</button>
       </div>
@@ -2210,7 +2213,14 @@ async function runSyncOp(client, userId, op){
   } else if(op.type === 'log_clear'){
     res = await client.from('study_logs').delete().eq('user_id', userId);
   } else if(op.type === 'usage'){
+    // client_id：この記録の番号（端末で決める）。送れたのに返事を受け取る前にアプリが閉じられて送り直しても、
+    // 同じ番号の記録はDBが断る（409）ので、2回は入らない。断られたものは下の決まりどおり捨てる
     res = await client.from('usage_logs').insert(op.row);
+    if(res.error && op.row.client_id && res.error.code === 'PGRST204'){
+      // まだ client_id の列がない（SQLを実行する前）：番号なしで送る
+      const { client_id, ...row } = op.row;
+      res = await client.from('usage_logs').insert(row);
+    }
   } else if(op.type === 'follow'){
     res = op.follow
       ? await client.from('follows').upsert({ follower_id: userId, followee_id: op.id }, { ignoreDuplicates:true })
@@ -2306,6 +2316,7 @@ function flushUsage(endLabel){
   else usageSession.events.push('（ここで記録が途切れました）');
   const profile = loadProfile();
   const row = {
+    client_id: newUuid(),
     name: profile ? profile.name : '',
     started_at: new Date(usageSession.startedAt).toISOString(),
     ended_at: new Date(usageSession.lastAt).toISOString(),
@@ -2484,9 +2495,10 @@ function showToast(msg){
    ブラウザ標準の confirm() は、アプリ内ブラウザや埋め込み表示(プレビュー等)では
    ブロックされて常に「キャンセル」扱いになることがあるため、アプリ内で自前表示する */
 let confirmResolve = null;
-function confirmDialog(message, okLabel = 'OK'){
+function confirmDialog(message, okLabel = 'OK', cancelLabel = 'キャンセル'){
   document.getElementById('confirm-message').textContent = message;
   document.getElementById('confirm-ok').textContent = okLabel;
+  document.getElementById('confirm-cancel').textContent = cancelLabel;
   document.getElementById('confirm-dialog').classList.add('show');
   return new Promise(resolve=>{ confirmResolve = resolve; });
 }
@@ -3385,6 +3397,14 @@ function openStudyNudge(){
   const msg = pickNudgeMessage();
   document.getElementById('nudge-title').textContent = msg.title;
   document.getElementById('nudge-sub').textContent = msg.sub;
+  // 前に選んだ教科があれば、その教科のタイマーをワンタップで始められるようにする
+  const subject = timerSubject.id ? subjectLabelOf({ subject: timerSubject.id, subjectOther: timerSubject.other }) : '';
+  document.getElementById('nudge-start').textContent = timerState.startedAt ? 'タイマーの画面に戻る'
+    : subject ? `${subject}のタイマーをスタート` : 'タイマーをスタートして勉強する';
+  // ガチャがまだもらえる日は、ごほうびを見せる
+  const perk = document.getElementById('nudge-perk');
+  perk.hidden = gachaRemainingToday() <= 0;
+  perk.textContent = '5分勉強するごとに、ガチャが1回回せるよ';
   studyNudgeEl.classList.add('show');
   usageEvent(`勉強の声かけ（動画${viewedCount}本目）`);
 }
@@ -3397,11 +3417,12 @@ document.getElementById('nudge-start').addEventListener('click', ()=>{
   usageEvent('「勉強を始める」を選択');
   studyNudgeEl.classList.remove('show');
   if(!timerState.startedAt){
+    usageEvent(`タイマー開始（${subjectLabelOf(timerState) || '教科未選択'}）`);
     timerState.startedAt = Date.now();
     saveTimer();
   }
   showScreen('record');
-  showToast(timerSubject.id ? '学習タイマーをスタートしました' : 'タイマーをスタート！教科も選んでおこう');
+  showToast(timerSubject.id ? 'スタート！スマホを置いて勉強しよう。終わったら戻ってきてね' : 'スタート！教科を選んでから、スマホを置いて勉強しよう');
 });
 
 // ---- コメント ----
@@ -4087,21 +4108,49 @@ document.getElementById('timer-toggle').addEventListener('click', ()=>{
   renderTimer();
 });
 
-document.getElementById('timer-finish').addEventListener('click', ()=>{
+// タイマーを止めて記録する（「終了して記録」と、アプリに戻ってきたときの「おかえり」から使う）。記録できたら true
+function finishTimerAndRecord(){
   const seconds = Math.floor(timerElapsedMs() / 1000);
   if(seconds < MIN_STUDY_SECONDS){
     showToast('1分未満の学習は記録されません');
-    return;
+    return false;
   }
   const subjectError = timerSubject.error('教科');
-  if(subjectError){ showToast(subjectError); return; }
-  if(!addStudyEntry(timerSubject.id, timerSubject.other, seconds, localDateKey(), 'timer')) return;
+  if(subjectError){ showToast(subjectError); return false; }
+  if(!addStudyEntry(timerSubject.id, timerSubject.other, seconds, localDateKey(), 'timer')) return false;
   usageEvent(`タイマー終了して記録（${subjectLabelOf({ subject: timerSubject.id, subjectOther: timerSubject.other })}・${formatStudyTime(seconds)}）`);
   usageAddStudy(seconds);
   const spinsEarned = awardGachaSpins(seconds);
   resetTimer();
   renderRecordScreen();
   showToast(spinsEarned ? `${formatStudyTime(seconds)}を記録しました。ガチャ${spinsEarned}回分ゲット！` : `${formatStudyTime(seconds)}を記録しました`);
+  return true;
+}
+document.getElementById('timer-finish').addEventListener('click', finishTimerAndRecord);
+
+// ---- おかえり：タイマーを動かしたままアプリに戻ってきたら、記録するか聞く ----
+// （ログでは「勉強を始める」を押したあとアプリを閉じ、そのまま記録されない人が多かったため）
+let welcomeBackAsking = false;
+async function askToFinishTimer(){
+  if(welcomeBackAsking || !timerState.startedAt || !loadProfile()) return false;
+  if(document.getElementById('confirm-dialog').classList.contains('show')) return false;
+  const seconds = Math.floor(timerElapsedMs() / 1000);
+  if(seconds < MIN_STUDY_SECONDS) return false;
+  welcomeBackAsking = true;
+  const ok = await confirmDialog(`おかえり！タイマーが ${formatStudyTime(seconds)} 動いています。勉強は終わった？`, '終わった・記録する', 'まだ続ける');
+  welcomeBackAsking = false;
+  usageEvent(ok ? 'おかえり→記録する' : 'おかえり→まだ続ける');
+  if(!ok) return true;
+  if(timerSubject.error('教科')){
+    showScreen('record');
+    showToast('教科を選んでから「終了して記録」を押してね');
+    return true;
+  }
+  if(finishTimerAndRecord()) showScreen('record');
+  return true;
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(!document.hidden) setTimeout(askToFinishTimer, 400);
 });
 
 document.getElementById('timer-discard').addEventListener('click', async ()=>{
@@ -4169,6 +4218,11 @@ function awardGachaSpins(seconds){
   g.spins += award;
   saveGacha(g);
   return award;
+}
+// 今日あと何回分もらえるか
+function gachaRemainingToday(){
+  const g = loadGacha();
+  return Math.max(0, GACHA_DAILY_LIMIT - (g.daily.date === localDateKey() ? Number(g.daily.count) || 0 : 0));
 }
 // 重み付きの抽選で1体選ぶ（rand は 0以上1未満。テストで決めた値を渡せる）
 function pickGachaCharacter(rand = Math.random()){
@@ -6295,6 +6349,7 @@ document.getElementById('onboarding-submit').addEventListener('click', async ()=
     showScreen('home');
     showToast(`ようこそ、${name}さん`);
     startUsage('はじめての設定');
+    setTimeout(maybeSuggestReminder, 1500);
     loadCloudPosts();
   }
 });
@@ -6599,6 +6654,21 @@ function planReminderTimes(plan, now = Date.now()){
   }
   return next;
 }
+// 勉強リマインドを、一度だけすすめる（はじめての設定のあと・前から使っている人は次に開いたとき）
+// ログでは、リマインドを自分でオンにした人がとても少なかったため
+const REMINDER_ASKED_KEY = 'zonenow_reminder_asked';
+async function maybeSuggestReminder(){
+  if(!reminderPlugin() || !loadProfile() || loadJSON(REMINDER_ASKED_KEY, false) || loadReminder().on) return;
+  if(document.getElementById('confirm-dialog').classList.contains('show')) return;
+  saveJSON(REMINDER_ASKED_KEY, true);
+  const ok = await confirmDialog('毎日17〜21時のどこかで、「勉強の時間です」とお知らせを送りますか？（設定からいつでも変えられます）', '受け取る', 'あとで');
+  usageEvent(ok ? 'リマインドのおすすめ→受け取る' : 'リマインドのおすすめ→あとで');
+  if(!ok) return;
+  saveJSON(REMINDER_KEY, { on:true, plan:{} });
+  renderReminder();
+  await applyReminder();
+  if(loadReminder().on) showToast('毎日17〜21時のどこかでお知らせします');
+}
 function renderReminder(){
   const r = loadReminder();
   document.getElementById('reminder-toggle').textContent = r.on ? 'オフにする' : 'オンにする';
@@ -6823,6 +6893,12 @@ document.addEventListener('visibilitychange', ()=>{
 window.addEventListener('pagehide', ()=>{ if(usageSession) flushUsage('終了'); });
 
 if(cloudEnabled() && loadProfile()) startCloud();
+
+// 開いたとき：タイマーが動いたままなら「おかえり」、そうでなければ勉強リマインドを一度だけすすめる
+setTimeout(async ()=>{
+  if(!loadProfile()) return;
+  if(!(await askToFinishTimer())) maybeSuggestReminder();
+}, 1200);
 
 
 // ---- PWA: ホーム画面追加バナー ----

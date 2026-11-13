@@ -148,6 +148,7 @@ function startFakeSupabase() {
       for (const row of [].concat(body)) {
         if (row.user_id && row.user_id !== uid) return send(403, { code: '42501', message: 'row-level security' });
         if (!row.narrative || row.narrative.length > 8000) return send(400, { code: '23514', message: 'check violation' });
+        if (row.client_id && fake.usage.some(u => u.user_id === uid && u.client_id === row.client_id)) return send(409, { code: '23505', message: 'duplicate key value violates unique constraint' });
         fake.usage.push({ ...row, user_id: uid });
       }
       return send(201);
@@ -323,6 +324,11 @@ function startFakeSupabase() {
   const usageRow = fake.usage.find(u => u.narrative.includes('タイマー開始（数学）'));
   check('だれが・いつ・ウェブ・バージョンも入る', usageRow && usageRow.user_id === uid && usageRow.name === 'みなと' && usageRow.platform === 'web' && usageRow.app_version === '1.0.0'
     && Date.parse(usageRow.ended_at) >= Date.parse(usageRow.started_at), JSON.stringify(usageRow));
+  check('記録には、送り直しを見分ける番号（client_id）が付く', !!usageRow.client_id && usageRow.client_id.length >= 16);
+  // 送れたのに返事を受け取る前にアプリが閉じられた場合：同じ記録がもう一度キューに入って送られる
+  const usageBefore = fake.usage.length;
+  await page.evaluate(row => { const q = JSON.parse(localStorage.getItem('zonenow_sync_queue')); q.push({ type: 'usage', row }, { type: 'usage', row }); localStorage.setItem('zonenow_sync_queue', JSON.stringify(q)); flushSync(); }, { ...usageRow, client_id: 'dup-check-0001', user_id: undefined });
+  check('同じ記録を2回送っても、1つしか入らない（2回目は断られて捨てる）', await waitFor(async () => fake.usage.length === usageBefore + 1 && await page.evaluate(() => JSON.parse(localStorage.getItem('zonenow_sync_queue')).length === 0)), `${fake.usage.length - usageBefore}件`);
   await page.evaluate(() => usageEvent('テストの操作'));
   check('そのあとの操作は、新しい回（再開）として記録する', await page.evaluate(() => usageSession.events[0].endsWith('再開') && usageSession.events[1].endsWith('テストの操作')));
   await page.evaluate(() => { resetTimer(); renderTimer(); });

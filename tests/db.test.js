@@ -211,6 +211,16 @@ check('使い方の記録を送れる', as(B, `insert into usage_logs ${usageRow
 check('送った記録はアプリからは読めない（本人も）', as(B, 'select count(*) from usage_logs').out === '0' && psql('select count(*) from usage_logs') === '1');
 check('他人の名前では送れない', !as(B, `insert into usage_logs (user_id, started_at, ended_at, narrative) values ('${A}', now(), now(), 'x')`).ok);
 check('ログインしていないと送れない', !as(null, `insert into usage_logs ${usageRow}`).ok);
+const dupRow = `(client_id, started_at, ended_at, narrative) values ('c-1', now(), now(), '同じ記録')`;
+check('番号（client_id）つきで送れる', as(B, `insert into usage_logs ${dupRow}`).ok);
+const dup = as(B, `insert into usage_logs ${dupRow}`);
+check('同じ番号の記録を送り直すと断られる（アプリはそれを捨てる）', !dup.ok && /duplicate|unique/i.test(dup.err), dup.err);
+check('同じ番号の記録は1つしか入らない', psql(`select count(*) from usage_logs where client_id = 'c-1'`) === '1');
+check('別の人なら同じ番号でも入る', as(A, `insert into usage_logs ${dupRow}`).ok && psql(`select count(*) from usage_logs where client_id = 'c-1'`) === '2');
+psql(`insert into usage_logs (user_id, name, started_at, ended_at, narrative) select user_id, name, started_at, ended_at, narrative from usage_logs where client_id is null limit 1`);
+const beforeClean = psql('select count(*) from usage_logs');
+psql(SCHEMA);
+check('前に2回入った同じ記録は、SQLを実行すると1つになる', Number(psql('select count(*) from usage_logs')) === Number(beforeClean) - 1);
 check('長すぎる記録は送れない', !as(B, `insert into usage_logs (started_at, ended_at, narrative) values (now(), now(), '${'あ'.repeat(8001)}')`).ok);
 
 state.section = 'タグの直し';
@@ -238,5 +248,5 @@ check('退会すると自分のアカウントとデータが消える', psql(`s
   && psql(`select count(*) from profiles where id = '${A}'`) === '0' && psql(`select count(*) from study_logs where user_id = '${A}'`) === '0');
 check('他の人のアカウントとデータは残る', psql(`select count(*) from auth.users where id = '${B}'`) === '1' && psql(`select count(*) from study_logs where user_id = '${B}'`) === '1');
 
-psql(`drop database if exists ${DB};`, 'postgres');
+if (!process.env.KEEP_DB) psql(`drop database if exists ${DB};`, 'postgres');
 report();

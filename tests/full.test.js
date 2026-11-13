@@ -286,11 +286,43 @@ const { check, state, report } = createChecker();
   check('「あと少し見る」で閉じる', !(await shown('#study-nudge')));
   for (let i = 16; i <= 30; i++) await scrollFeed(i);
   check('30本目で2回目が出る', await shown('#study-nudge'));
+  check('声かけに、ガチャのごほうびを書く（今日まだもらえるとき）', (await page.textContent('#nudge-perk')).includes('ガチャ') && await page.isVisible('#nudge-perk'));
+  check('教科をまだ選んでいなければ、ふつうのスタートボタン', (await page.textContent('#nudge-start')) === 'タイマーをスタートして勉強する');
   await page.click('#nudge-start');
   await page.waitForTimeout(200);
   check('「タイマー」で記録画面へ', (await active()) === 'record-screen');
   check('タイマーが動き出す', (await page.textContent('#timer-toggle')) === '一時停止');
   await page.click('#timer-discard'); await page.click('#confirm-ok');
+
+  // タイマーを動かしたままアプリに戻ってきたら「おかえり」で記録するか聞く
+  state.section = 'おかえり';
+  const comeBack = async minutes => {
+    await evalq(m => { timerState.startedAt = Date.now() - m * 60 * 1000; saveTimer(); renderTimer(); }, minutes);
+    await evalq(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => false }); document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForTimeout(600);
+  };
+  await nav('home');
+  await comeBack(0.5);
+  check('1分未満なら聞かない', !(await shown('#confirm-dialog')));
+  await comeBack(25);
+  check('戻ってくると「おかえり」で、記録するか聞く', await shown('#confirm-dialog') && (await page.textContent('#confirm-message')).includes('おかえり')
+    && (await page.textContent('#confirm-ok')) === '終わった・記録する' && (await page.textContent('#confirm-cancel')) === 'まだ続ける');
+  await page.click('#confirm-cancel'); await page.waitForTimeout(150);
+  check('「まだ続ける」ならタイマーはそのまま', await evalq(() => !!timerState.startedAt));
+  await evalq(() => { timerSubject.set(null); timerState.subject = null; saveTimer(); });
+  await comeBack(25);
+  await page.click('#confirm-ok'); await page.waitForTimeout(200);
+  check('教科を選んでいなければ、記録画面で選んでもらう', (await active()) === 'record-screen' && (await page.textContent('#toast')).includes('教科を選んで') && await evalq(() => !!timerState.startedAt));
+  await page.click('#timer-subject-chips .chip[data-id="english"]');
+  const logBefore = await evalq(() => loadStudyLog().length);
+  await nav('home');
+  await comeBack(25);
+  await page.click('#confirm-ok'); await page.waitForTimeout(200);
+  check('「終わった・記録する」で記録して、記録画面へ', (await active()) === 'record-screen' && await evalq(n => loadStudyLog().length === n + 1 && loadStudyLog().at(-1).subject === 'english' && !timerState.startedAt, logBefore)
+    && (await page.textContent('#toast')).includes('25分を記録しました'));
+  check('教科を選んであれば、声かけのボタンに教科名が出る', await evalq(() => { openStudyNudge(); const t = document.getElementById('nudge-start').textContent; document.getElementById('study-nudge').classList.remove('show'); return t === '英語のタイマーをスタート'; }));
+  // あとの「記録」のテストのため、ここで足した記録を消し、教科は未選択に戻す
+  await evalq(n => { saveJSON(STUDY_LOG_KEY, loadStudyLog().slice(0, n)); timerSubject.set(null); timerState.subject = null; saveTimer(); }, logBefore);
 
   // ===== D. 検索 =====
   state.section = '検索';

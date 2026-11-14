@@ -1872,14 +1872,31 @@ function isRetiredSample(v){
      （CC0などのパブリックドメイン、またはその用途を許可する契約を結んだもの）。
 ============================================================ */
 const MUSIC_LIBRARY = [
-  { id:'focus',   title:'Focus Lo-fi',   artist:'ゾーンNOW', mood:'落ち着いたローファイ', bpm:72,  wave:'triangle',
+  // style：曲の作り方（下の MUSIC_STYLES）。classic は和音＋ベース＋アルペジオ（最初の4曲）
+  // cutoff：高い音をどこまで通すか（Hz）、volume：曲どうしの音量をそろえるための倍率
+  { id:'focus',   title:'Focus Lo-fi',   artist:'ゾーンNOW', mood:'落ち着いたローファイ', bpm:72,  wave:'triangle', style:'classic',
     chords:[[48,55,64,71],[45,52,60,67],[41,48,57,64],[43,50,59,65]] },
-  { id:'morning', title:'Morning Light', artist:'ゾーンNOW', mood:'明るく前向き',       bpm:96,  wave:'sine',
+  { id:'morning', title:'Morning Light', artist:'ゾーンNOW', mood:'明るく前向き',       bpm:96,  wave:'sine', style:'classic',
     chords:[[48,55,64,67],[43,50,59,67],[45,52,60,64],[41,48,57,65]] },
-  { id:'night',   title:'Night Study',   artist:'ゾーンNOW', mood:'夜の集中に',         bpm:64,  wave:'sine',
+  { id:'night',   title:'Night Study',   artist:'ゾーンNOW', mood:'夜の集中に',         bpm:64,  wave:'sine', style:'classic',
     chords:[[45,52,60,64],[41,48,57,60],[48,55,64,67],[43,50,59,62]] },
-  { id:'energy',  title:'Energy Up',     artist:'ゾーンNOW', mood:'テンポ速めでやる気UP', bpm:124, wave:'square',
+  { id:'energy',  title:'Energy Up',     artist:'ゾーンNOW', mood:'テンポ速めでやる気UP', bpm:124, wave:'square', style:'classic',
     chords:[[45,52,57,64],[41,48,53,60],[48,55,60,67],[43,50,55,62]] },
+  // ここから、ジャンルごとに作り方そのものが違う曲
+  { id:'lofibeat', title:'Chill Beat',    artist:'ゾーンNOW', mood:'ドラム入りのローファイ・ヒップホップ', bpm:82, style:'lofi', swing:0.32, cutoff:3200, volume:0.6,
+    chords:[[50,57,60,65],[55,62,65,69],[48,55,59,64],[45,52,55,60]] },
+  { id:'chip',     title:'8bit Quest',    artist:'ゾーンNOW', mood:'ゲームみたいなピコピコ音', bpm:144, style:'chip', cutoff:9000, volume:2.4,
+    chords:[[48,55,60],[45,52,57],[41,48,53],[43,50,55]], scale:[60,62,64,67,69,72,74,76] },
+  { id:'piano',    title:'Quiet Piano',   artist:'ゾーンNOW', mood:'ドラムなし・静かなピアノ', bpm:68, style:'piano', cutoff:4200,
+    chords:[[48,55,64,67],[43,50,59,62],[45,52,60,64],[41,48,57,60]], scale:[72,74,76,79,81,84] },
+  { id:'ambient',  title:'Deep Ambient',  artist:'ゾーンNOW', mood:'リズムなし・ゆったり流れる音', bpm:48, style:'ambient', cutoff:1800, volume:1.3,
+    chords:[[45,52,57,64,71],[41,48,57,64,69],[48,55,62,67,74],[43,50,57,62,71]] },
+  { id:'edm',      title:'Power Drive',   artist:'ゾーンNOW', mood:'4つ打ちでテンション高め', bpm:128, style:'edm', cutoff:7000, volume:0.38,
+    chords:[[45,52,57,60],[41,48,53,57],[48,55,60,64],[43,50,55,59]] },
+  { id:'jazz',     title:'Cafe Jazz',     artist:'ゾーンNOW', mood:'カフェで勉強するようなジャズ', bpm:112, style:'jazz', swing:0.33, cutoff:5000, volume:1.2,
+    chords:[[50,53,57,60],[43,47,50,53],[48,52,55,59],[45,49,52,55]] },
+  { id:'wafu',     title:'和の集中',       artist:'ゾーンNOW', mood:'琴と太鼓の和風', bpm:76, style:'wafu', cutoff:5500, volume:0.75,
+    chords:[[45,52,57],[45,52,57],[41,48,53],[40,47,52]], scale:[57,58,62,64,65,69,70,74] },
 ];
 function musicById(id){ return MUSIC_LIBRARY.find(m=> m.id === id) || null; }
 
@@ -1912,17 +1929,143 @@ function playTone(ctx, dest, freq, start, duration, type, peak, attack){
   osc.start(start);
   osc.stop(start + duration + 0.05);
 }
-// 少し先の分までの音を予約していく（8分音符単位：和音・ベース・アルペジオ）
+// ---- 打楽器（すべてその場で合成。音声ファイルは使わない） ----
+let noiseBuffer = null;
+function getNoise(ctx){
+  if(noiseBuffer && noiseBuffer.sampleRate === ctx.sampleRate) return noiseBuffer;
+  noiseBuffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  for(let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  return noiseBuffer;
+}
+function playNoise(ctx, dest, start, duration, peak, filterType, freq){
+  const src = ctx.createBufferSource();
+  src.buffer = getNoise(ctx);
+  const filter = ctx.createBiquadFilter();
+  filter.type = filterType;
+  filter.frequency.value = freq;
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(peak, start);
+  env.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  src.connect(filter); filter.connect(env); env.connect(dest);
+  src.start(start);
+  src.stop(start + duration + 0.05);
+}
+function playKick(ctx, dest, start, peak = 0.5, low = 42){
+  const osc = ctx.createOscillator();
+  const env = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(150, start);
+  osc.frequency.exponentialRampToValueAtTime(low, start + 0.12);
+  env.gain.setValueAtTime(peak, start);
+  env.gain.exponentialRampToValueAtTime(0.0001, start + 0.32);
+  osc.connect(env); env.connect(dest);
+  osc.start(start); osc.stop(start + 0.4);
+}
+function playSnare(ctx, dest, start, peak = 0.18){
+  playNoise(ctx, dest, start, 0.16, peak, 'highpass', 1200);
+  playTone(ctx, dest, 190, start, 0.08, 'triangle', peak * 0.6, 0.002);
+}
+const playHat = (ctx, dest, start, peak = 0.05, open = false)=> playNoise(ctx, dest, start, open ? 0.22 : 0.045, peak, 'highpass', 7000);
+
+// ---- 曲の作り方（16分音符ごとに呼ぶ）。step：何番目の16分音符か、s16：16分音符の長さ（秒） ----
+// 「16個で1小節」。和音は1小節ごと（ambient は2小節ごと）に次へ進む
+const bar = step=> Math.floor(step / 16);
+const chordOf = (t, step, barsPerChord = 1)=> t.chords[Math.floor(bar(step) / barsPerChord) % t.chords.length];
+const hit = (pattern, step)=> pattern[step % pattern.length] === 'x';
+// 曲ごとに決まった「でたらめ」（毎回同じメロディになるよう、小節と位置から決める）
+const pick = (list, a, b)=> list[Math.abs((a * 7 + b * 13 + a * b * 3) % list.length)];
+const MUSIC_STYLES = {
+  // 最初の4曲：和音を長く鳴らし、ベースと8分のアルペジオ（前と同じ）
+  classic(ctx, out, t, step, time, s16){
+    if(step % 2) return;
+    const e = step / 2, eighth = s16 * 2, chord = chordOf({ chords: t.chords }, step);
+    if(e % 8 === 0) chord.forEach(n=> playTone(ctx, out, midiToFreq(n), time, eighth * 8, 'sine', 0.045, 0.3));
+    if(e % 4 === 0) playTone(ctx, out, midiToFreq(chord[0] - 12), time, eighth * 3, 'triangle', 0.12, 0.02);
+    playTone(ctx, out, midiToFreq(chord[(e * 3) % chord.length] + 12), time, eighth * 0.9, t.wave, t.wave === 'square' ? 0.02 : 0.055, 0.01);
+  },
+  // ローファイ・ヒップホップ：ゆれるリズムのドラム＋エレピ風の和音＋ベース
+  lofi(ctx, out, t, step, time, s16){
+    const chord = chordOf(t, step), i = step % 16;
+    if(hit('x.........x.....', i)) playKick(ctx, out, time, 0.45);
+    if(hit('....x.......x...', i)) playSnare(ctx, out, time, 0.12);
+    if(i % 2 === 0) playHat(ctx, out, time, i % 4 === 0 ? 0.04 : 0.025);
+    if(i === 0 || i === 7) chord.forEach(n=> { playTone(ctx, out, midiToFreq(n), time, s16 * 7, 'sine', 0.035, 0.01); playTone(ctx, out, midiToFreq(n + 12), time, s16 * 3, 'triangle', 0.008, 0.005); });
+    if(hit('x.....x...x.....', i)) playTone(ctx, out, midiToFreq(chord[0] - 12), time, s16 * 3, 'sine', 0.16, 0.01);
+  },
+  // 8bit：四角い波のメロディ＋ピコピコのベース＋ノイズのリズム
+  chip(ctx, out, t, step, time, s16){
+    const chord = chordOf(t, step), i = step % 16, b = bar(step);
+    if(i % 2 === 0) playTone(ctx, out, midiToFreq(chord[(i / 2) % chord.length] - 12), time, s16 * 1.6, 'square', 0.035, 0.003);
+    if(hit('x.x.x...x.x.x.x.', i)){
+      const note = pick(t.scale, b % 4, i);
+      playTone(ctx, out, midiToFreq(note), time, s16 * 1.8, 'square', 0.03, 0.003);
+    }
+    if(hit('x.......x.......', i)) playNoise(ctx, out, time, 0.08, 0.05, 'lowpass', 900);
+    if(hit('....x.......x...', i)) playNoise(ctx, out, time, 0.06, 0.035, 'highpass', 3000);
+    if(i % 2 === 1) playNoise(ctx, out, time, 0.02, 0.01, 'highpass', 8000);
+  },
+  // ピアノ：ドラムなし。分散和音と、ときどき高い音のメロディ
+  piano(ctx, out, t, step, time, s16){
+    const chord = chordOf(t, step), i = step % 16, b = bar(step);
+    if(i % 2 === 0){
+      const order = [0, 2, 1, 3, 2, 1, 3, 2];
+      const n = chord[order[(i / 2) % order.length] % chord.length];
+      playTone(ctx, out, midiToFreq(n), time, s16 * 6, 'triangle', 0.06, 0.004);
+    }
+    if(i === 0) playTone(ctx, out, midiToFreq(chord[0] - 12), time, s16 * 14, 'sine', 0.08, 0.01);
+    if(hit('x.....x.....x...', i) && b % 2 === 1) playTone(ctx, out, midiToFreq(pick(t.scale, b, i)), time, s16 * 5, 'sine', 0.05, 0.005);
+  },
+  // アンビエント：リズムなし。ゆっくりふくらむ和音と、ときどききらっと光る高い音
+  ambient(ctx, out, t, step, time, s16){
+    const chord = chordOf(t, step, 2), i = step % 32;
+    if(i === 0) chord.forEach((n, k)=> playTone(ctx, out, midiToFreq(n), time + k * 0.15, s16 * 34, k % 2 ? 'triangle' : 'sine', 0.03, s16 * 10));
+    if(i === 0) playTone(ctx, out, midiToFreq(chord[0] - 12), time, s16 * 34, 'sine', 0.06, s16 * 8);
+    if(i === 12 || i === 26) playTone(ctx, out, midiToFreq(chord[(bar(step) + i) % chord.length] + 24), time, s16 * 10, 'sine', 0.012, 0.2);
+  },
+  // 4つ打ち：毎拍のキック＋裏拍のハイハット＋ノコギリ波の和音を刻む
+  edm(ctx, out, t, step, time, s16){
+    const chord = chordOf(t, step), i = step % 16;
+    if(i % 4 === 0) playKick(ctx, out, time, 0.55, 48);
+    if(i % 4 === 2) playHat(ctx, out, time, 0.06, true);
+    if(i === 4 || i === 12) playSnare(ctx, out, time, 0.1);
+    if(hit('..x..x..x..x.x..', i)) chord.forEach(n=> playTone(ctx, out, midiToFreq(n + 12), time, s16 * 1.2, 'sawtooth', 0.012, 0.004));
+    if(i % 2 === 1) playTone(ctx, out, midiToFreq(chord[0] - 12), time, s16 * 0.9, 'sawtooth', 0.05, 0.004);
+  },
+  // ジャズ：歩くようなベース（4分音符）＋裏で和音＋シンバル
+  jazz(ctx, out, t, step, time, s16){
+    const chord = chordOf(t, step), i = step % 16;
+    if(i % 4 === 0){
+      const walk = [chord[0], chord[1], chord[2], chord[1] + 1];
+      playTone(ctx, out, midiToFreq(walk[i / 4] - 12), time, s16 * 3.6, 'triangle', 0.14, 0.01);
+    }
+    if(hit('x..xx..xx..xx..x', i)) playNoise(ctx, out, time, i % 4 === 0 ? 0.25 : 0.1, 0.025, 'highpass', 6000);
+    if(hit('......x.......x.', i)) chord.forEach(n=> playTone(ctx, out, midiToFreq(n + 12), time, s16 * 2.5, 'sine', 0.03, 0.01));
+    if(i === 4 || i === 12) playNoise(ctx, out, time, 0.05, 0.03, 'bandpass', 1800);
+  },
+  // 和風：琴のように音がすぐ消える弦の音（日本の音階）＋太鼓
+  wafu(ctx, out, t, step, time, s16){
+    const chord = chordOf(t, step), i = step % 16, b = bar(step);
+    if(hit('x..x..x...x.x...', i)){
+      const n = pick(t.scale, b % 4, i);
+      playTone(ctx, out, midiToFreq(n), time, s16 * 4, 'triangle', 0.07, 0.002);
+      playTone(ctx, out, midiToFreq(n) * 1.005, time, s16 * 2, 'sine', 0.025, 0.002);
+    }
+    if(i === 0) playTone(ctx, out, midiToFreq(chord[0] - 12), time, s16 * 12, 'sine', 0.05, 0.05);
+    if(hit('x.......x.x.....', i)) playKick(ctx, out, time, i === 0 ? 0.4 : 0.25, 60);
+    if(i === 14 && b % 2 === 1) playNoise(ctx, out, time, 0.08, 0.05, 'bandpass', 2500);
+  },
+};
+// 少し先の分までの音を予約していく（16分音符単位）。swing：裏の8分音符を少し遅らせる（はねるリズム）
 function scheduleMusic(){
   const ctx = audioCtx, t = music.track;
-  const eighth = 60 / t.bpm / 2;
+  const s16 = 60 / t.bpm / 4;
+  const play = MUSIC_STYLES[t.style] || MUSIC_STYLES.classic;
   while(music.nextTime < ctx.currentTime + 0.3){
-    const step = music.step, time = music.nextTime;
-    const chord = t.chords[Math.floor(step / 8) % t.chords.length];
-    if(step % 8 === 0) chord.forEach(n=> playTone(ctx, music.gain, midiToFreq(n), time, eighth * 8, 'sine', 0.045, 0.3));
-    if(step % 4 === 0) playTone(ctx, music.gain, midiToFreq(chord[0] - 12), time, eighth * 3, 'triangle', 0.12, 0.02);
-    playTone(ctx, music.gain, midiToFreq(chord[(step * 3) % chord.length] + 12), time, eighth * 0.9, t.wave, t.wave === 'square' ? 0.02 : 0.055, 0.01);
-    music.nextTime += eighth;
+    const step = music.step;
+    const time = music.nextTime + (t.swing && step % 4 === 2 ? t.swing * s16 : 0);
+    play(ctx, music.gain, t, step, time, s16);
+    music.nextTime += s16;
     music.step++;
   }
 }
@@ -1945,7 +2088,8 @@ function startMusic(trackId, owner = null){
   const gain = ctx.createGain();
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
-  filter.frequency.value = 2400;
+  filter.frequency.value = track.cutoff || 2400; // ドラムやピコピコ音の曲は、高い音まで通す
+  gain.gain.value = track.volume || 1;
   gain.connect(filter);
   filter.connect(ctx.destination);
   music.gain = gain;

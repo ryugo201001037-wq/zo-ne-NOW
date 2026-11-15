@@ -453,7 +453,26 @@ const { check, state, report } = createChecker();
   check('タグを消せる', (await page.$$('.tag-chip')).length === 4);
   await page.click('#post-music-open');
   check('楽曲シートが開く', await shown('#music-sheet'));
-  check('楽曲が並ぶ', (await page.$$('.music-row')).length === 5);
+  check('楽曲が並ぶ（楽曲なし＋11曲）', (await page.$$('.music-row')).length === 12);
+  // どの曲も、作り方（style）が決まっていて、実際に音が出て、音割れしない（パソコンの中で3秒ぶん作って確かめる）
+  const rendered = await evalq(async () => {
+    const out = [];
+    for (const t of MUSIC_LIBRARY) {
+      const play = MUSIC_STYLES[t.style];
+      if (!play) { out.push({ id: t.id, ok: false }); continue; }
+      const ctx = new OfflineAudioContext(1, 44100 * 3, 44100);
+      const gain = ctx.createGain(); gain.gain.value = t.volume || 1; gain.connect(ctx.destination);
+      const s16 = 60 / t.bpm / 4;
+      for (let step = 0, time = 0.02; time < 2.6; step++, time += s16) play(ctx, gain, t, step, time, s16);
+      const d = (await ctx.startRendering()).getChannelData(0);
+      let peak = 0, sum = 0;
+      for (const x of d) { peak = Math.max(peak, Math.abs(x)); sum += x * x; }
+      out.push({ id: t.id, ok: Math.sqrt(sum / d.length) > 0.005 && peak < 0.99 });
+    }
+    return out;
+  });
+  check('どの曲も音が出て、音割れしない', rendered.every(r => r.ok), JSON.stringify(rendered.filter(r => !r.ok)));
+  check('ジャンルが違う曲がある（作り方が7種類以上・名前の重なりなし）', await evalq(() => new Set(MUSIC_LIBRARY.map(t => t.style)).size >= 7 && new Set(MUSIC_LIBRARY.map(t => t.id)).size === MUSIC_LIBRARY.length));
   await page.click('[data-preview="night"]');
   check('試聴で音が流れる', (await evalq(() => music.track && music.track.id)) === 'night');
   await page.click('.music-pick[data-pick="focus"]');

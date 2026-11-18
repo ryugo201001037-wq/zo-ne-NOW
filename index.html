@@ -152,6 +152,12 @@
     display:flex; align-items:center; justify-content:center; color:#fff;
   }
   .icon-btn svg{ width:19px; height:19px; }
+  #feed-topbar .icon-btn[hidden], .feed-list-title[hidden]{ display:none; }
+  #feed-list-back{ font-size:17px; flex-shrink:0; }
+  .feed-list-title{
+    flex:1; min-width:0; margin-left:10px; font-family:var(--font-ui); font-size:14px; font-weight:700;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-shadow:0 1px 4px rgba(0,0,0,.5);
+  }
 
   /* ---- 勉強の催促（ショートを一定本数見るたびに表示） ---- */
   #study-nudge{
@@ -1132,6 +1138,8 @@
     </div>
 
     <div id="feed-topbar">
+      <button class="icon-btn" id="feed-list-back" aria-label="戻る" hidden>←</button>
+      <span class="feed-list-title" id="feed-list-title" hidden></span>
       <button class="icon-btn" id="search-open-btn" aria-label="検索">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       </button>
@@ -2851,7 +2859,11 @@ document.querySelectorAll('.bottom-nav').forEach(el=>{
   el.innerHTML = navHtml(el.dataset.activeNav);
 });
 document.querySelectorAll('[data-nav]').forEach(btn=>{
-  btn.addEventListener('click', ()=> showScreen(btn.dataset.nav));
+  btn.addEventListener('click', ()=>{
+    // 一覧の並び順で見ている途中に「ホーム」を押したら、いつものランダムな並びに戻す
+    if(btn.dataset.nav === 'home' && feedList) renderFeed();
+    showScreen(btn.dataset.nav);
+  });
 });
 
 // ---- ショート動画フィード ----
@@ -2860,6 +2872,7 @@ const feedEl = document.getElementById('feed');
 // みんなの投稿の読み込み状態：'loading'（読み込み中）／'ready'（読み込めた）／'error'（読み込めなかった）。フィードが空のときの案内に使う
 let cloudFeedState = 'loading';
 let currentSlide = null;        // 今画面に出ているショート
+let feedList = null;            // プロフィールなどの一覧から開いて、その並び順で見ているとき { title, back }（下の openPostList）
 let currentAudibleState = true; // ミュート状態をスライド間で引き継ぐ
 // 再生速度（スライドをまたいで引き継ぎ、端末に覚えておく）
 const PLAYBACK_RATE_KEY = 'zonenow_playback_rate';
@@ -3116,7 +3129,7 @@ const feedObserver = new IntersectionObserver((entries)=>{
     if(entry.isIntersecting && entry.intersectionRatio > 0.6){
       if(currentSlide && currentSlide !== slide) deactivateSlide(currentSlide);
       currentSlide = slide;
-      if(isNearFeedEnd(slide)) appendFeedBatch();
+      if(!feedList && isNearFeedEnd(slide)) appendFeedBatch(); // 一覧の並び順で見ているときは、ランダムな動画を足さない
       syncFeedMedia(slide);
       if(screens.home.classList.contains('active')) enterSlide(slide);
     } else {
@@ -3236,6 +3249,7 @@ function isNearFeedEnd(slide){
 
 // 今見ている動画はそのままで、次から先を新しい並びにする（みんなの投稿を読み込んだあと）
 function refreshUpcomingFeed(){
+  if(feedList) return; // 一覧の並び順で見ている途中は、並びを変えない
   if(!currentSlide){ renderFeed(SHARED_VIDEO || undefined); return; }
   while(currentSlide.nextElementSibling){
     const next = currentSlide.nextElementSibling;
@@ -3249,6 +3263,8 @@ function refreshUpcomingFeed(){
 
 // pinnedFirst を渡すとその動画を先頭に固定（投稿直後に自分の投稿を見せるため）
 function renderFeed(pinnedFirst){
+  feedList = null;
+  renderFeedListBar();
   feedEl.querySelectorAll('.short-slide').forEach(s=>{
     feedObserver.unobserve(s);
     deactivateSlide(s);
@@ -4048,6 +4064,46 @@ function jumpToShort(id){
   showScreen('home');
 }
 
+// ---- プロフィールなどの一覧から開いた投稿を、一覧の並び順のまま続けて見る ----
+// 押した投稿から始まり、上下にスワイプすると一覧の前後の投稿に移る（ランダムな動画は足さない）。
+// 左上の「←」で元の画面に戻り、ホームはいつものランダムな並びに戻る
+function renderFeedListBar(){
+  const on = !!feedList;
+  document.getElementById('feed-list-back').hidden = !on;
+  document.getElementById('feed-list-title').hidden = !on;
+  document.getElementById('feed-list-title').textContent = on ? feedList.title : '';
+  document.getElementById('search-open-btn').hidden = on;
+}
+function openPostList(ids, startId, title, back){
+  const list = ids.map(id=> VIDEOS.find(v=> v.id === id)).filter(Boolean);
+  const start = list.findIndex(v=> v.id === startId);
+  if(start < 0) return jumpToShort(startId);
+  feedEl.querySelectorAll('.short-slide').forEach(s=>{ feedObserver.unobserve(s); deactivateSlide(s); });
+  feedEl.innerHTML = '';
+  currentSlide = null;
+  feedList = { title, back };
+  renderFeedListBar();
+  list.forEach(v=>{
+    const slide = createSlide(v);
+    feedEl.appendChild(slide);
+    feedObserver.observe(slide);
+  });
+  const target = feedEl.children[start];
+  syncFeedMedia(target);
+  updateFeedEmpty();
+  showScreen('home');
+  feedEl.scrollTo({ top: target.offsetTop });
+  usageEvent(`一覧から再生（${title}・${start + 1}/${list.length}本目）`);
+}
+// 一覧のカードの並び順（画面に出ている順）
+function idsInGrid(grid){ return [...grid.querySelectorAll('.result-card')].map(c=> c.dataset.id); }
+function closePostList(){
+  const back = feedList ? feedList.back : 'home';
+  renderFeed();
+  showScreen(back);
+}
+document.getElementById('feed-list-back').addEventListener('click', closePostList);
+
 document.getElementById('search-back').addEventListener('click', ()=> showScreen('home'));
 searchInput.addEventListener('input', ()=>{ renderResults(); scheduleUserSearch(); });
 searchInput.addEventListener('keydown', e=>{ if(e.key === 'Enter' && !e.isComposing) searchInput.blur(); }); // キーボードを閉じて結果を見せる
@@ -4143,7 +4199,7 @@ function renderUserPosts(posts, message){
 }
 document.getElementById('user-grid').addEventListener('click', e=>{
   const card = e.target.closest('.result-card');
-  if(card) jumpToShort(card.dataset.id);
+  if(card) openPostList(idsInGrid(e.currentTarget), card.dataset.id, `${userScreenTarget ? userScreenTarget.name : ''}の投稿`, 'user');
 });
 document.getElementById('user-follow').addEventListener('click', ()=>{
   if(userScreenTarget) toggleFollow(userScreenTarget.id, userScreenTarget.name);
@@ -6624,7 +6680,7 @@ document.getElementById('profile-grid').addEventListener('click', async (e)=>{
     return;
   }
   const card = e.target.closest('.result-card');
-  if(card) jumpToShort(card.dataset.id);
+  if(card) openPostList(idsInGrid(e.currentTarget), card.dataset.id, profileTab === 'posts' ? 'あなたの投稿' : '保存した動画', 'profile');
 });
 
 // ---- フォロー中・フォロワー・友達の一覧 ----

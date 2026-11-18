@@ -1711,7 +1711,7 @@
       <div class="comment-list" id="comment-list"></div>
       <p class="comment-empty" id="comment-empty">まだコメントはありません。<br>最初のコメントを書いてみよう。</p>
       <div class="comment-form">
-        <input type="text" class="post-input" id="comment-input" placeholder="コメントを書く…" maxlength="200" enterkeyhint="send" aria-label="コメント" />
+        <input type="text" class="post-input" id="comment-input" placeholder="コメントを書く…" maxlength="2000" enterkeyhint="send" aria-label="コメント" />
         <button class="study-btn primary" id="comment-send">送信</button>
       </div>
     </div>
@@ -2605,7 +2605,7 @@ async function postDb(mode, action){
 const LIKES_KEY = 'zonenow_likes';
 const SAVES_KEY = 'zonenow_saves';
 const COMMENTS_KEY = 'zonenow_comments';
-const COMMENT_MAX_LENGTH = 200;
+const COMMENT_MAX_LENGTH = 2000;
 function loadIdList(key){ return loadJSON(key, []); }
 function toggleIdInList(key, id){
   const list = loadIdList(key);

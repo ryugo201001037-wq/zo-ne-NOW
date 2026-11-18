@@ -54,7 +54,7 @@ const { check, state, report } = createChecker();
   const ids = await evalq(() => [...document.querySelectorAll('#feed .short-slide')].map(s => s.dataset.id));
   check('動画が並ぶ', ids.length >= 10, ids.length);
   check('同じ動画が連続しない', !ids.some((id, i) => i && ids[i - 1] === id));
-  check('通知ベルはホームに無い', (await page.$$('#feed-topbar button')).length === 1);
+  check('通知ベルはホームに無い（ふだん出ているのは検索だけ）', (await page.$$eval('#feed-topbar button', bs => bs.filter(b => !b.hidden).map(b => b.id))).join() === 'search-open-btn');
   const unitInBadges = await evalq(() => [...document.querySelectorAll('#feed .short-slide')].some(sl => {
     const v = VIDEOS.find(x => x.id === sl.dataset.id);
     return v.unit && [...sl.querySelectorAll('.short-top .badge')].some(b => b.textContent === v.unit);

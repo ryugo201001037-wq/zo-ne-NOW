@@ -686,6 +686,22 @@ function startFakeSupabase() {
   check('フィードでもフォロー中になっている', await op.$eval('#feed .short-slide:first-child [data-role="follow"]', el => el.classList.contains('active')));
   await op.click('#feed .short-slide:first-child .avatar');
   check('フィードのアイコンを押しても、その人の投稿一覧', await waitFor(async () => (await op.$eval('.screen.active', el => el.id)) === 'user-screen' && (await op.textContent('#user-title')) === 'みなと'));
+  // 一覧の2本目を押すと、その投稿から始まり、上下のスワイプで一覧の前後の投稿に移る（ホームのランダムには戻らない）
+  const gridIds = await op.$$eval('#user-grid .result-card', els => els.map(e => e.dataset.id));
+  check('（確認用）投稿一覧に3本以上ある', gridIds.length >= 3, `${gridIds.length}本`);
+  await op.click(`#user-grid .result-card[data-id="${gridIds[1]}"]`);
+  check('一覧の2本目を押すと、その投稿から始まり、並びは一覧と同じ', await waitFor(async () => (await op.$eval('.screen.active', el => el.id)) === 'home-screen'
+    && (await op.evaluate(() => currentSlide && currentSlide.dataset.id)) === gridIds[1])
+    && JSON.stringify(await op.$$eval('#feed .short-slide', els => els.map(e => e.dataset.id))) === JSON.stringify(gridIds));
+  check('上に「←」と「みなとの投稿」（検索ボタンは隠す）', await op.isVisible('#feed-list-back') && (await op.textContent('#feed-list-title')) === 'みなとの投稿' && !(await op.isVisible('#search-open-btn')));
+  await op.evaluate(() => feedEl.scrollTo({ top: currentSlide.nextElementSibling.offsetTop }));
+  check('スワイプすると、一覧の次の投稿', await waitFor(async () => (await op.evaluate(() => currentSlide && currentSlide.dataset.id)) === gridIds[2]));
+  await op.evaluate(() => feedEl.scrollTo({ top: feedEl.lastElementChild.offsetTop }));
+  await op.waitForTimeout(500);
+  check('一覧の最後まで行っても、ランダムな動画は足さない', (await op.$$('#feed .short-slide')).length === gridIds.length);
+  await op.click('#feed-list-back');
+  check('「←」で元の画面（その人の投稿一覧）に戻る', await waitFor(async () => (await op.$eval('.screen.active', el => el.id)) === 'user-screen'));
+  check('ホームは、いつものランダムな並びに戻る', await op.evaluate(() => feedList === null) && !(await op.isVisible('#feed-list-back')));
   await op.click('#user-follow');
   check('ユーザー画面でフォローを外せる', (await op.textContent('#user-follow')) === 'フォローする' && await op.evaluate(() => JSON.parse(localStorage.getItem('zonenow_following')).length === 0));
   await op.click('#user-follow');

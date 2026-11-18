@@ -24,6 +24,8 @@ async function open(browser, native, { reminderAsked = true } = {}) {
         addListener: (name, fn) => { window.__ln.listeners[name] = fn; },
       };
       window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'ios', Plugins: { Haptics: { impact: async o => { window.__haptics.push(o.style); } }, LocalNotifications } };
+      // iPhone の音の種類の設定（Audio Session API）があるふり
+      Object.defineProperty(navigator, 'audioSession', { configurable: true, value: { type: 'auto' } });
     }
     localStorage.setItem('zonenow_profile', JSON.stringify({ name: 'テスト', grade: 'junior2', createdAt: 1 }));
     // 勉強リマインドのおすすめ（開いたときに一度だけ出る）は、別のところで確かめる
@@ -85,6 +87,15 @@ async function open(browser, native, { reminderAsked = true } = {}) {
   await p.click('#feed .short-slide:first-child [data-role="like"]');
   check('いいねで軽く振動', await p.evaluate(() => window.__haptics.includes('LIGHT')));
   check('ボタンや文字は長押しで選択されない', await p.evaluate(() => getComputedStyle(document.body).webkitUserSelect === 'none' || getComputedStyle(document.body).userSelect === 'none'));
+  check('音の種類を「再生」にする（マナーモードでもオリジナル楽曲が鳴る）', await p.evaluate(() => navigator.audioSession.type === 'playback'));
+  check('止まっている音は、指を離したときに鳴らせる状態に戻す', await p.evaluate(() => {
+    let resumed = 0;
+    const real = audioCtx;
+    audioCtx = { state: 'interrupted', resume: () => { resumed++; return Promise.resolve(); } };
+    document.dispatchEvent(new Event('touchend'));
+    audioCtx = real;
+    return resumed === 1;
+  }));
   check('AIの回答は選んでコピーできる', await p.evaluate(() => { const b = document.createElement('div'); b.className = 'ai-bubble'; document.body.appendChild(b); const v = getComputedStyle(b).userSelect || getComputedStyle(b).webkitUserSelect; b.remove(); return v === 'text'; }));
   check('エラーなし', !app.errors.length, app.errors.join(' / '));
   await app.context.close();

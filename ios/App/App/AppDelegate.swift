@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import AVFoundation
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -7,7 +8,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // 音の種類を「再生」にする：マナーモード（消音スイッチ）でも、動画の音とオリジナル楽曲（Web Audio）の両方を鳴らす。
+        // 何もしないと Web Audio だけがマナーモードで消え、楽曲付きの投稿が無音になる
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
         return true
     }
 

@@ -461,7 +461,9 @@ const { check, state, report } = createChecker();
       const play = MUSIC_STYLES[t.style];
       if (!play) { out.push({ id: t.id, ok: false }); continue; }
       const ctx = new OfflineAudioContext(1, 44100 * 3, 44100);
-      const gain = ctx.createGain(); gain.gain.value = t.volume || 1; gain.connect(ctx.destination);
+      // 本番と同じつなぎ方（音量 → 高い音を落とすフィルター → スピーカー）で作る
+      const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = t.cutoff || 2400; filter.connect(ctx.destination);
+      const gain = ctx.createGain(); gain.gain.value = t.volume || 1; gain.connect(filter);
       const s16 = 60 / t.bpm / 4;
       for (let step = 0, time = 0.02; time < 2.6; step++, time += s16) play(ctx, gain, t, step, time, s16);
       const d = (await ctx.startRendering()).getChannelData(0);

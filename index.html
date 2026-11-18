@@ -1938,8 +1938,16 @@ function getAudioCtx(){
   if(audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
   return audioCtx;
 }
-// ブラウザは「ユーザーが画面に触れるまで音を出さない」ので、最初のタップで音を出せる状態にする
-document.addEventListener('pointerdown', ()=>{ if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{}); });
+// iPhone は、マナーモード（消音スイッチ）のときに Web Audio（ゾーンNOWのオリジナル楽曲はこれで鳴らしている）だけを鳴らさない。
+// 動画の音は鳴るので、楽曲付きの投稿だけ無音になっていた。音の種類を「再生」にして、動画と同じくマナーモードでも鳴らす
+// （iOS 16.4 以降が対応。対応していないブラウザでは何もしない。iPhoneアプリ側でも AppDelegate で同じ設定をしている）
+try{ if(navigator.audioSession) navigator.audioSession.type = 'playback'; }catch(e){}
+// ブラウザは「ユーザーが画面に触れるまで音を出さない」ので、触れたときに音を出せる状態に戻す。
+// iPhone は pointerdown では足りないことがあるので、指を離したとき・タップ・キー入力でも試す。
+// 電話や通知で止められた（interrupted）あとも、アプリに戻ったときに再開する
+function unlockAudio(){ if(audioCtx && audioCtx.state !== 'running' && audioCtx.state !== 'closed') audioCtx.resume().catch(()=>{}); }
+['pointerdown', 'touchend', 'click', 'keydown'].forEach(type=> document.addEventListener(type, unlockAudio, { passive:true }));
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) unlockAudio(); });
 
 function midiToFreq(n){ return 440 * Math.pow(2, (n - 69) / 12); }
 function playTone(ctx, dest, freq, start, duration, type, peak, attack){

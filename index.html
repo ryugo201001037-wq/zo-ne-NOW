@@ -779,6 +779,10 @@
     padding:7px 14px; border-radius:99px; border:1px solid rgba(255,255,255,.25); color:#fff;
     font-family:var(--font-ui); font-size:12px; font-weight:700; flex-shrink:0;
   }
+  .friend-info{ flex:1; min-width:0; }
+  .friend-info .people-name{ flex:none; }
+  .friend-study{ font-family:var(--font-ui); font-size:12px; color:rgba(255,255,255,.55); margin-top:3px; }
+  .friend-study.studied{ color:var(--mint); font-weight:700; }
   .people-action.primary{ background:var(--ember, #ff5a36); border-color:transparent; }
   .people-empty{ text-align:center; padding:48px 12px 0; }
 
@@ -1495,6 +1499,15 @@
           <button class="people-action" id="reminder-toggle">オンにする</button>
         </div>
         <p class="settings-text" id="reminder-status"></p>
+      </div>
+
+      <div class="settings-section" id="settings-share-section">
+        <div class="record-section-title">友達に勉強時間を見せる</div>
+        <p class="settings-text">お互いにフォローしている友達に、今日と7日間の勉強時間の合計を見せます（教科や1回ごとの記録は見せません）。</p>
+        <div class="settings-row">
+          <span id="share-study-label"></span>
+          <button class="people-action" id="share-study-toggle"></button>
+        </div>
       </div>
 
       <div class="settings-section">
@@ -2342,9 +2355,12 @@ async function runSyncOp(client, userId, op){
   if(op.type === 'profile'){
     const p = loadProfile();
     if(!p) return;
-    res = await client.from('profiles').upsert({
-      id: userId, name: p.name, grade: p.grade, grade_other: (p.gradeOther || '').slice(0, 20),
-    });
+    const row = { id: userId, name: p.name, grade: p.grade, grade_other: (p.gradeOther || '').slice(0, 20), share_study: p.shareStudy !== false };
+    res = await client.from('profiles').upsert(row);
+    if(res.error && res.error.code === 'PGRST204'){ // まだ share_study の列がない（SQLを実行する前）：それ以外を送る
+      const { share_study, ...rest } = row;
+      res = await client.from('profiles').upsert(rest);
+    }
   } else if(op.type === 'log_upsert'){
     const rows = loadStudyLog().filter(e=> !op.ids || op.ids.includes(e.id)).map(e=> studyLogRow(e, userId));
     if(rows.length) res = await client.from('study_logs').upsert(rows);
@@ -2774,7 +2790,7 @@ function showScreen(name){
   if(name === 'gacha') renderGachaScreen();
   if(name === 'profile') renderProfileScreen();
   if(name === 'history') renderHistoryScreen();
-  if(name === 'people'){ renderPeopleScreen(); if(peopleTab === 'followers') loadCloudFollowers(); }
+  if(name === 'people'){ renderPeopleScreen(); if(peopleTab === 'followers') loadCloudFollowers(); if(peopleTab === 'friends') loadCloudFriends(); }
   if(name === 'ai') renderAiScreen();
   if(name === 'notifications'){ renderNotificationsScreen(); loadCloudNotifications(); usageEvent('通知を開いた'); }
   if(name === 'settings') renderSettingsScreen();
@@ -6526,7 +6542,8 @@ function renderProfileScreen(){
   document.getElementById('profile-following-count').textContent = loadFollowing().length;
   document.getElementById('profile-followers-count').textContent = loadJSON(FOLLOWERS_KEY, []).length;
   loadCloudFollowers();
-  document.getElementById('profile-friends-count').textContent = 0;
+  document.getElementById('profile-friends-count').textContent = loadJSON(FRIENDS_KEY, []).length;
+  loadCloudFriends();
   updateNotifyBadges();
 
   renderProfileGrid();
@@ -6588,7 +6605,40 @@ document.getElementById('profile-grid').addEventListener('click', async (e)=>{
 
 // ---- フォロー中・フォロワー・友達の一覧 ----
 // フォロワーはサーバー（my_followers）から読む。最後に読んだ分は端末に控えておき、電波がなくても数を出す
-// 友達は、サーバー機能ができるまで空のまま
+// 友達＝お互いにフォローしている人。サーバー（friend_study_stats）から、今日・直近7日の勉強時間と一緒に読む
+const FRIENDS_KEY = 'zonenow_friends';
+let friendsLoading = null;
+function loadCloudFriends(){
+  if(!cloudEnabled()) return Promise.resolve();
+  if(friendsLoading) return friendsLoading;
+  friendsLoading = (async ()=>{
+    try{
+      const client = await getCloud();
+      if(!client || !(await cloudUserId())) return;
+      const { data, error } = await client.rpc('friend_study_stats', { p_today: localDateKey() });
+      if(error || !Array.isArray(data)) return; // 関数がまだない（SQLを実行する前）なども、前の分のまま
+      saveJSON(FRIENDS_KEY, data.map(r=> ({
+        id: r.id, name: r.name || 'だれか',
+        today: r.today_seconds == null ? null : Number(r.today_seconds),
+        week: r.week_seconds == null ? null : Number(r.week_seconds),
+        lastDate: r.last_date || null,
+      })));
+      document.getElementById('profile-friends-count').textContent = data.length;
+      if(screens.people.classList.contains('active') && peopleTab === 'friends') renderPeopleScreen();
+    }catch(e){
+      // 電波がないなど：前に読んだ分を出しておく
+    }finally{
+      friendsLoading = null;
+    }
+  })();
+  return friendsLoading;
+}
+// 友達の一覧の1行：今日・7日間の勉強時間（見せない設定の人は「非公開」）
+function friendStudyText(f){
+  if(f.today == null) return '勉強時間は非公開';
+  const today = f.today ? `今日 ${formatStudyTime(f.today)}` : '今日はまだ';
+  return `${today} ・ 7日間 ${formatStudyTime(f.week || 0)}`;
+}
 const FOLLOWERS_KEY = 'zonenow_followers';
 let followersLoading = null;
 function loadCloudFollowers(){
@@ -6614,7 +6664,7 @@ function loadCloudFollowers(){
 const PEOPLE_TABS = {
   following: { label:'フォロー中', emptyIcon:'user', emptyTitle:'まだ誰もフォローしていません', emptySub:'動画のアイコンの「＋」から、気になるクリエイターをフォローできます。' },
   followers: { label:'フォロワー', emptyIcon:'users', emptyTitle:'まだフォロワーはいません', emptySub:'動画を投稿して、あなたを見つけてもらおう。' },
-  friends:   { label:'友達',       emptyIcon:'users', emptyTitle:'友達機能は準備中です', emptySub:'アプリの中で友達とつながり、お互いの今日・今週の勉強時間を見せ合えるようになります（サーバー対応後）。' },
+  friends:   { label:'友達',       emptyIcon:'users', emptyTitle:'まだ友達はいません', emptySub:'お互いにフォローすると友達になって、今日・7日間の勉強時間を見せ合えます。' },
 };
 let peopleTab = 'following';
 
@@ -6650,6 +6700,23 @@ function renderPeopleScreen(){
     document.getElementById('people-empty-sub').textContent = tab.emptySub;
     return;
   }
+  if(peopleTab === 'friends'){
+    // 今日たくさん勉強した順（サーバーが並べて返す）
+    const friends = loadJSON(FRIENDS_KEY, []);
+    document.getElementById('people-list').innerHTML = friends.map(f=>`
+      <div class="people-row is-user friend-row" data-open-user="${escapeHtml(f.id)}" data-name="${escapeHtml(f.name)}">
+        <div class="avatar">${escapeHtml(f.name.charAt(0))}</div>
+        <div class="friend-info">
+          <div class="people-name">${escapeHtml(f.name)}</div>
+          <div class="friend-study ${f.today ? 'studied' : ''}">${escapeHtml(friendStudyText(f))}</div>
+        </div>
+      </div>`).join('');
+    document.getElementById('people-empty').style.display = friends.length ? 'none' : 'block';
+    document.getElementById('people-empty-icon').innerHTML = icon(tab.emptyIcon);
+    document.getElementById('people-empty-title').textContent = tab.emptyTitle;
+    document.getElementById('people-empty-sub').textContent = tab.emptySub;
+    return;
+  }
   const people = peopleTab === 'following' ? loadFollowing() : [];
   document.getElementById('people-list').innerHTML = people.map(e=>{
     const key = followKeyOfEntry(e), name = followNameOfEntry(e);
@@ -6675,6 +6742,7 @@ document.querySelectorAll('.people-tab').forEach(btn=>{
     peopleTab = btn.dataset.tab;
     renderPeopleScreen();
     if(peopleTab === 'followers') loadCloudFollowers();
+    if(peopleTab === 'friends') loadCloudFriends();
   });
 });
 document.getElementById('people-back').addEventListener('click', ()=> showScreen('profile'));
@@ -6885,8 +6953,26 @@ async function renderAccountStatus(){
     + '<br>※ テスト期間は名前だけの登録です。ブラウザのデータを消すと、このアカウントには戻れません。'
     + (IS_NATIVE_APP ? '' : '<br>※ iPhoneでは、Safariで開いたときとホーム画面から開いたときで、別のアカウントになります。いつも同じ開き方で使ってね。');
 }
+// 友達に勉強時間を見せるか（プロフィールの shareStudy。はじめはオン）。サーバーのプロフィールにも送る
+function renderShareStudy(){
+  const on = (loadProfile() || {}).shareStudy !== false;
+  document.getElementById('share-study-label').textContent = on ? 'いまは見せています' : 'いまは見せていません';
+  document.getElementById('share-study-toggle').textContent = on ? '見せない' : '見せる';
+}
+document.getElementById('settings-share-section').hidden = !cloudEnabled();
+document.getElementById('share-study-toggle').addEventListener('click', ()=>{
+  const p = loadProfile();
+  if(!p) return;
+  const next = p.shareStudy === false;
+  saveJSON(PROFILE_KEY, { ...p, shareStudy: next });
+  queueSync({ type:'profile' });
+  usageEvent(next ? '友達に勉強時間を見せる' : '友達に勉強時間を見せない');
+  renderShareStudy();
+  showToast(next ? '友達に勉強時間を見せます' : '友達に勉強時間を見せないようにしました');
+});
 function renderSettingsScreen(){
   renderAccountStatus();
+  renderShareStudy();
   const blocked = loadJSON(BLOCKED_CREATORS_KEY, []);
   document.getElementById('settings-blocked').innerHTML = blocked.map(name=>`
     <div class="settings-row"><span>${escapeHtml(name)}</span><button class="people-action" data-unblock="${escapeHtml(name)}">表示する</button></div>

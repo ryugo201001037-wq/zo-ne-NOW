@@ -469,7 +469,7 @@ const { check, state, report } = createChecker();
       const d = (await ctx.startRendering()).getChannelData(0);
       let peak = 0, sum = 0;
       for (const x of d) { peak = Math.max(peak, Math.abs(x)); sum += x * x; }
-      out.push({ id: t.id, ok: Math.sqrt(sum / d.length) > 0.005 && peak < 0.99 });
+      out.push({ id: t.id, peak: +peak.toFixed(3), rms: +Math.sqrt(sum / d.length).toFixed(4), ok: Math.sqrt(sum / d.length) > 0.005 && peak < 0.99 });
     }
     return out;
   });

@@ -1911,7 +1911,7 @@ const MUSIC_LIBRARY = [
   // ここから、ジャンルごとに作り方そのものが違う曲
   { id:'lofibeat', title:'Chill Beat',    artist:'ゾーンNOW', mood:'ドラム入りのローファイ・ヒップホップ', bpm:82, style:'lofi', swing:0.32, cutoff:3200, volume:0.6,
     chords:[[50,57,60,65],[55,62,65,69],[48,55,59,64],[45,52,55,60]] },
-  { id:'chip',     title:'8bit Quest',    artist:'ゾーンNOW', mood:'ゲームみたいなピコピコ音', bpm:144, style:'chip', cutoff:9000, volume:2.4,
+  { id:'chip',     title:'8bit Quest',    artist:'ゾーンNOW', mood:'ゲームみたいなピコピコ音', bpm:144, style:'chip', cutoff:9000, volume:1.8,
     chords:[[48,55,60],[45,52,57],[41,48,53],[43,50,55]], scale:[60,62,64,67,69,72,74,76] },
   { id:'piano',    title:'Quiet Piano',   artist:'ゾーンNOW', mood:'ドラムなし・静かなピアノ', bpm:68, style:'piano', cutoff:4200,
     chords:[[48,55,64,67],[43,50,59,62],[45,52,60,64],[41,48,57,60]], scale:[72,74,76,79,81,84] },
@@ -1968,8 +1968,10 @@ let noiseBuffer = null;
 function getNoise(ctx){
   if(noiseBuffer && noiseBuffer.sampleRate === ctx.sampleRate) return noiseBuffer;
   noiseBuffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+  // 毎回同じノイズにする（でたらめにすると、開くたびに音の大きさが変わり、たまに音割れしていた）
   const data = noiseBuffer.getChannelData(0);
-  for(let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  let seed = 12345;
+  for(let i = 0; i < data.length; i++){ seed = (seed * 1103515245 + 12345) >>> 0; data[i] = seed / 2147483648 - 1; }
   return noiseBuffer;
 }
 function playNoise(ctx, dest, start, duration, peak, filterType, freq){

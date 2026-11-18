@@ -82,7 +82,7 @@ const entry = (id, subject, minutes, daysAgo) => ({ id, subject, subjectOther: '
   }));
   check('友達は数が0', (await page.textContent('#profile-friends-count')) === '0');
   await page.click('[data-people-tab="friends"]'); await page.waitForTimeout(150);
-  check('友達を押すと準備中と表示', (await page.textContent('#people-empty-title')).includes('準備中'));
+  check('友達を押すと、友達のなり方を案内（まだいないとき）', (await page.textContent('#people-empty-title')).includes('まだ友達はいません') && (await page.textContent('#people-empty-sub')).includes('お互いにフォロー'));
   await page.click('#people-back'); await page.waitForTimeout(150);
   await page.screenshot({ path: OUT + 'features-profile.png' });
 

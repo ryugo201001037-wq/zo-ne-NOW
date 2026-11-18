@@ -223,6 +223,29 @@ psql(SCHEMA);
 check('前に2回入った同じ記録は、SQLを実行すると1つになる', Number(psql('select count(*) from usage_logs')) === Number(beforeClean) - 1);
 check('長すぎる記録は送れない', !as(B, `insert into usage_logs (started_at, ended_at, narrative) values (now(), now(), '${'あ'.repeat(8001)}')`).ok);
 
+state.section = '友達';
+// この時点で B は A をフォローしている。A も B をフォローすると友達になる
+const E = '55555555-5555-5555-5555-555555555555';
+psql(`insert into auth.users values ('${E}') on conflict do nothing; insert into profiles (id, name, grade) values ('${E}', 'えま', 'junior1') on conflict do nothing;`);
+as(E, `insert into follows (followee_id) values ('${A}')`);
+as(B, `insert into study_logs (id, subject, seconds, date) values ('fr1', 'math', 1800, current_date), ('fr2', 'english', 600, current_date - 3), ('fr3', 'math', 900, current_date - 10)`);
+const friendsOf = (user, day = 'current_date') => as(user, `select name, coalesce(today_seconds::text, '-'), coalesce(week_seconds::text, '-'), coalesce(last_date = current_date, false) from public.friend_study_stats(${day})`);
+check('片方だけのフォローでは友達にならない', friendsOf(A).out === '');
+as(A, `insert into follows (followee_id) values ('${B}')`);
+const fa = friendsOf(A);
+check('お互いにフォローすると友達になり、今日・直近7日の勉強時間が見える', fa.ok && fa.out === 'ひかる|1800|2400|t', fa.out || fa.err);
+check('相手からも自分が友達に見える', friendsOf(B).out.startsWith('あおい'), friendsOf(B).out);
+check('フォローしているだけの人（えま）は友達に出ない', !friendsOf(A).out.includes('えま') && friendsOf(E).out === '');
+as(B, `update profiles set share_study = false where id = '${B}'`);
+check('勉強時間を見せない設定なら、友達には出るが時間は見えない', friendsOf(A).out === 'ひかる|-|-|f', friendsOf(A).out);
+check('自分のプロフィールの設定しか変えられない', as(A, `update profiles set share_study = true where id = '${B}' returning id`).out === '');
+as(B, `update profiles set share_study = true where id = '${B}'`);
+check('大きくずれた日付では何も返さない（他の日の記録をのぞけない）', friendsOf(A, "current_date - 30").out === '');
+check('ログインしていないと使えない', !as(null, 'select * from public.friend_study_stats(current_date)').ok);
+as(A, `delete from follows where followee_id = '${B}'`);
+check('フォローを外すと友達ではなくなる', friendsOf(A).out === '' && friendsOf(B).out === '');
+psql(`delete from auth.users where id = '${E}'; delete from study_logs where id in ('fr1', 'fr2', 'fr3');`);
+
 state.section = 'タグの直し';
 psql(`insert into posts (user_id, creator, title, grade, media_type, media_paths, duration, hashtags) values
   ('${B}', 'ひかる', 'tag1', 'high1', 'video', array['${B}/t1/0.mp4'], 10, array['One','Card','English']),

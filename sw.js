@@ -12,7 +12,7 @@
 // ------------------------------------------------------
 
 // 保存の仕組みを変えたら番号を上げる（古い保存データは自動で削除される）
-const CACHE_NAME = "zonenow-cache-v3";
+const CACHE_NAME = "zonenow-cache-v4";
 const CORE_FILES = [
   "./index.html",
   "./manifest.json",

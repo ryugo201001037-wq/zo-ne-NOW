@@ -213,6 +213,18 @@ function startFakeSupabase() {
       rows.sort((x, y) => (y.name === q) - (x.name === q) || x.name.length - y.name.length);
       return send(200, rows.slice(0, 20));
     }
+    if (p === '/rest/v1/rpc/friend_study_stats' && req.method === 'POST') {
+      const today = body.p_today;
+      const week = new Set(Array.from({ length: 7 }, (_, i) => { const d = new Date(today + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - i); return d.toISOString().slice(0, 10); }));
+      const friends = fake.follows.filter(f => f.follower_id === uid && fake.follows.some(g => g.follower_id === f.followee_id && g.followee_id === uid)).map(f => f.followee_id);
+      return send(200, friends.map(id => {
+        const prof = fake.profiles.get(id) || {};
+        const logs = [...fake.logs.values()].filter(l => l.user_id === id);
+        const share = prof.share_study !== false;
+        return { id, name: prof.name || '', today_seconds: share ? logs.filter(l => l.date === today).reduce((a, l) => a + l.seconds, 0) : null,
+          week_seconds: share ? logs.filter(l => week.has(l.date)).reduce((a, l) => a + l.seconds, 0) : null, last_date: null };
+      }));
+    }
     if (p === '/rest/v1/rpc/my_followers' && req.method === 'POST') {
       return send(200, fake.follows.filter(f => f.followee_id === uid).map(f => ({ id: f.follower_id, name: (fake.profiles.get(f.follower_id) || {}).name || '' })));
     }
@@ -690,6 +702,23 @@ function startFakeSupabase() {
   await page.click('#people-list [data-follow-back]'); await page.waitForTimeout(200);
   check('フォロワーの一覧からフォローを返せる', (await page.textContent('#people-list [data-follow-back]')) === 'フォロー中'
     && await waitFor(() => fake.follows.some(f => f.follower_id === uid && f.followee_id === otherUid())));
+  // お互いにフォローしたので友達：ゆいが今日25分勉強したら、みなとの友達の一覧に出る
+  await op.evaluate(() => { addStudyEntry('math', '', 25 * 60, localDateKey(), 'timer'); });
+  await waitFor(() => [...fake.logs.values()].some(l => l.user_id === otherUid() && l.seconds === 1500));
+  await page.click('[data-tab="friends"]'); await page.waitForTimeout(300);
+  check('お互いにフォローすると友達の一覧に出て、今日・7日間の勉強時間が見える', await waitFor(async () => (await page.textContent('#people-list')).includes('ゆい')
+    && (await page.textContent('#people-list .friend-study')).includes('今日 25分')), await page.textContent('#people-list'));
+  await page.evaluate(() => showScreen('profile'));
+  check('プロフィールの友達の数が1になる', await waitFor(async () => (await page.textContent('#profile-friends-count')) === '1'));
+  // ゆいが「見せない」にすると、時間は「非公開」になる
+  await op.evaluate(() => showScreen('settings')); await op.waitForTimeout(150);
+  check('設定に「友達に勉強時間を見せる」（はじめは見せている）', (await op.textContent('#share-study-label')).includes('見せています'));
+  await op.click('#share-study-toggle');
+  check('「見せない」にすると、サーバーのプロフィールにも送る', await waitFor(() => (fake.profiles.get(otherUid()) || {}).share_study === false));
+  await page.evaluate(() => { peopleTab = 'friends'; showScreen('people'); });
+  check('見せない設定の友達は「勉強時間は非公開」', await waitFor(async () => (await page.textContent('#people-list .friend-study')) === '勉強時間は非公開'));
+  await op.click('#share-study-toggle');
+  await op.evaluate(() => { peopleTab = 'following'; showScreen('people'); }); await op.waitForTimeout(150);
   await page.evaluate(() => showScreen('home'));
   await op.click('#people-list .people-row.is-user .people-name');
   check('フォロー中の一覧から、その人の投稿一覧へ', await waitFor(async () => (await op.$eval('.screen.active', el => el.id)) === 'user-screen'));

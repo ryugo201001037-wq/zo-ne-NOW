@@ -167,7 +167,7 @@
     display:flex; align-items:center; justify-content:center; color:#fff;
   }
   .nudge-icon svg{ width:30px; height:30px; }
-  .nudge-title{ font-size:22px; font-weight:900; line-height:1.45; margin:0 0 10px; text-wrap:balance; }
+  .nudge-title{ font-size:22px; font-weight:900; line-height:1.45; margin:0 0 10px; word-break:keep-all; overflow-wrap:anywhere; }
   .nudge-sub{ font-family:var(--font-ui); font-size:13.5px; color:rgba(255,255,255,.7); line-height:1.7; margin:0 0 26px; }
   .nudge-perk{ font-family:var(--font-ui); font-size:13px; font-weight:700; color:var(--mint); margin:-14px 0 16px; }
   .nudge-perk[hidden]{ display:none; }
@@ -779,6 +779,10 @@
     padding:7px 14px; border-radius:99px; border:1px solid rgba(255,255,255,.25); color:#fff;
     font-family:var(--font-ui); font-size:12px; font-weight:700; flex-shrink:0;
   }
+  .friend-info{ flex:1; min-width:0; }
+  .friend-info .people-name{ flex:none; }
+  .friend-study{ font-family:var(--font-ui); font-size:12px; color:rgba(255,255,255,.55); margin-top:3px; }
+  .friend-study.studied{ color:var(--mint); font-weight:700; }
   .people-action.primary{ background:var(--ember, #ff5a36); border-color:transparent; }
   .people-empty{ text-align:center; padding:48px 12px 0; }
 
@@ -960,6 +964,19 @@
   }
   .user-follow-btn.active{ background:transparent; color:var(--ink-text); border:1px solid rgba(0,0,0,.2); }
   .user-results-note{ font-family:var(--font-ui); font-size:13px; color:var(--muted); padding:10px 0 2px; margin:0; }
+  /* 探す画面も、ほかの画面と同じ暗い色にそろえる（ここだけ白くて、開くたびにまぶしかった） */
+  #search-screen{ background:var(--ink); color:#fff; }
+  #search-screen .back-btn.on-paper{ background:rgba(255,255,255,.14); color:#fff; }
+  #search-screen .search-header p, #search-screen .filter-label, #search-screen .result-count,
+  #search-screen .result-meta, #search-screen .user-row-self, #search-screen .user-results-note, #search-screen .empty-state{ color:rgba(255,255,255,.58); }
+  #search-screen .chip{ background:rgba(255,255,255,.07); border-color:rgba(255,255,255,.16); color:#fff; }
+  #search-screen .chip.active{ background:linear-gradient(135deg, var(--cta-from), var(--cta-to)); border-color:transparent; color:#fff; }
+  #search-screen .search-input{ background:rgba(255,255,255,.07); border-color:rgba(255,255,255,.16); color:#fff; }
+  #search-screen .search-input::placeholder{ color:rgba(255,255,255,.4); }
+  #search-screen .user-row{ border-bottom-color:rgba(255,255,255,.08); }
+  #search-screen .user-row-name{ color:#fff; }
+  #search-screen .user-follow-btn{ background:linear-gradient(135deg, var(--cta-from), var(--cta-to)); color:#fff; }
+  #search-screen .user-follow-btn.active{ background:transparent; color:#fff; border:1px solid rgba(255,255,255,.3); }
   .people-row.is-user{ cursor:pointer; }
   .user-head{ display:flex; align-items:center; gap:16px; margin:4px 0 22px; }
   .user-head .avatar{ width:64px; height:64px; font-size:24px; }
@@ -1302,7 +1319,7 @@
       </div>
 
       <button class="study-btn full history-open-btn" id="history-open">これまでの記録を見る</button>
-      <p class="record-note">※ この記録はこの端末のブラウザ内にのみ保存されます（他の端末とは共有されません）。</p>
+      <p class="record-note" id="record-note">※ この記録はこの端末のブラウザ内にのみ保存されます（他の端末とは共有されません）。</p>
     </div>
     <div class="bottom-nav solid-dark" data-active-nav="record"></div>
   </section>
@@ -1495,6 +1512,15 @@
           <button class="people-action" id="reminder-toggle">オンにする</button>
         </div>
         <p class="settings-text" id="reminder-status"></p>
+      </div>
+
+      <div class="settings-section" id="settings-share-section">
+        <div class="record-section-title">友達に勉強時間を見せる</div>
+        <p class="settings-text">お互いにフォローしている友達に、今日と7日間の勉強時間の合計を見せます（教科や1回ごとの記録は見せません）。</p>
+        <div class="settings-row">
+          <span id="share-study-label"></span>
+          <button class="people-action" id="share-study-toggle"></button>
+        </div>
       </div>
 
       <div class="settings-section">
@@ -2342,9 +2368,12 @@ async function runSyncOp(client, userId, op){
   if(op.type === 'profile'){
     const p = loadProfile();
     if(!p) return;
-    res = await client.from('profiles').upsert({
-      id: userId, name: p.name, grade: p.grade, grade_other: (p.gradeOther || '').slice(0, 20),
-    });
+    const row = { id: userId, name: p.name, grade: p.grade, grade_other: (p.gradeOther || '').slice(0, 20), share_study: p.shareStudy !== false };
+    res = await client.from('profiles').upsert(row);
+    if(res.error && res.error.code === 'PGRST204'){ // まだ share_study の列がない（SQLを実行する前）：それ以外を送る
+      const { share_study, ...rest } = row;
+      res = await client.from('profiles').upsert(rest);
+    }
   } else if(op.type === 'log_upsert'){
     const rows = loadStudyLog().filter(e=> !op.ids || op.ids.includes(e.id)).map(e=> studyLogRow(e, userId));
     if(rows.length) res = await client.from('study_logs').upsert(rows);
@@ -2774,7 +2803,7 @@ function showScreen(name){
   if(name === 'gacha') renderGachaScreen();
   if(name === 'profile') renderProfileScreen();
   if(name === 'history') renderHistoryScreen();
-  if(name === 'people'){ renderPeopleScreen(); if(peopleTab === 'followers') loadCloudFollowers(); }
+  if(name === 'people'){ renderPeopleScreen(); if(peopleTab === 'followers') loadCloudFollowers(); if(peopleTab === 'friends') loadCloudFriends(); }
   if(name === 'ai') renderAiScreen();
   if(name === 'notifications'){ renderNotificationsScreen(); loadCloudNotifications(); usageEvent('通知を開いた'); }
   if(name === 'settings') renderSettingsScreen();
@@ -3539,7 +3568,8 @@ function isStudyNudgeOpen(){ return studyNudgeEl.classList.contains('show'); }
 function openStudyNudge(){
   deactivateSlide(currentSlide);
   const msg = pickNudgeMessage();
-  document.getElementById('nudge-title').textContent = msg.title;
+  // 日本語は好きな所で改行されてしまうので、「、」「。」のあとでだけ改行する（例：「インプットのあとは、／アウトプット。」）
+  document.getElementById('nudge-title').innerHTML = escapeHtml(msg.title).replace(/([、。])/g, '$1<wbr>');
   document.getElementById('nudge-sub').textContent = msg.sub;
   // 前に選んだ教科があれば、その教科のタイマーをワンタップで始められるようにする
   const subject = timerSubject.id ? subjectLabelOf({ subject: timerSubject.id, subjectOther: timerSubject.other }) : '';
@@ -6526,7 +6556,8 @@ function renderProfileScreen(){
   document.getElementById('profile-following-count').textContent = loadFollowing().length;
   document.getElementById('profile-followers-count').textContent = loadJSON(FOLLOWERS_KEY, []).length;
   loadCloudFollowers();
-  document.getElementById('profile-friends-count').textContent = 0;
+  document.getElementById('profile-friends-count').textContent = loadJSON(FRIENDS_KEY, []).length;
+  loadCloudFriends();
   updateNotifyBadges();
 
   renderProfileGrid();
@@ -6588,7 +6619,40 @@ document.getElementById('profile-grid').addEventListener('click', async (e)=>{
 
 // ---- フォロー中・フォロワー・友達の一覧 ----
 // フォロワーはサーバー（my_followers）から読む。最後に読んだ分は端末に控えておき、電波がなくても数を出す
-// 友達は、サーバー機能ができるまで空のまま
+// 友達＝お互いにフォローしている人。サーバー（friend_study_stats）から、今日・直近7日の勉強時間と一緒に読む
+const FRIENDS_KEY = 'zonenow_friends';
+let friendsLoading = null;
+function loadCloudFriends(){
+  if(!cloudEnabled()) return Promise.resolve();
+  if(friendsLoading) return friendsLoading;
+  friendsLoading = (async ()=>{
+    try{
+      const client = await getCloud();
+      if(!client || !(await cloudUserId())) return;
+      const { data, error } = await client.rpc('friend_study_stats', { p_today: localDateKey() });
+      if(error || !Array.isArray(data)) return; // 関数がまだない（SQLを実行する前）なども、前の分のまま
+      saveJSON(FRIENDS_KEY, data.map(r=> ({
+        id: r.id, name: r.name || 'だれか',
+        today: r.today_seconds == null ? null : Number(r.today_seconds),
+        week: r.week_seconds == null ? null : Number(r.week_seconds),
+        lastDate: r.last_date || null,
+      })));
+      document.getElementById('profile-friends-count').textContent = data.length;
+      if(screens.people.classList.contains('active') && peopleTab === 'friends') renderPeopleScreen();
+    }catch(e){
+      // 電波がないなど：前に読んだ分を出しておく
+    }finally{
+      friendsLoading = null;
+    }
+  })();
+  return friendsLoading;
+}
+// 友達の一覧の1行：今日・7日間の勉強時間（見せない設定の人は「非公開」）
+function friendStudyText(f){
+  if(f.today == null) return '勉強時間は非公開';
+  const today = f.today ? `今日 ${formatStudyTime(f.today)}` : '今日はまだ';
+  return `${today} ・ 7日間 ${formatStudyTime(f.week || 0)}`;
+}
 const FOLLOWERS_KEY = 'zonenow_followers';
 let followersLoading = null;
 function loadCloudFollowers(){
@@ -6614,7 +6678,7 @@ function loadCloudFollowers(){
 const PEOPLE_TABS = {
   following: { label:'フォロー中', emptyIcon:'user', emptyTitle:'まだ誰もフォローしていません', emptySub:'動画のアイコンの「＋」から、気になるクリエイターをフォローできます。' },
   followers: { label:'フォロワー', emptyIcon:'users', emptyTitle:'まだフォロワーはいません', emptySub:'動画を投稿して、あなたを見つけてもらおう。' },
-  friends:   { label:'友達',       emptyIcon:'users', emptyTitle:'友達機能は準備中です', emptySub:'アプリの中で友達とつながり、お互いの今日・今週の勉強時間を見せ合えるようになります（サーバー対応後）。' },
+  friends:   { label:'友達',       emptyIcon:'users', emptyTitle:'まだ友達はいません', emptySub:'お互いにフォローすると友達になって、今日・7日間の勉強時間を見せ合えます。' },
 };
 let peopleTab = 'following';
 
@@ -6650,6 +6714,23 @@ function renderPeopleScreen(){
     document.getElementById('people-empty-sub').textContent = tab.emptySub;
     return;
   }
+  if(peopleTab === 'friends'){
+    // 今日たくさん勉強した順（サーバーが並べて返す）
+    const friends = loadJSON(FRIENDS_KEY, []);
+    document.getElementById('people-list').innerHTML = friends.map(f=>`
+      <div class="people-row is-user friend-row" data-open-user="${escapeHtml(f.id)}" data-name="${escapeHtml(f.name)}">
+        <div class="avatar">${escapeHtml(f.name.charAt(0))}</div>
+        <div class="friend-info">
+          <div class="people-name">${escapeHtml(f.name)}</div>
+          <div class="friend-study ${f.today ? 'studied' : ''}">${escapeHtml(friendStudyText(f))}</div>
+        </div>
+      </div>`).join('');
+    document.getElementById('people-empty').style.display = friends.length ? 'none' : 'block';
+    document.getElementById('people-empty-icon').innerHTML = icon(tab.emptyIcon);
+    document.getElementById('people-empty-title').textContent = tab.emptyTitle;
+    document.getElementById('people-empty-sub').textContent = tab.emptySub;
+    return;
+  }
   const people = peopleTab === 'following' ? loadFollowing() : [];
   document.getElementById('people-list').innerHTML = people.map(e=>{
     const key = followKeyOfEntry(e), name = followNameOfEntry(e);
@@ -6675,6 +6756,7 @@ document.querySelectorAll('.people-tab').forEach(btn=>{
     peopleTab = btn.dataset.tab;
     renderPeopleScreen();
     if(peopleTab === 'followers') loadCloudFollowers();
+    if(peopleTab === 'friends') loadCloudFriends();
   });
 });
 document.getElementById('people-back').addEventListener('click', ()=> showScreen('profile'));
@@ -6874,6 +6956,8 @@ if(reminderPlugin()){
   });
 }
 document.getElementById('bulk-open').hidden = !cloudEnabled();
+// サーバーにつながるときは、記録はアカウントにも保存している（つながらないときだけ「この端末の中だけ」）
+if(cloudEnabled()) document.getElementById('record-note').textContent = '※ 記録はこの端末とアカウント（サーバー）の両方に保存されます。';
 async function renderAccountStatus(){
   const el = document.getElementById('settings-account');
   if(!cloudEnabled()){ el.textContent = '記録はこの端末の中だけに保存しています（サーバーには送っていません）。'; return; }
@@ -6885,8 +6969,26 @@ async function renderAccountStatus(){
     + '<br>※ テスト期間は名前だけの登録です。ブラウザのデータを消すと、このアカウントには戻れません。'
     + (IS_NATIVE_APP ? '' : '<br>※ iPhoneでは、Safariで開いたときとホーム画面から開いたときで、別のアカウントになります。いつも同じ開き方で使ってね。');
 }
+// 友達に勉強時間を見せるか（プロフィールの shareStudy。はじめはオン）。サーバーのプロフィールにも送る
+function renderShareStudy(){
+  const on = (loadProfile() || {}).shareStudy !== false;
+  document.getElementById('share-study-label').textContent = on ? 'いまは見せています' : 'いまは見せていません';
+  document.getElementById('share-study-toggle').textContent = on ? '見せない' : '見せる';
+}
+document.getElementById('settings-share-section').hidden = !cloudEnabled();
+document.getElementById('share-study-toggle').addEventListener('click', ()=>{
+  const p = loadProfile();
+  if(!p) return;
+  const next = p.shareStudy === false;
+  saveJSON(PROFILE_KEY, { ...p, shareStudy: next });
+  queueSync({ type:'profile' });
+  usageEvent(next ? '友達に勉強時間を見せる' : '友達に勉強時間を見せない');
+  renderShareStudy();
+  showToast(next ? '友達に勉強時間を見せます' : '友達に勉強時間を見せないようにしました');
+});
 function renderSettingsScreen(){
   renderAccountStatus();
+  renderShareStudy();
   const blocked = loadJSON(BLOCKED_CREATORS_KEY, []);
   document.getElementById('settings-blocked').innerHTML = blocked.map(name=>`
     <div class="settings-row"><span>${escapeHtml(name)}</span><button class="people-action" data-unblock="${escapeHtml(name)}">表示する</button></div>

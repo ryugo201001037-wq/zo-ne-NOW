@@ -376,6 +376,29 @@ $$;
 revoke all on function public.my_followers() from public, anon;
 grant execute on function public.my_followers() to authenticated;
 
+-- ---- 友達（お互いにフォローしている人）と、その人の勉強時間 ----
+-- share_study：友達に自分の勉強時間を見せるか（設定でオフにできる。オフの人の時間は null で返す）
+alter table public.profiles add column if not exists share_study boolean not null default true;
+-- p_today：アプリの端末の「今日」の日付（勉強の記録も端末の日付で入っている）。大きくずれた日付は受け付けない
+-- 返すのは名前と、今日・直近7日（今日を含む）の合計秒数と、最後に勉強した日だけ（教科や1回ごとの記録は返さない）
+create or replace function public.friend_study_stats(p_today date)
+returns table (id uuid, name text, today_seconds bigint, week_seconds bigint, last_date date)
+language sql stable security definer set search_path = '' as $$
+  select p.id, p.name,
+    case when p.share_study then coalesce((select sum(l.seconds) from public.study_logs l where l.user_id = p.id and l.date = p_today), 0) end,
+    case when p.share_study then coalesce((select sum(l.seconds) from public.study_logs l where l.user_id = p.id and l.date between p_today - 6 and p_today), 0) end,
+    case when p.share_study then (select max(l.date) from public.study_logs l where l.user_id = p.id and l.date <= p_today) end
+  from public.follows mine
+  join public.follows theirs on theirs.follower_id = mine.followee_id and theirs.followee_id = mine.follower_id
+  join public.profiles p on p.id = mine.followee_id
+  where auth.uid() is not null and mine.follower_id = auth.uid()
+    and p_today between current_date - 2 and current_date + 2
+  order by 3 desc nulls last, 2
+  limit 200;
+$$;
+revoke all on function public.friend_study_stats(date) from public, anon;
+grant execute on function public.friend_study_stats(date) to authenticated;
+
 -- ---- タグの直し（2026年11月）：名前の空白で分かれてしまったタグ・絵文字の残りが付いたタグ ----
 -- 何度実行しても同じ結果になる（直すものがなければ何もしない）
 update public.posts set hashtags = array['OneCardEnglish'] where hashtags = array['One', 'Card', 'English'];

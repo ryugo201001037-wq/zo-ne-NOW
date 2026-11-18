@@ -103,10 +103,13 @@ create table if not exists public.comments (
   post_id    uuid not null references public.posts(id) on delete cascade,
   user_id    uuid not null default auth.uid() references auth.users(id) on delete cascade,
   author     text not null check (char_length(author) between 1 and 20),
-  body       text not null check (char_length(btrim(body)) between 1 and 200),
+  body       text not null check (char_length(btrim(body)) between 1 and 2000),
   created_at timestamptz not null default now()
 );
 create index if not exists comments_post on public.comments (post_id, created_at);
+-- コメントの上限を200字→2000字に広げる（もう作ってあるテーブルにも効かせる。何度実行しても同じ結果）
+alter table public.comments drop constraint if exists comments_body_check;
+alter table public.comments add constraint comments_body_check check (char_length(btrim(body)) between 1 and 2000);
 
 -- ---- 行ごとの権限：自分の行だけ ----
 alter table public.profiles   enable row level security;

@@ -133,8 +133,11 @@ check('コメントを書ける', cm.ok, cm.err);
 const commentId = (cm.out || '').split('\n')[0];
 check('コメントは、ほかの人（投稿した人）も読める', as(A, 'select body from comments').out === 'わかりやすい！');
 check('他人の名前ではコメントできない', !as(A, `insert into comments (post_id, user_id, author, body) values ('${postId}', '${B}', 'ひかる', 'なりすまし')`).ok);
-check('空のコメント・201文字以上のコメントは入らない', !as(B, `insert into comments (post_id, author, body) values ('${postId}', 'ひかる', '   ')`).ok
-  && !as(B, `insert into comments (post_id, author, body) values ('${postId}', 'ひかる', '${'あ'.repeat(201)}')`).ok);
+check('空のコメント・2001文字以上のコメントは入らない', !as(B, `insert into comments (post_id, author, body) values ('${postId}', 'ひかる', '   ')`).ok
+  && !as(B, `insert into comments (post_id, author, body) values ('${postId}', 'ひかる', '${'あ'.repeat(2001)}')`).ok);
+const longComment = as(B, `insert into comments (post_id, author, body) values ('${postId}', 'ひかる', '${'い'.repeat(2000)}') returning id`);
+check('2000文字のコメントは書ける（前の上限200字より長い）', longComment.ok, longComment.err);
+if(longComment.ok) as(B, `delete from comments where id = '${(longComment.out || '').split('\n')[0]}'`);
 const stats = as(B, `select likes, saves, comments, liked, saved from public.post_stats(array['${postId}'::uuid])`);
 check('数（いいね1・保存1・コメント1）と、自分が押したかが分かる', stats.out === '1|1|1|t|t', stats.out || stats.err);
 check('ほかの人から見ても同じ数（自分は押していない）', as(A, `select likes, saves, comments, liked, saved from public.post_stats(array['${postId}'::uuid])`).out === '1|1|1|f|f');

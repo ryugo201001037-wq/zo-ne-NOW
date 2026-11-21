@@ -1937,6 +1937,7 @@ function musicById(id){ return MUSIC_LIBRARY.find(m=> m.id === id) || null; }
 // ---- 楽曲の再生（同時に流れるのは1曲だけ） ----
 // owner：その曲を流しているもの（フィードのスライドなど）。別のものが止めようとしても止めない
 let audioCtx = null;
+let compressingCount = 0; // 動画を軽くしている最中なら 1 以上
 const music = { track:null, owner:null, timer:null, gain:null, audio:null, nextTime:0, step:0 };
 
 function getAudioCtx(){
@@ -1953,7 +1954,12 @@ try{ if(navigator.audioSession) navigator.audioSession.type = 'playback'; }catch
 // ブラウザは「ユーザーが画面に触れるまで音を出さない」ので、触れたときに音を出せる状態に戻す。
 // iPhone は pointerdown では足りないことがあるので、指を離したとき・タップ・キー入力でも試す。
 // 電話や通知で止められた（interrupted）あとも、アプリに戻ったときに再開する
-function unlockAudio(){ if(audioCtx && audioCtx.state !== 'running' && audioCtx.state !== 'closed') audioCtx.resume().catch(()=>{}); }
+// 楽曲を流していないときと、動画を軽くしている間は戻さない：iPhone は音の部品（AudioContext）を同時に1つしか動かせず、
+// 楽曲の部品を勝手に戻すと、軽くしている動画の音の部品が止められ、軽くする処理が途中で止まってしまう
+function unlockAudio(){
+  if(compressingCount > 0 || !music.track) return;
+  if(audioCtx && audioCtx.state !== 'running' && audioCtx.state !== 'closed') audioCtx.resume().catch(()=>{});
+}
 ['pointerdown', 'touchend', 'click', 'keydown'].forEach(type=> document.addEventListener(type, unlockAudio, { passive:true }));
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) unlockAudio(); });
 
@@ -5473,6 +5479,8 @@ const KEEP_AS_IS_BYTES_PER_SEC = 'keepAsIsBytesPerSec' in zonenowConfig ? zoneno
 // 軽くした動画：長い辺1280px（720p）・映像0.85Mbps・音96kbps → 1分で約7MB（3分で約21MB）
 // （前は映像1.5Mbps・音128kbpsで1分約12.5MB。容量を半分ほどにするため下げた。勉強の動画は話し声が中心なので音も少し下げた）
 const COMPRESS_MAX_SIDE = 1280, COMPRESS_VIDEO_BPS = 850000, COMPRESS_AUDIO_BPS = 96000;
+// 軽くしている動画が、この時間まったく進まなければ「止まった」とみなして、軽くするのをあきらめる
+const COMPRESS_STALL_MS = 'compressStallMs' in zonenowConfig ? zonenowConfig.compressStallMs : 15000;
 const UPLOAD_PHOTO_MAX_SIDE = 1440;
 let cloudPostsLoadedAt = 0;
 
@@ -5668,6 +5676,12 @@ function releaseCompressor(prep){
 function compressVideo(prep, onProgress){
   const { video, dest } = prep;
   prep.started = true;
+  // 軽くしている間は、楽曲を止めて楽曲の音の部品も休ませる（iPhone は音の部品を同時に1つしか動かせないため）
+  stopMusic();
+  if(audioCtx && audioCtx.state === 'running') audioCtx.suspend().catch(()=>{});
+  compressingCount++;
+  let released = false;
+  const release = ()=>{ if(!released){ released = true; compressingCount--; } };
   return new Promise((resolve, reject)=>{
     const start = ()=>{
       const scale = Math.min(1, COMPRESS_MAX_SIDE / Math.max(video.videoWidth, video.videoHeight));
@@ -5680,6 +5694,16 @@ function compressVideo(prep, onProgress){
       const recorder = new MediaRecorder(stream, { mimeType:type, videoBitsPerSecond:COMPRESS_VIDEO_BPS, audioBitsPerSecond:COMPRESS_AUDIO_BPS });
       const chunks = [];
       let failure = null, done = false;
+      // 止まっていないかの見張り：一時停止されたら再生し直し、音の部品が止められたら戻す。
+      // それでも長く進まなければ、止まったものとしてあきらめる（いつまでも「軽くしています」のままにしない）
+      let lastTime = -1, lastMoved = Date.now();
+      const watchdog = setInterval(()=>{
+        if(done) return;
+        if(prep.audio.state !== 'running' && prep.audio.state !== 'closed') prep.audio.resume().catch(()=>{});
+        if(video.paused && !video.ended) video.play().catch(()=>{});
+        if(video.currentTime !== lastTime){ lastTime = video.currentTime; lastMoved = Date.now(); }
+        else if(Date.now() - lastMoved > COMPRESS_STALL_MS) finish(Object.assign(new Error('stalled'), { code:'stalled' }));
+      }, 1000);
       const draw = ()=>{
         if(done) return;
         g.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -5690,6 +5714,8 @@ function compressVideo(prep, onProgress){
         if(done) return;
         done = true;
         failure = err || null;
+        clearInterval(watchdog);
+        release();
         document.removeEventListener('visibilitychange', onHidden);
         video.pause();
         if(recorder.state !== 'inactive') recorder.stop(); else recorder.onstop();
@@ -5712,7 +5738,7 @@ function compressVideo(prep, onProgress){
       video.play().then(draw).catch(err=> finish(err));
     };
     if(video.readyState >= 1) start();
-    else { video.onloadedmetadata = start; video.onerror = ()=> reject(new Error('decode failed')); }
+    else { video.onloadedmetadata = start; video.onerror = ()=>{ release(); reject(new Error('decode failed')); }; }
   });
 }
 
@@ -5914,7 +5940,13 @@ async function publishCloudPost(post, compressor, onProgress = showUploadProgres
       compressor.video.muted = false;
       if(overlay) media.appendChild(compressor.video); // 軽くしている動画をそのまま見せる（音は出ない）
       onProgress('動画を軽くしています…', 0);
-      let small = await compressVideo(compressor, r=> onProgress('動画を軽くしています…', r));
+      let small;
+      try{ small = await compressVideo(compressor, r=> onProgress('動画を軽くしています…', r)); }
+      catch(err){
+        // 軽くする途中で止まったら、送れる大きさなら元のファイルのまま送る（送れない大きさなら、理由を伝えて止める）
+        if(!(err && err.code === 'stalled') || file.size > MAX_UPLOAD_MB * MB) throw err;
+        small = file;
+      }
       // この端末で映像を読めない形式（iPhoneで撮ったHEVCなど）だと、軽くした結果が「音だけ」になってしまう。
       // そのときは軽くした分を捨てて、元のファイルのまま送る（大きすぎて送れなければ、理由を伝えて止める）
       if(!(await hasPicture(small))){
@@ -5967,6 +5999,7 @@ async function publishCloudPost(post, compressor, onProgress = showUploadProgres
   return { ...post, id: postId, cloud: true, own: true, userId, mediaPaths: paths };
 }
 function uploadErrorMessage(err){
+  if(err && err.code === 'stalled') return `動画を軽くする途中で止まってしまいました（${MAX_UPLOAD_MB}MBより大きいため、そのままでは送れません）。ほかのアプリを閉じてから、もう一度「投稿する」を押してね`;
   if(err && err.code === 'left') return '画面を離れたので、投稿を中止しました。もう一度「投稿する」を押してね';
   if(err && err.code === 'cannot_decode') return `この端末では、この動画の映像を読めないので軽くできませんでした（${MAX_UPLOAD_MB}MBより大きいため、そのままでも送れません）。iPhoneから投稿するか、短くしてもう一度選んでね`;
   if(err && err.code === 'too_big') return `動画が大きすぎて送れません（${MAX_UPLOAD_MB}MBまで）。短くするか、画質を下げてもう一度選んでね`;

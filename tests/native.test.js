@@ -88,14 +88,20 @@ async function open(browser, native, { reminderAsked = true } = {}) {
   check('いいねで軽く振動', await p.evaluate(() => window.__haptics.includes('LIGHT')));
   check('ボタンや文字は長押しで選択されない', await p.evaluate(() => getComputedStyle(document.body).webkitUserSelect === 'none' || getComputedStyle(document.body).userSelect === 'none'));
   check('音の種類を「再生」にする（マナーモードでもオリジナル楽曲が鳴る）', await p.evaluate(() => navigator.audioSession.type === 'playback'));
-  check('止まっている音は、指を離したときに鳴らせる状態に戻す', await p.evaluate(() => {
+  const unlockCount = (playing, compressing) => p.evaluate(([playing, compressing]) => {
     let resumed = 0;
-    const real = audioCtx;
+    const real = audioCtx, realTrack = music.track;
     audioCtx = { state: 'interrupted', resume: () => { resumed++; return Promise.resolve(); } };
+    music.track = playing ? MUSIC_LIBRARY[0] : null;
+    compressingCount += compressing ? 1 : 0;
     document.dispatchEvent(new Event('touchend'));
-    audioCtx = real;
-    return resumed === 1;
-  }));
+    compressingCount -= compressing ? 1 : 0;
+    audioCtx = real; music.track = realTrack;
+    return resumed;
+  }, [playing, compressing]);
+  check('楽曲を流しているとき、止まっている音は、指を離したときに鳴らせる状態に戻す', (await unlockCount(true, false)) === 1);
+  check('楽曲を流していないときは、音の部品を勝手に戻さない', (await unlockCount(false, false)) === 0);
+  check('動画を軽くしている間は、音の部品を勝手に戻さない（軽くする処理が止まらないように）', (await unlockCount(true, true)) === 0);
   check('AIの回答は選んでコピーできる', await p.evaluate(() => { const b = document.createElement('div'); b.className = 'ai-bubble'; document.body.appendChild(b); const v = getComputedStyle(b).userSelect || getComputedStyle(b).webkitUserSelect; b.remove(); return v === 'text'; }));
   check('エラーなし', !app.errors.length, app.errors.join(' / '));
   await app.context.close();

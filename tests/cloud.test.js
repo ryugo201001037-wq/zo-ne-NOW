@@ -461,6 +461,45 @@ function startFakeSupabase() {
   check('エラーなし', !small.errors.length, small.errors.join(' / '));
   await small.context.close();
 
+  // 軽くする途中で止まっても、いつまでも「軽くしています」のままにしない
+  state.section = '動画を軽くする（止まったとき）';
+  const stall = await openApp({ zonenow_profile: { name: 'そうた', grade: 'high1', createdAt: 1 } }, { keepAsIsBytesPerSec: 0, compressStallMs: 1500 });
+  await stall.page.evaluate(() => {
+    window.__pausedOnce = false;
+    window.__touchResumed = 0;
+    const original = prepareCompressor;
+    prepareCompressor = (...args) => {
+      const prep = original(...args);
+      // 1本目「一時停止される」：途中で1回止められる（iPhoneで音を横取りされたとき） → 見張りが再生し直して最後まで軽くする
+      // 2本目「まったく進まない」：再生しても動かない → 止まったとみなし、元のファイルのまま送る
+      const mode = document.getElementById('post-title').value;
+      if(mode === '一時停止される'){
+        prep.video.addEventListener('timeupdate', () => { if(!window.__pausedOnce && prep.video.currentTime > 0.3){ window.__pausedOnce = true; prep.video.pause(); } });
+      }
+      if(mode === 'まったく進まない'){
+        prep.video.play = () => Promise.resolve();
+        // 軽くしている間に画面を触っても、楽曲の音の部品は戻さない
+        const ctx = getAudioCtx();
+        const resume = ctx.resume.bind(ctx);
+        ctx.resume = () => { window.__touchResumed++; return resume(); };
+        setTimeout(() => { music.track = MUSIC_LIBRARY[0]; document.dispatchEvent(new Event('touchend')); music.track = null; }, 300);
+      }
+      return prep;
+    };
+  });
+  await postVideo(stall.page, '一時停止される');
+  check('途中で一時停止されても、再生し直して最後まで軽くして送る', await waitFor(() => fake.posts.some(r => r.title === '一時停止される'), 20000));
+  check('（このテストで本当に途中で止めた）', await stall.page.evaluate(() => window.__pausedOnce));
+  await postVideo(stall.page, 'まったく進まない');
+  check('軽くする途中でまったく進まなくなったら、元のファイルのまま送る', await waitFor(() => {
+    const r = fake.posts.find(x => x.title === 'まったく進まない');
+    return r && fake.files.has(r.media_paths[0]) && fake.files.get(r.media_paths[0]).body.equals(sampleBytes);
+  }, 20000));
+  check('軽くしている間に画面を触っても、楽曲の音の部品は戻さない', (await stall.page.evaluate(() => window.__touchResumed)) === 0);
+  check('終わったら「軽くしている最中」の印は消える', (await stall.page.evaluate(() => compressingCount)) === 0);
+  check('エラーなし', !stall.errors.length, stall.errors.join(' / '));
+  await stall.context.close();
+
   state.section = '投稿（写真）';
   await nav(page, 'create');
   await page.setInputFiles('#post-file-input', [require('path').join(ASSETS, 'p1.png'), require('path').join(ASSETS, 'p2.png')]);
@@ -581,7 +620,7 @@ function startFakeSupabase() {
   await other.page.click('#onboarding-grade-chips .chip[data-id="high1"]');
   await other.page.click('#onboarding-submit');
   const op = other.page;
-  check('ほかの人にもみんなの投稿が届く', await waitFor(() => op.evaluate(() => VIDEOS.filter(v => v.cloud).length === 11))); // ふつうの投稿6（映像を読めない動画・学年いろいろを含む）＋まとめて投稿5
+  check('ほかの人にもみんなの投稿が届く', await waitFor(() => op.evaluate(() => VIDEOS.filter(v => v.cloud).length === 13))); // ふつうの投稿6（映像を読めない動画・学年いろいろを含む）＋まとめて投稿5＋軽くする途中で止まったときの2
   check('投稿は何回かに分けて、全部読む（上限で古い投稿が消えない）', await op.evaluate(n => VIDEOS.filter(v => v.cloud).length === n, fake.posts.length) && fake.postReads >= 4, `読んだ回数 ${fake.postReads}`);
   // 一覧の表紙は、開いている画面で映ったものだけ読み込む（開いていない検索画面の分は読まない）
   const thumbState = () => op.evaluate(() => {

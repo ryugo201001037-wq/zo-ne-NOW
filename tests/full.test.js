@@ -221,6 +221,22 @@ const { check, state, report } = createChecker();
   }, { video: fs.readFileSync(A + 'landscape.webm').toString('base64'), image: fs.readFileSync(A + 'landscape.png').toString('base64') });
   check('横長の動画は、切らずに全体を見せる', fitResult.video, JSON.stringify(fitResult));
   check('横長の写真も、切らずに全体を見せる', fitResult.image, JSON.stringify(fitResult));
+  // 縦長の写真（ノートの写真・スクリーンショットなど）も、端が切れないよう全体を見せる
+  const tallFit = await page.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = 300; c.height = 900;
+    const g = c.getContext('2d'); g.fillStyle = '#f00'; g.fillRect(0, 0, 300, 900);
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed; left:-9999px; width:390px; height:844px;';
+    document.body.appendChild(box);
+    const s = createSlide({ ...VIDEOS[0], id: 'tall-image', mediaType: 'image', short: c.toDataURL('image/png'), images: undefined, musicId: null });
+    box.append(s);
+    const img = s.querySelector('.short-media-image');
+    await new Promise(r => { if (img.complete) r(); else img.addEventListener('load', r, { once: true }); setTimeout(r, 4000); });
+    const fit = getComputedStyle(img).objectFit;
+    box.remove();
+    return fit;
+  });
+  check('縦長の写真も、切らずに全体を見せる', tallFit === 'contain', tallFit);
 
   // 映像のない（音だけの）動画は、黒い画面のままにせず「映像を再生できません」と出す
   const noPic = await evalq(async b64 => {

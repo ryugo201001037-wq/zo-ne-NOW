@@ -811,7 +811,7 @@
   .post-preview-images{
     position:absolute; inset:0; display:none; overflow-x:auto; scroll-snap-type:x mandatory;
   }
-  .post-preview-images img{ flex:0 0 100%; width:100%; height:100%; object-fit:cover; scroll-snap-align:start; }
+  .post-preview-images img{ flex:0 0 100%; width:100%; height:100%; object-fit:contain; background:#000; scroll-snap-align:start; }
   .post-preview-count{
     position:absolute; top:8px; right:8px; display:none; padding:3px 9px; border-radius:99px;
     background:rgba(0,0,0,.55); font-family:var(--font-ui); font-size:11px; font-weight:700; color:#fff;
@@ -3037,12 +3037,10 @@ function attachSlideEvents(slide, v){
     });
   }
 
-  // 動画・写真の形を見て、横長なら切らずに全体を見せる
+  // 動画は形を見て、横長なら切らずに全体を見せる（縦長は画面いっぱい）。
+  // 写真は、ノートや問題の写真の端が切れないよう、縦長でも横長でも必ず全体を見せる
   if(video) video.addEventListener('loadedmetadata', ()=> video.classList.toggle('fit-contain', shouldFitContain(video.videoWidth, video.videoHeight)));
-  slide.querySelectorAll('.short-media-image').forEach(img=>{
-    const fit = ()=> img.classList.toggle('fit-contain', shouldFitContain(img.naturalWidth, img.naturalHeight));
-    if(img.complete) fit(); else img.addEventListener('load', fit);
-  });
+  slide.querySelectorAll('.short-media-image').forEach(img=> img.classList.add('fit-contain'));
 
   if(video){
     attachVideoControls(slide, video);
